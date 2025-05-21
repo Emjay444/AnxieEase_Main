@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "915581332814",
+    "firebase_url": "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "anxieease-sensors",
+    "storage_bucket": "anxieease-sensors.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:915581332814:android:aedc9b1bc20dc3aac6c21f",
+        "android_client_info": {
+          "package_name": "com.example.ctrlzed"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbb5HgO3hxs8R9DXX9lnj4PAV3XBbAP-E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

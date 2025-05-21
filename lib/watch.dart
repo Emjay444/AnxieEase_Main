@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
@@ -12,6 +13,10 @@ class _WatchScreenState extends State<WatchScreen>
   late AnimationController _controller;
   late Animation<double> _animation;
 
+  late DatabaseReference _metricsRef;
+  double heartRate = 0;
+  double temperature = 0;
+
   @override
   void initState() {
     super.initState();
@@ -24,6 +29,47 @@ class _WatchScreenState extends State<WatchScreen>
       curve: Curves.easeInOut,
     );
     _controller.forward();
+
+    // Reference to your metrics
+    _metricsRef = FirebaseDatabase.instance
+        .ref()
+        .child('devices/AnxieEase001/Metrics');
+
+    // Listen for changes
+    _metricsRef.onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        // Debug print to see the actual data structure
+        print('Firebase data: ${event.snapshot.value}');
+        
+        try {
+          // Handle data based on its structure
+          final data = event.snapshot.value as Map<dynamic, dynamic>;
+          
+          setState(() {
+            // Convert various number formats to double safely
+            if (data.containsKey('heartRate')) {
+              var hrValue = data['heartRate'];
+              heartRate = (hrValue is num) 
+                  ? hrValue.toDouble() 
+                  : double.tryParse(hrValue.toString()) ?? 0;
+            }
+            
+            if (data.containsKey('temperature')) {
+              var tempValue = data['temperature'];
+              temperature = (tempValue is num) 
+                  ? tempValue.toDouble() 
+                  : double.tryParse(tempValue.toString()) ?? 0;
+            }
+            
+            // Print the values after processing for debugging
+            print('Processed heartRate: $heartRate');
+            print('Processed temperature: $temperature');
+          });
+        } catch (e) {
+          print('Error parsing Firebase data: $e');
+        }
+      }
+    });
   }
 
   @override
@@ -77,6 +123,32 @@ class _WatchScreenState extends State<WatchScreen>
                       onPressed: () {
                         _controller.reset();
                         _controller.forward();
+                        
+                        // You can also refresh data manually here
+                        _metricsRef.get().then((snapshot) {
+                          if (snapshot.exists && snapshot.value != null) {
+                            try {
+                              final data = snapshot.value as Map<dynamic, dynamic>;
+                              setState(() {
+                                if (data.containsKey('heartRate')) {
+                                  var hrValue = data['heartRate'];
+                                  heartRate = (hrValue is num) 
+                                      ? hrValue.toDouble() 
+                                      : double.tryParse(hrValue.toString()) ?? 0;
+                                }
+                                
+                                if (data.containsKey('temperature')) {
+                                  var tempValue = data['temperature'];
+                                  temperature = (tempValue is num) 
+                                      ? tempValue.toDouble() 
+                                      : double.tryParse(tempValue.toString()) ?? 0;
+                                }
+                              });
+                            } catch (e) {
+                              print('Error refreshing data: $e');
+                            }
+                          }
+                        });
                       },
                     ),
                   ),
@@ -112,11 +184,11 @@ class _WatchScreenState extends State<WatchScreen>
                             final items = [
                               {
                                 'title': 'Heart Rate',
-                                'value': '75',
+                                'value': heartRate.toStringAsFixed(0),
                                 'unit': 'BPM',
                                 'icon': Icons.favorite,
                                 'color': const Color(0xFFFF5252),
-                                'progress': 0.75,
+                                'progress': (heartRate / 100).clamp(0.0, 1.0),
                                 'range': '60-100',
                               },
                               {
@@ -139,14 +211,15 @@ class _WatchScreenState extends State<WatchScreen>
                               },
                               {
                                 'title': 'Temperature',
-                                'value': '36.5',
+                                'value': temperature.toStringAsFixed(1),
                                 'unit': '°C',
                                 'icon': Icons.thermostat,
                                 'color': const Color(0xFFFFA726),
-                                'progress': 0.6,
+                                'progress': ((temperature - 35) / 3).clamp(0.0, 1.0),
                                 'range': '35-38',
                               },
                             ];
+
                             return _buildStatCard(
                               title: items[index]['title'] as String,
                               value: items[index]['value'] as String,

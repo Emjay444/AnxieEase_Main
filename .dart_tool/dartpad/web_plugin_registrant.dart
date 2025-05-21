@@ -8,6 +8,8 @@
 
 import 'package:app_links/src/app_links_web.dart';
 import 'package:audio_session/audio_session_web.dart';
+import 'package:firebase_core_web/firebase_core_web.dart';
+import 'package:firebase_database_web/firebase_database_web.dart';
 import 'package:flutter_secure_storage_web/flutter_secure_storage_web.dart';
 import 'package:flutter_tts/flutter_tts_web.dart';
 import 'package:geolocator_web/geolocator_web.dart';
@@ -24,6 +26,8 @@ void registerPlugins([final Registrar? pluginRegistrar]) {
   final Registrar registrar = pluginRegistrar ?? webPluginRegistrar;
   AppLinksPluginWeb.registerWith(registrar);
   AudioSessionWeb.registerWith(registrar);
+  FirebaseCoreWeb.registerWith(registrar);
+  FirebaseDatabaseWeb.registerWith(registrar);
   FlutterSecureStorageWeb.registerWith(registrar);
   FlutterTtsPlugin.registerWith(registrar);
   GeolocatorPlugin.registerWith(registrar);
