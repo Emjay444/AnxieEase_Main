@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,33 +10,32 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-
   static const String notificationPermissionKey =
       'notification_permission_status';
   static const String badgeCountKey = 'notification_badge_count';
 
   Future<void> initialize() async {
-    // Initialize notification settings
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    const DarwinInitializationSettings initializationSettingsIOS =
-        DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
-
-    final InitializationSettings initializationSettings =
-        InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
-
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
+    // Initialize awesome_notifications
+    await AwesomeNotifications().initialize(
+      null,
+      [
+        NotificationChannel(
+          channelKey: 'anxiease_channel',
+          channelName: 'AnxieEase Notifications',
+          channelDescription: 'Notifications from AnxieEase app',
+          defaultColor: Colors.blue,
+          importance: NotificationImportance.High,
+          enableVibration: true,
+        ),
+        NotificationChannel(
+          channelKey: 'alerts_channel',
+          channelName: 'Alerts',
+          channelDescription: 'Notification alerts for severity levels',
+          defaultColor: Colors.red,
+          importance: NotificationImportance.High,
+          ledColor: Colors.white,
+        ),
+      ],
     );
 
     // Initialize badge count from storage
@@ -48,6 +47,10 @@ class NotificationService {
     // For Android 13+ (API level 33+), we need to use the permission_handler
     if (await Permission.notification.request().isGranted) {
       await _savePermissionStatus(true);
+
+      // Also request permission through awesome_notifications
+      await AwesomeNotifications().requestPermissionToSendNotifications();
+
       return true;
     } else {
       await _savePermissionStatus(false);
@@ -57,7 +60,11 @@ class NotificationService {
 
   // Check if notification permissions are granted
   Future<bool> checkNotificationPermissions() async {
-    return await Permission.notification.isGranted;
+    final permissionGranted = await Permission.notification.isGranted;
+    final awesomePermissionGranted =
+        await AwesomeNotifications().isNotificationAllowed();
+
+    return permissionGranted && awesomePermissionGranted;
   }
 
   // Open app notification settings
@@ -85,17 +92,7 @@ class NotificationService {
 
       // Update app icon badge number
       if (Platform.isIOS) {
-        await flutterLocalNotificationsPlugin.initialize(
-          InitializationSettings(
-            android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-            iOS: DarwinInitializationSettings(
-              requestAlertPermission: false,
-              requestBadgePermission: false,
-              requestSoundPermission: false,
-              onDidReceiveLocalNotification: null,
-            ),
-          ),
-        );
+        await AwesomeNotifications().setGlobalBadgeCounter(count);
       }
 
       debugPrint('Updated notification badge count to: $count');
@@ -123,28 +120,14 @@ class NotificationService {
 
   // Send a test notification
   Future<void> showTestNotification() async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
-      'anxiease_channel',
-      'AnxieEase Notifications',
-      channelDescription: 'Notifications from AnxieEase app',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
-
-    const DarwinNotificationDetails iOSPlatformChannelSpecifics =
-        DarwinNotificationDetails();
-
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(
-      android: androidPlatformChannelSpecifics,
-      iOS: iOSPlatformChannelSpecifics,
-    );
-
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      'AnxieEase',
-      'Notifications are working correctly!',
-      platformChannelSpecifics,
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: 0,
+        channelKey: 'anxiease_channel',
+        title: 'AnxieEase',
+        body: 'Notifications are working correctly!',
+        notificationLayout: NotificationLayout.Default,
+      ),
     );
   }
 }

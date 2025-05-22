@@ -17,11 +17,11 @@ import 'package:flutter/services.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-
+import 'notification_test_app.dart' as notification_test;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-await Firebase.initializeApp(
+  await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
@@ -33,6 +33,9 @@ await Firebase.initializeApp(
 
   // Initialize storage service
   await StorageService().init();
+
+  // To use the notification test app, uncomment the line below and comment out the regular app startup
+  // notification_test.main();
 
   runApp(
     MultiProvider(

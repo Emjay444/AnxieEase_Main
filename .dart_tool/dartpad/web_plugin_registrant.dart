@@ -8,6 +8,7 @@
 
 import 'package:app_links/src/app_links_web.dart';
 import 'package:audio_session/audio_session_web.dart';
+import 'package:awesome_notifications/awesome_notifications_web.dart';
 import 'package:firebase_core_web/firebase_core_web.dart';
 import 'package:firebase_database_web/firebase_database_web.dart';
 import 'package:flutter_secure_storage_web/flutter_secure_storage_web.dart';
@@ -26,6 +27,7 @@ void registerPlugins([final Registrar? pluginRegistrar]) {
   final Registrar registrar = pluginRegistrar ?? webPluginRegistrar;
   AppLinksPluginWeb.registerWith(registrar);
   AudioSessionWeb.registerWith(registrar);
+  AwesomeNotificationsWeb.registerWith(registrar);
   FirebaseCoreWeb.registerWith(registrar);
   FirebaseDatabaseWeb.registerWith(registrar);
   FlutterSecureStorageWeb.registerWith(registrar);
