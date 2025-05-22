@@ -7,6 +7,7 @@ class SeverityNotifier with ChangeNotifier {
       .ref('devices/AnxieEase001/Metrics/anxietyDetected');
 
   String _currentSeverity = 'unknown';
+  bool _isFirstRead = true; // Flag to skip initial notification
 
   String get currentSeverity => _currentSeverity;
 
@@ -19,12 +20,48 @@ class SeverityNotifier with ChangeNotifier {
       null,
       [
         NotificationChannel(
+          channelKey: 'mild_alerts',
+          channelName: 'Mild Alerts',
+          channelDescription: 'Mild anxiety level alerts',
+          defaultColor: Colors.green,
+          importance: NotificationImportance.High,
+          ledColor: Colors.green,
+          enableVibration: true,
+          playSound: true,
+          // Uses default notification sound - gentle
+        ),
+        NotificationChannel(
+          channelKey: 'moderate_alerts',
+          channelName: 'Moderate Alerts',
+          channelDescription: 'Moderate anxiety level alerts',
+          defaultColor: Colors.orange,
+          importance: NotificationImportance.High,
+          ledColor: Colors.orange,
+          enableVibration: true,
+          playSound: true,
+          // Uses default notification sound - more noticeable due to importance
+        ),
+        NotificationChannel(
+          channelKey: 'severe_alerts',
+          channelName: 'Severe Alerts',
+          channelDescription: 'Severe anxiety level alerts - URGENT',
+          defaultColor: Colors.red,
+          importance: NotificationImportance.Max,
+          ledColor: Colors.red,
+          enableVibration: true,
+          playSound: true,
+          criticalAlerts: true,
+          // Use default but with maximum importance for attention-grabbing behavior
+        ),
+        NotificationChannel(
           channelKey: 'alerts_channel',
-          channelName: 'Alerts',
-          channelDescription: 'Anxiety level alerts',
+          channelName: 'General Alerts',
+          channelDescription: 'General anxiety level alerts',
           defaultColor: Colors.red,
           importance: NotificationImportance.High,
           ledColor: Colors.white,
+          enableVibration: true,
+          playSound: true,
         ),
         NotificationChannel(
           channelKey: 'basic_channel',
@@ -33,6 +70,7 @@ class SeverityNotifier with ChangeNotifier {
           defaultColor: Colors.blue,
           importance: NotificationImportance.High,
           enableVibration: true,
+          playSound: true,
         ),
       ],
     );
@@ -46,37 +84,51 @@ class SeverityNotifier with ChangeNotifier {
       final severity = data['severity']?.toString().toLowerCase();
       final heartRate = data['heartRate'];
       final temperature = data['temperature'];
-      final timestamp =
-          data['timestamp']?.toString() ?? DateTime.now().toString();
 
       if (severity == null) return;
 
+      // Update current severity and notify listeners
       _currentSeverity = severity;
       notifyListeners();
 
+      // Skip notification on first read (app startup)
+      if (_isFirstRead) {
+        _isFirstRead = false;
+        debugPrint('🔇 Skipping initial Firebase notification for: $severity');
+        return;
+      }
+
+      // Only send notifications for actual data changes
+      debugPrint(
+          '🔔 Firebase data changed - sending notification for: $severity');
+
       String title = '';
       String body = '';
+      String channelKey = '';
 
       switch (severity) {
         case 'mild':
           title = '🟢 Mild Alert';
           body =
               'Slight elevation in readings. Temp: $temperature°C, HR: $heartRate bpm';
+          channelKey = 'mild_alerts';
           break;
         case 'moderate':
           title = '🟠 Moderate Alert';
           body =
               'Noticeable symptoms detected. Temp: $temperature°C, HR: $heartRate bpm';
+          channelKey = 'moderate_alerts';
           break;
         case 'severe':
           title = '🔴 Severe Alert';
           body = 'URGENT: High risk! Temp: $temperature°C, HR: $heartRate bpm';
+          channelKey = 'severe_alerts';
           break;
         default:
           return;
       }
 
-      _sendNotification(title, body);
+      _sendNotificationWithChannel(title, body, channelKey, severity);
     });
   }
 
@@ -92,30 +144,70 @@ class SeverityNotifier with ChangeNotifier {
     );
   }
 
+  Future<void> _sendNotificationWithChannel(
+      String title, String body, String channelKey, String severity) async {
+    // Send only ONE notification per alert, regardless of severity
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        channelKey: channelKey,
+        title: title,
+        body: body,
+        notificationLayout: NotificationLayout.Default,
+        category: severity == 'severe'
+            ? NotificationCategory.Alarm
+            : NotificationCategory.Reminder,
+        wakeUpScreen: severity == 'severe',
+        fullScreenIntent: severity == 'severe',
+        criticalAlert: severity == 'severe',
+      ),
+      actionButtons: severity == 'severe'
+          ? [
+              NotificationActionButton(
+                key: 'DISMISS',
+                label: 'Dismiss',
+                actionType: ActionType.DismissAction,
+              ),
+              NotificationActionButton(
+                key: 'VIEW_DETAILS',
+                label: 'View Details',
+                actionType: ActionType.Default,
+              ),
+            ]
+          : null,
+    );
+  }
+
   // Method to manually trigger a notification based on current severity
   Future<void> sendManualNotification() async {
     String title = '';
     String body = '';
+    String channelKey = '';
 
     switch (_currentSeverity) {
       case 'mild':
         title = '🟢 Mild Alert (Manual)';
         body = 'Slight elevation in anxiety readings detected.';
+        channelKey = 'mild_alerts';
         break;
       case 'moderate':
         title = '🟠 Moderate Alert (Manual)';
         body = 'Moderate anxiety symptoms detected.';
+        channelKey = 'moderate_alerts';
         break;
       case 'severe':
         title = '🔴 Severe Alert (Manual)';
         body = 'URGENT: High anxiety levels detected!';
+        channelKey = 'severe_alerts';
         break;
       default:
         title = 'Status Update';
         body = 'Current status: $_currentSeverity';
+        channelKey = 'alerts_channel';
     }
 
-    await _sendNotification(title, body);
+    await _sendNotificationWithChannel(
+        title, body, channelKey, _currentSeverity);
   }
 
   // Method to test notifications directly

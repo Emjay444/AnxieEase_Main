@@ -76,7 +76,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _createTestNotificationsIfNeeded();
+    // Clear any existing notifications on app start
+    _clearExistingNotifications();
+  }
+
+  // Clear all existing notifications so we only get new Firebase alerts
+  Future<void> _clearExistingNotifications() async {
+    final supabaseService = SupabaseService();
+    try {
+      await supabaseService.clearAllNotifications(hardDelete: true);
+      debugPrint('Cleared all existing notifications on app start');
+    } catch (e) {
+      debugPrint('Error clearing existing notifications: $e');
+    }
   }
 
   // Helper method to create test notifications if none exist

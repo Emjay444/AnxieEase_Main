@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:provider/provider.dart';
-import 'services/severity_notifier.dart';
 
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
@@ -36,10 +34,7 @@ class _WatchScreenState extends State<WatchScreen>
     _metricsRef =
         FirebaseDatabase.instance.ref().child('devices/AnxieEase001/Metrics');
 
-    // Initialize the SeverityNotifier to listen for anxiety alerts
-    final severityNotifier =
-        Provider.of<SeverityNotifier>(context, listen: false);
-    severityNotifier.initializeListener();
+    // SeverityNotifier is now initialized globally in main.dart
 
     // Listen for changes
     _metricsRef.onValue.listen((event) {

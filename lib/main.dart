@@ -48,6 +48,9 @@ void main() async {
   // Initialize SeverityNotifier for anxiety alerts
   final severityNotifier = SeverityNotifier();
 
+  // Start listening for Firebase data changes (but skip initial notifications)
+  severityNotifier.initializeListener();
+
   runApp(
     MultiProvider(
       providers: [

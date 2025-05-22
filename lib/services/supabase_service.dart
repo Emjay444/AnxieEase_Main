@@ -500,7 +500,7 @@ class SupabaseService {
         .select()
         .eq('assigned_psychologist_id', user.id)
         .eq('role', 'patient');
-        
+
     return List<Map<String, dynamic>>.from(response);
     */
   }
@@ -810,9 +810,8 @@ class SupabaseService {
       debugPrint('getNotifications error: $e');
       if (e.toString().contains('does not exist')) {
         // Table doesn't exist yet, return empty list
-        debugPrint(
-            'Notifications table does not exist. Creating test notifications.');
-        await _createTestNotificationsIfNeeded();
+        debugPrint('Notifications table does not exist. Returning empty list.');
+        // Removed automatic test notification creation
         return [];
       }
       rethrow;
