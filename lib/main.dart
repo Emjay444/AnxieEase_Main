@@ -7,6 +7,7 @@ import 'providers/notification_provider.dart';
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
+import 'services/severity_notifier.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -29,7 +30,14 @@ void main() async {
   await SupabaseService().initialize();
 
   // Initialize notification service
-  await NotificationService().initialize();
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+
+  // Request notification permissions
+  final isAllowed = await notificationService.checkNotificationPermissions();
+  if (!isAllowed) {
+    await notificationService.requestNotificationPermissions();
+  }
 
   // Initialize storage service
   await StorageService().init();
@@ -37,12 +45,16 @@ void main() async {
   // To use the notification test app, uncomment the line below and comment out the regular app startup
   // notification_test.main();
 
+  // Initialize SeverityNotifier for anxiety alerts
+  final severityNotifier = SeverityNotifier();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        ChangeNotifierProvider.value(value: severityNotifier),
       ],
       child: const MyApp(),
     ),
