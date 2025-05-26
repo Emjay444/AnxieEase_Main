@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'calendar_screen.dart';
 import 'utils/logger.dart';
+import 'services/supabase_service.dart';
 
 class MetricsScreen extends StatefulWidget {
   const MetricsScreen({super.key});
@@ -18,6 +19,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   Map<DateTime, List<DailyLog>> _dailyLogs = {};
   static const String logsKey = 'daily_logs';
+  final SupabaseService _supabaseService = SupabaseService();
+  bool _isLoading = true;
+  bool _hasData = false;
+  bool _isConnected = false;
 
   // Mood categories for grouping similar moods
   final Map<String, String> moodCategories = {
@@ -65,11 +70,23 @@ class _MetricsScreenState extends State<MetricsScreen> {
   @override
   void initState() {
     super.initState();
+    _checkConnectionStatus();
     _loadLogs();
   }
 
+  Future<void> _checkConnectionStatus() async {
+    setState(() {
+      _isConnected = _supabaseService.isAuthenticated;
+    });
+  }
+
   Future<void> _loadLogs() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
+      // First try to load from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final String? logsJson = prefs.getString(logsKey);
 
@@ -85,18 +102,76 @@ class _MetricsScreenState extends State<MetricsScreen> {
               logsList.map((log) => DailyLog.fromJson(log)).toList(),
             );
           });
-
-          // Process data for charts
-          _processLogsData();
         });
-      } else {
-        // If no logs, initialize with sample data
-        _initializeSampleData();
       }
+
+      // If user is authenticated, also try to fetch from Supabase
+      if (_supabaseService.isAuthenticated) {
+        try {
+          final List<Map<String, dynamic>> supabaseLogs =
+              await _supabaseService.getWellnessLogs();
+
+          // Process Supabase logs
+          for (var log in supabaseLogs) {
+            final DateTime date = DateTime.parse(log['date']);
+            final normalizedDate = _normalizeDate(date);
+
+            if (!_dailyLogs.containsKey(normalizedDate)) {
+              _dailyLogs[normalizedDate] = [];
+            }
+
+            // Create DailyLog from Supabase data
+            final dailyLog = DailyLog(
+              feelings: List<String>.from(log['feelings']),
+              stressLevel: log['stress_level'].toDouble(),
+              symptoms: List<String>.from(log['symptoms']),
+              timestamp: DateTime.parse(log['timestamp']),
+              journal: log['journal'],
+              id: log['id'],
+            );
+
+            // Check if this log already exists in the local data
+            final existingLogIndex = _dailyLogs[normalizedDate]!.indexWhere(
+                (existingLog) =>
+                    existingLog.timestamp.toString() ==
+                    dailyLog.timestamp.toString());
+
+            if (existingLogIndex == -1) {
+              // Add new log if it doesn't exist locally
+              _dailyLogs[normalizedDate]!.add(dailyLog);
+            }
+          }
+
+          setState(() {
+            _isConnected = true;
+          });
+
+          Logger.info(
+              'Successfully loaded ${supabaseLogs.length} logs from Supabase');
+        } catch (e) {
+          setState(() {
+            _isConnected = false;
+          });
+          Logger.error('Error loading logs from Supabase', e);
+          // Continue with local data if Supabase fetch fails
+        }
+      }
+
+      // Process data for charts
+      _processLogsData();
+
+      // Check if we have any data
+      setState(() {
+        _hasData = _dailyLogs.isNotEmpty;
+      });
     } catch (e) {
       Logger.error('Error loading logs', e);
       // Initialize with sample data if there's an error
       _initializeSampleData();
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -191,6 +266,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
   }
 
   void _processLogsData() {
+    if (_dailyLogs.isEmpty) {
+      _initializeSampleData();
+      return;
+    }
+
     // Get dates for weekly and monthly ranges
     final now = DateTime.now();
     final weekStart =
@@ -221,8 +301,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
       for (var log in logs) {
         // Count symptoms
         for (var symptom in log.symptoms) {
-          symptomCounts[symptom] = (symptomCounts[symptom] ?? 0) + 1;
-          daySymptoms.add(symptom);
+          if (symptom != 'None') {
+            symptomCounts[symptom] = (symptomCounts[symptom] ?? 0) + 1;
+            daySymptoms.add(symptom);
+          }
         }
 
         // Count moods
@@ -254,8 +336,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
       // Weekly data
       if (date.isAfter(weekStart) || date.isAtSameMomentAs(weekStart)) {
-        int weekday = date.weekday - 1; // 0 = Monday, 6 = Sunday
-        if (weekday < 0) weekday = 6; // Adjust for Sunday
+        int weekday =
+            date.weekday % 7; // 0 = Sunday, 6 = Saturday (adjusted for display)
 
         weeklyMoodScores[date] = moodScore;
         weeklyStressLevels[date] = avgStress;
@@ -277,7 +359,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     List<FlSpot> weeklyStressSpots = [];
     List<FlSpot> weeklySymptomSpots = [];
 
-    // Create weekly data points
+    // Create weekly data points (Sunday to Saturday)
     for (int i = 0; i < 7; i++) {
       DateTime day = weekStart.add(Duration(days: i));
       weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[day] ?? 5.0));
@@ -352,6 +434,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
     };
   }
 
+  Future<void> _refreshData() async {
+    setState(() {
+      _dailyLogs.clear(); // Clear existing data
+      _hasData = false;
+    });
+    await _loadLogs(); // Reload data from both sources
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data refreshed successfully'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final chartProps = getChartProperties(selectedPeriod);
@@ -369,137 +467,207 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
         ),
         actions: [
+          // Connection status indicator
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: _isConnected
+                ? const Icon(Icons.cloud_done, color: Color(0xFF4CAF50))
+                : const Icon(Icons.cloud_off, color: Colors.grey),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF6200EE)),
-            onPressed: () {
-              _loadLogs();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Refreshed data')),
-              );
+            onPressed: () async {
+              await _refreshData();
             },
           ),
         ],
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Period selector
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: periods.map((period) {
-                  bool isSelected = selectedPeriod == period;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        selectedPeriod = period;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF6200EE)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        period,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.grey[600],
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.normal,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _refreshData,
+                child: !_hasData
+                    ? SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: MediaQuery.of(context).size.height - 200,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.bar_chart_outlined,
+                                    size: 80, color: Colors.grey[400]),
+                                const SizedBox(height: 24),
+                                Text(
+                                  'No wellness data available',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Add logs in the Calendar to see your insights',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => const CalendarScreen()),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Add Log'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF6200EE),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Period selector
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: periods.map((period) {
+                                bool isSelected = selectedPeriod == period;
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      selectedPeriod = period;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    margin:
+                                        const EdgeInsets.symmetric(horizontal: 4),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(0xFF6200EE)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      period,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.grey[600],
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
 
-            // Metrics Cards
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildMetricCard(
-                    title: 'Mood Score',
-                    value: moodData[selectedPeriod]!.isNotEmpty
-                        ? moodData[selectedPeriod]!.last.y
-                        : 5.0,
-                    data: moodData[selectedPeriod]!,
-                    color: const Color(0xFF4CAF50), // Green for mood
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                    ),
-                    unit: '/10',
-                    minY: 0,
-                    maxY: 10,
-                    chartProps: chartProps,
-                    description: 'Higher score indicates more positive mood',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMetricCard(
-                    title: 'Stress Level',
-                    value: stressData[selectedPeriod]!.isNotEmpty
-                        ? stressData[selectedPeriod]!.last.y
-                        : 0.0,
-                    data: stressData[selectedPeriod]!,
-                    color: const Color(0xFFFF5722), // Orange for stress
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                    ),
-                    unit: '/10',
-                    minY: 0,
-                    maxY: 10,
-                    chartProps: chartProps,
-                    description: 'Higher score indicates more stress',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMetricCard(
-                    title: 'Symptom Count',
-                    value: symptomsData[selectedPeriod]!.isNotEmpty
-                        ? symptomsData[selectedPeriod]!.last.y
-                        : 0.0,
-                    data: symptomsData[selectedPeriod]!,
-                    color: const Color(0xFF2196F3), // Blue for symptoms
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2196F3), Color(0xFF03A9F4)],
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                    ),
-                    unit: '',
-                    minY: 0,
-                    maxY: 10,
-                    chartProps: chartProps,
-                    description: 'Number of symptoms reported each day',
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTopItemsCard(
-                    title: 'Top Moods',
-                    items: topMoods,
-                    color: const Color(0xFF4CAF50),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildTopItemsCard(
-                    title: 'Top Symptoms',
-                    items: topSymptoms,
-                    color: const Color(0xFF2196F3),
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                          // Metrics Cards
+                          Expanded(
+                            child: ListView(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              children: [
+                                _buildMetricCard(
+                                  title: 'Mood Score',
+                                  value: moodData[selectedPeriod]!.isNotEmpty
+                                      ? moodData[selectedPeriod]!.last.y
+                                      : 5.0,
+                                  data: moodData[selectedPeriod]!,
+                                  color: const Color(0xFF4CAF50), // Green for mood
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+                                    begin: Alignment.bottomLeft,
+                                    end: Alignment.topRight,
+                                  ),
+                                  unit: '/10',
+                                  minY: 0,
+                                  maxY: 10,
+                                  chartProps: chartProps,
+                                  description:
+                                      'Higher score indicates more positive mood',
+                                ),
+                                const SizedBox(height: 16),
+                                _buildMetricCard(
+                                  title: 'Stress Level',
+                                  value: stressData[selectedPeriod]!.isNotEmpty
+                                      ? stressData[selectedPeriod]!.last.y
+                                      : 0.0,
+                                  data: stressData[selectedPeriod]!,
+                                  color:
+                                      const Color(0xFFFF5722), // Orange for stress
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
+                                    begin: Alignment.bottomLeft,
+                                    end: Alignment.topRight,
+                                  ),
+                                  unit: '/10',
+                                  minY: 0,
+                                  maxY: 10,
+                                  chartProps: chartProps,
+                                  description: 'Higher score indicates more stress',
+                                ),
+                                const SizedBox(height: 16),
+                                _buildMetricCard(
+                                  title: 'Symptom Count',
+                                  value: symptomsData[selectedPeriod]!.isNotEmpty
+                                      ? symptomsData[selectedPeriod]!.last.y
+                                      : 0.0,
+                                  data: symptomsData[selectedPeriod]!,
+                                  color:
+                                      const Color(0xFF2196F3), // Blue for symptoms
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF2196F3), Color(0xFF03A9F4)],
+                                    begin: Alignment.bottomLeft,
+                                    end: Alignment.topRight,
+                                  ),
+                                  unit: '',
+                                  minY: 0,
+                                  maxY: 10,
+                                  chartProps: chartProps,
+                                  description:
+                                      'Number of symptoms reported each day',
+                                ),
+                                const SizedBox(height: 16),
+                                _buildTopItemsCard(
+                                  title: 'Top Moods',
+                                  items: topMoods,
+                                  color: const Color(0xFF4CAF50),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildTopItemsCard(
+                                  title: 'Top Symptoms',
+                                  items: topSymptoms,
+                                  color: const Color(0xFF2196F3),
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

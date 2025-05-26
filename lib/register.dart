@@ -492,23 +492,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   alignment: Alignment.centerLeft,
                   padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: Column(
+                  child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Let's",
+                      Text("Let's",
                           style: TextStyle(
                               fontSize: 37,
                               color: Colors.white,
                               fontWeight: FontWeight.w300,
                               letterSpacing: 3.0)),
-                      const Text("Create your",
+                      Text("Create your",
                           style: TextStyle(
                               fontSize: 45,
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 4.0)),
-                      const Text("Account",
+                      Text("Account",
                           style: TextStyle(
                               fontSize: 45,
                               color: Colors.white,

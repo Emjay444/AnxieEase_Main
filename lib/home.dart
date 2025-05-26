@@ -7,6 +7,10 @@ import 'psychologist_profile.dart';
 import 'services/supabase_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'screens/notifications_screen.dart';
+import 'package:provider/provider.dart';
+import 'providers/notification_provider.dart';
+import 'services/severity_notifier.dart';
+import 'profile.dart';
 
 // Task class removed
 
@@ -76,19 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Clear any existing notifications on app start
-    _clearExistingNotifications();
-  }
-
-  // Clear all existing notifications so we only get new Firebase alerts
-  Future<void> _clearExistingNotifications() async {
-    final supabaseService = SupabaseService();
-    try {
-      await supabaseService.clearAllNotifications(hardDelete: true);
-      debugPrint('Cleared all existing notifications on app start');
-    } catch (e) {
-      debugPrint('Error clearing existing notifications: $e');
-    }
   }
 
   // Helper method to create test notifications if none exist
@@ -1009,38 +1000,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // New Notifications Section
   Widget _buildNotificationsSection() {
     final supabaseService = SupabaseService();
-    final ValueNotifier<int> refreshCounter = ValueNotifier<int>(0);
 
-    Future<void> refreshNotifications() async {
-      refreshCounter.value++; // Force refresh
-    }
-
-    Future<void> handleAddTestNotification() async {
-      try {
-        await supabaseService.addTestNotification();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Test notification added!'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          await refreshNotifications();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-    }
-
-    return ValueListenableBuilder<int>(
-      valueListenable: refreshCounter,
-      builder: (context, _, __) {
+    return Consumer<NotificationProvider>(
+      builder: (context, notificationProvider, child) {
         return FutureBuilder<List<Map<String, dynamic>>>(
-          key: ValueKey(refreshCounter.value),
+          key: ValueKey(notificationProvider.refreshCounter),
           future: supabaseService.getNotifications(),
           builder: (context, snapshot) {
             Widget buildHeader() {
@@ -1048,40 +1012,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _buildSectionHeader('Recent Notifications'),
-                  Row(
-                    children: [
-                      // Add test notification button
-                      IconButton(
-                        icon: Icon(
-                          Icons.add_alert,
-                          color: Colors.teal[700],
+                  TextButton(
+                    onPressed: () async {
+                      final bool? notificationsModified =
+                          await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationsScreen(),
                         ),
-                        onPressed: handleAddTestNotification,
-                        tooltip: 'Add test notification',
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          final bool? notificationsModified =
-                              await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const NotificationsScreen(),
-                            ),
-                          );
+                      );
 
-                          if (mounted && notificationsModified == true) {
-                            await refreshNotifications();
-                          }
-                        },
-                        child: Text(
-                          'See All',
-                          style: TextStyle(
-                            color: Colors.teal[700],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                      if (mounted && notificationsModified == true) {
+                        notificationProvider.triggerNotificationRefresh();
+                      }
+                    },
+                    child: Text(
+                      'See All',
+                      style: TextStyle(
+                        color: Colors.teal[700],
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
+                    ),
                   ),
                 ],
               );
@@ -1239,70 +1190,409 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
+    return GestureDetector(
+      onTap: () => _showNotificationDetails(title, message, time, type, icon),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: getTypeColor().withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: getTypeColor(),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1E2432),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        time,
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 12,
+                        color: Colors.grey[400],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: getTypeColor().withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: getTypeColor(),
-              size: 24,
-            ),
+    );
+  }
+
+  void _showNotificationDetails(
+      String title, String message, String time, String type, IconData icon) {
+    Color getTypeColor() {
+      switch (type) {
+        case 'warning':
+          return Colors.orange;
+        case 'alert':
+          return Colors.red;
+        case 'info':
+          return Colors.blue;
+        default:
+          return Colors.grey;
+      }
+    }
+
+    String getSeverityLevel() {
+      if (title.contains('🟢') || title.contains('Mild')) return 'Mild';
+      if (title.contains('🟠') || title.contains('Moderate')) return 'Moderate';
+      if (title.contains('🔴') || title.contains('Severe')) return 'Severe';
+      return 'Unknown';
+    }
+
+    String getRecommendation() {
+      final severity = getSeverityLevel();
+      switch (severity) {
+        case 'Mild':
+          return 'Consider taking a short break and practicing deep breathing exercises.';
+        case 'Moderate':
+          return 'Try some relaxation techniques or engage in a calming activity.';
+        case 'Severe':
+          return 'Please consider using breathing exercises immediately or contact a healthcare professional if symptoms persist.';
+        default:
+          return 'Monitor your symptoms and take appropriate action as needed.';
+      }
+    }
+
+    List<String> getActionItems() {
+      final severity = getSeverityLevel();
+      switch (severity) {
+        case 'Mild':
+          return [
+            'Practice 4-7-8 breathing technique',
+            'Take a 5-minute walk',
+            'Listen to calming music',
+            'Stay hydrated'
+          ];
+        case 'Moderate':
+          return [
+            'Use guided meditation app',
+            'Practice progressive muscle relaxation',
+            'Step away from stressful situations',
+            'Contact a friend or family member'
+          ];
+        case 'Severe':
+          return [
+            'Use emergency breathing exercises',
+            'Find a quiet, safe space',
+            'Consider contacting healthcare provider',
+            'Use grounding techniques (5-4-3-2-1 method)'
+          ];
+        default:
+          return ['Monitor symptoms', 'Stay calm', 'Seek help if needed'];
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xFF1E2432),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: getTypeColor().withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: getTypeColor(),
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E2432),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Severity Level
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: getTypeColor().withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${getSeverityLevel()} Level',
+                          style: TextStyle(
+                            color: getTypeColor(),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Details Section
+                      const Text(
+                        'Details',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          message,
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 16,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Recommendation Section
+                      const Text(
+                        'Recommendation',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue[100]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.lightbulb_outline,
+                                color: Colors.blue[600]),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                getRecommendation(),
+                                style: TextStyle(
+                                  color: Colors.blue[800],
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Action Items Section
+                      const Text(
+                        'Suggested Actions',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...getActionItems()
+                          .map((action) => Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_outline,
+                                      color: getTypeColor(),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        action,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Color(0xFF1E2432),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  message,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
+              ),
+
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Close'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          if (getSeverityLevel() == 'Severe') {
+                            _showBreathingExercises();
+                          } else {
+                            _showBreathingExercises(); // You can customize this for different severity levels
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: getTypeColor(),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Take Action',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  time,
-                  style: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1570,8 +1860,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class HomeContent extends StatelessWidget {
+class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
+
+  @override
+  State<HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Set up the connection between SeverityNotifier and NotificationProvider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final severityNotifier =
+          Provider.of<SeverityNotifier>(context, listen: false);
+      final notificationProvider =
+          Provider.of<NotificationProvider>(context, listen: false);
+
+      // Set the callback so SeverityNotifier can trigger notification refreshes
+      severityNotifier.setNotificationRefreshCallback(() {
+        notificationProvider.triggerNotificationRefresh();
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1620,24 +1933,26 @@ class HomeContent extends StatelessWidget {
                     ),
                   ],
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.primaryColor.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ProfilePage(),
                       ),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: screenWidth * 0.055,
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    );
+                  },
+                  child: Container(
+                    width: screenWidth * 0.12,
+                    height: screenWidth * 0.12,
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
                     child: Icon(
-                      Icons.person_outline,
+                      Icons.person,
                       color: theme.primaryColor,
-                      size: screenWidth * 0.055,
+                      size: screenWidth * 0.06,
                     ),
                   ),
                 ),
@@ -1645,6 +1960,7 @@ class HomeContent extends StatelessWidget {
             ),
           ),
 
+          // Main Content
           Expanded(
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),

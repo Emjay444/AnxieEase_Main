@@ -1,18 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
+import 'supabase_service.dart';
 
 class SeverityNotifier with ChangeNotifier {
   final DatabaseReference _ref = FirebaseDatabase.instance
       .ref('devices/AnxieEase001/Metrics/anxietyDetected');
+  final SupabaseService _supabaseService = SupabaseService();
 
   String _currentSeverity = 'unknown';
   bool _isFirstRead = true; // Flag to skip initial notification
+
+  // Callback to trigger notification refresh in the UI
+  VoidCallback? _onNotificationAdded;
 
   String get currentSeverity => _currentSeverity;
 
   SeverityNotifier() {
     _initializeNotifications();
+  }
+
+  // Method to set the notification refresh callback
+  void setNotificationRefreshCallback(VoidCallback callback) {
+    _onNotificationAdded = callback;
   }
 
   Future<void> _initializeNotifications() async {
@@ -105,6 +115,7 @@ class SeverityNotifier with ChangeNotifier {
       String title = '';
       String body = '';
       String channelKey = '';
+      String notificationType = '';
 
       switch (severity) {
         case 'mild':
@@ -112,23 +123,30 @@ class SeverityNotifier with ChangeNotifier {
           body =
               'Slight elevation in readings. Temp: $temperature°C, HR: $heartRate bpm';
           channelKey = 'mild_alerts';
+          notificationType = 'alert';
           break;
         case 'moderate':
           title = '🟠 Moderate Alert';
           body =
               'Noticeable symptoms detected. Temp: $temperature°C, HR: $heartRate bpm';
           channelKey = 'moderate_alerts';
+          notificationType = 'alert';
           break;
         case 'severe':
           title = '🔴 Severe Alert';
           body = 'URGENT: High risk! Temp: $temperature°C, HR: $heartRate bpm';
           channelKey = 'severe_alerts';
+          notificationType = 'alert';
           break;
         default:
           return;
       }
 
+      // Send push notification
       _sendNotificationWithChannel(title, body, channelKey, severity);
+
+      // Save notification to Supabase for homepage display
+      _saveNotificationToSupabase(title, body, notificationType, severity);
     });
   }
 
@@ -206,8 +224,12 @@ class SeverityNotifier with ChangeNotifier {
         channelKey = 'alerts_channel';
     }
 
+    // Send push notification
     await _sendNotificationWithChannel(
         title, body, channelKey, _currentSeverity);
+
+    // Save notification to Supabase for homepage display
+    await _saveNotificationToSupabase(title, body, 'alert', _currentSeverity);
   }
 
   // Method to test notifications directly
@@ -223,5 +245,24 @@ class SeverityNotifier with ChangeNotifier {
         notificationLayout: NotificationLayout.Default,
       ),
     );
+  }
+
+  // New method to save notifications to Supabase
+  Future<void> _saveNotificationToSupabase(
+      String title, String message, String type, String severity) async {
+    try {
+      await _supabaseService.createNotification(
+        title: title,
+        message: message,
+        type: type,
+        relatedScreen: severity == 'severe' ? 'breathing_screen' : 'metrics',
+      );
+      debugPrint('💾 Saved severity notification to Supabase: $title');
+
+      // Trigger notification refresh in the UI
+      _onNotificationAdded?.call();
+    } catch (e) {
+      debugPrint('❌ Error saving notification to Supabase: $e');
+    }
   }
 }

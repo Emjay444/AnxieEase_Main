@@ -415,13 +415,13 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(response);
   }
 
-  // Mood logs methods
-  Future<void> saveMoodLog(Map<String, dynamic> log) async {
+  // Wellness logs methods (for moods, symptoms, stress levels)
+  Future<void> saveWellnessLog(Map<String, dynamic> log) async {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    // Add the record to the mood_logs table with all the needed fields
-    await _supabaseClient.from('mood_logs').insert({
+    // Add the record to the wellness_logs table with all the needed fields
+    await _supabaseClient.from('wellness_logs').insert({
       'user_id': user.id,
       'date': log['date'],
       'feelings': log['feelings'],
@@ -431,9 +431,11 @@ class SupabaseService {
       'timestamp': log['timestamp'],
       'created_at': DateTime.now().toIso8601String(),
     });
+
+    print('Successfully saved wellness log for user: ${user.id}');
   }
 
-  Future<List<Map<String, dynamic>>> getMoodLogs({String? userId}) async {
+  Future<List<Map<String, dynamic>>> getWellnessLogs({String? userId}) async {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
@@ -442,16 +444,18 @@ class SupabaseService {
     final targetUserId = userId ?? user.id;
 
     final response = await _supabaseClient
-        .from('mood_logs')
+        .from('wellness_logs')
         .select()
         .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
 
+    print(
+        'Successfully retrieved ${response.length} wellness logs for user: $targetUserId');
     return List<Map<String, dynamic>>.from(response);
   }
 
-  // Delete a mood log
-  Future<void> deleteMoodLog(String date, DateTime timestamp) async {
+  // Delete a wellness log
+  Future<void> deleteWellnessLog(String date, DateTime timestamp) async {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
@@ -459,11 +463,32 @@ class SupabaseService {
     final timestampString = timestamp.toIso8601String();
 
     await _supabaseClient
-        .from('mood_logs')
+        .from('wellness_logs')
         .delete()
         .eq('user_id', user.id)
         .eq('date', date)
         .eq('timestamp', timestampString);
+
+    print(
+        'Successfully deleted wellness log for date: $date, timestamp: $timestampString');
+  }
+
+  // Clear all wellness logs for the current user
+  Future<void> clearAllWellnessLogs() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      await _supabaseClient
+          .from('wellness_logs')
+          .delete()
+          .eq('user_id', user.id);
+
+      print('Successfully cleared all wellness logs for user: ${user.id}');
+    } catch (e) {
+      print('Error clearing wellness logs from Supabase: $e');
+      throw Exception('Failed to clear wellness logs from database');
+    }
   }
 
   // Get all patients assigned to a psychologist
@@ -518,7 +543,7 @@ class SupabaseService {
     }
 
     // Get all mood logs for the patient
-    final logs = await getMoodLogs(userId: patientId);
+    final logs = await getWellnessLogs(userId: patientId);
 
     // Calculate frequency statistics
     final now = DateTime.now();
@@ -808,64 +833,12 @@ class SupabaseService {
       return List<Map<String, dynamic>>.from(activeNotifications);
     } catch (e) {
       debugPrint('getNotifications error: $e');
+
       if (e.toString().contains('does not exist')) {
         // Table doesn't exist yet, return empty list
         debugPrint('Notifications table does not exist. Returning empty list.');
-        // Removed automatic test notification creation
         return [];
       }
-      rethrow;
-    }
-  }
-
-  // Helper method to create test notifications if the table exists but no notifications are present
-  Future<void> _createTestNotificationsIfNeeded() async {
-    try {
-      final user = _supabaseClient.auth.currentUser;
-      if (user == null) return;
-
-      // Create some initial notifications for testing
-      await createNotification(
-        title: 'Welcome to AnxieEase',
-        message: 'Track your anxiety levels and get personalized insights.',
-        type: 'reminder',
-        relatedScreen: 'calendar',
-      );
-
-      await createNotification(
-        title: 'Anxiety Symptoms Logged',
-        message: 'You reported experiencing: Shortness of breath',
-        type: 'log',
-        relatedScreen: 'calendar',
-      );
-
-      debugPrint('Created test notifications successfully');
-    } catch (e) {
-      debugPrint('Error creating test notifications: $e');
-    }
-  }
-
-  // Add a single test notification for immediate testing
-  Future<void> addTestNotification() async {
-    try {
-      final user = _supabaseClient.auth.currentUser;
-      if (user == null) throw Exception('User not authenticated');
-
-      // Create a new test notification with current timestamp
-      final now = DateTime.now();
-      final timestamp = now.toIso8601String();
-
-      await createNotification(
-        title: 'Test Notification',
-        message:
-            'This is a test notification created at ${now.hour}:${now.minute}',
-        type: 'alert',
-        relatedScreen: 'calendar',
-      );
-
-      debugPrint('Test notification created successfully');
-    } catch (e) {
-      debugPrint('Error creating test notification: $e');
       rethrow;
     }
   }
@@ -937,8 +910,8 @@ class SupabaseService {
         .from('notifications')
         .update({'read': true})
         .eq('user_id', user.id)
-        .or('deleted_at.is.null')
-        .eq('read', false);
+        .eq('read', false)
+        .isFilter('deleted_at', null);
   }
 
   Future<void> createNotification({

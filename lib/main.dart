@@ -14,11 +14,9 @@ import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'splash_screen.dart';
 import 'theme/app_theme.dart';
-import 'package:flutter/services.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'notification_test_app.dart' as notification_test;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +26,9 @@ void main() async {
 
   // Initialize Supabase
   await SupabaseService().initialize();
+
+  // Clear only old notifications on app startup, preserve recent severity alerts
+  await _clearNotificationsOnAppStartup();
 
   // Initialize notification service
   final notificationService = NotificationService();
@@ -41,9 +42,6 @@ void main() async {
 
   // Initialize storage service
   await StorageService().init();
-
-  // To use the notification test app, uncomment the line below and comment out the regular app startup
-  // notification_test.main();
 
   // Initialize SeverityNotifier for anxiety alerts
   final severityNotifier = SeverityNotifier();
@@ -62,6 +60,63 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+// Clear only old notifications on app startup, preserve recent severity alerts
+Future<void> _clearNotificationsOnAppStartup() async {
+  try {
+    final supabaseService = SupabaseService();
+
+    // Configuration: Set to true to enable automatic clearing of old notifications
+    // Set to false to keep all notifications permanently
+    const bool enableAutoClear =
+        false; // Disabled by default to preserve severity alerts
+    const int daysToKeep =
+        7; // Keep notifications for 7 days (when auto-clear is enabled)
+
+    if (!enableAutoClear) {
+      debugPrint(
+          '📱 Auto-clear disabled - preserving all notifications including severity alerts');
+      return;
+    }
+
+    // Get all notifications
+    final notifications = await supabaseService.getNotifications();
+
+    if (notifications.isEmpty) {
+      debugPrint('📱 No notifications to clear');
+      return;
+    }
+
+    // Calculate cutoff time (7 days ago by default)
+    final cutoffTime =
+        DateTime.now().subtract(const Duration(days: daysToKeep));
+
+    // Delete only notifications older than the cutoff time
+    int deletedCount = 0;
+    for (final notification in notifications) {
+      try {
+        final createdAt = DateTime.parse(notification['created_at']);
+        if (createdAt.isBefore(cutoffTime)) {
+          await supabaseService.deleteNotification(notification['id'],
+              hardDelete: true);
+          deletedCount++;
+        }
+      } catch (e) {
+        debugPrint(
+            '⚠️ Error processing notification ${notification['id']}: $e');
+      }
+    }
+
+    if (deletedCount > 0) {
+      debugPrint(
+          '🗑️ Cleared $deletedCount old notifications (older than $daysToKeep days)');
+    }
+    debugPrint(
+        '📱 Preserved ${notifications.length - deletedCount} recent notifications');
+  } catch (e) {
+    debugPrint('❌ Error clearing old notifications on startup: $e');
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -180,7 +235,7 @@ class _MyAppState extends State<MyApp> {
           MaterialPageRoute(
             builder: (context) => email != null
                 ? VerifyResetCodeScreen(email: email)
-                : VerifyResetCodeScreenWithOptionalEmail(),
+                : const VerifyResetCodeScreenWithOptionalEmail(),
           ),
           (route) => false,
         );

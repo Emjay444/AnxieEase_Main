@@ -40,14 +40,14 @@ class DailyLog {
         id: json['id'],
       );
 
-  // Convert to format for Supabase mood_logs table
+  // Convert to format for Supabase wellness_logs table
   Map<String, dynamic> toSupabaseJson() => {
-        'date': DateFormat('yyyy-MM-dd').format(timestamp),
+        'date': DateFormat('yyyy-MM-dd').format(timestamp), // SQL DATE format
         'feelings': feelings,
         'stress_level': stressLevel,
         'symptoms': symptoms,
         'journal': journal,
-        'timestamp': timestamp.toIso8601String(),
+        'timestamp': timestamp.toIso8601String(), // SQL TIMESTAMPTZ format
       };
 
   // Save this log to Supabase
@@ -55,7 +55,7 @@ class DailyLog {
     try {
       final supabaseService = SupabaseService();
       final data = toSupabaseJson();
-      await supabaseService.saveMoodLog(data);
+      await supabaseService.saveWellnessLog(data);
     } catch (e) {
       print('Error syncing log to Supabase: $e');
     }
@@ -208,7 +208,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   if (_supabaseService.isAuthenticated) {
                     // Format date for Supabase
                     final formattedDate = DateFormat('yyyy-MM-dd').format(date);
-                    await _supabaseService.deleteMoodLog(
+                    await _supabaseService.deleteWellnessLog(
                         formattedDate, logToDelete.timestamp);
                   }
                 } catch (e) {
@@ -947,6 +947,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
         actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(
+              Icons.more_vert,
+              color: Color(0xFF007AFF),
+              size: 22,
+            ),
+            onSelected: (String value) {
+              if (value == 'clear_all') {
+                _showClearAllDialog();
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'clear_all',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Clear All Logs'),
+                  ],
+                ),
+              ),
+            ],
+          ),
           IconButton(
             icon: Icon(
               _calendarFormat == CalendarFormat.month
@@ -1620,7 +1644,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                     borderSide:
-                                        BorderSide(color: Colors.purple),
+                                        const BorderSide(color: Colors.purple),
                                   ),
                                   contentPadding: const EdgeInsets.all(16),
                                 ),
@@ -1894,5 +1918,93 @@ class _CalendarScreenState extends State<CalendarScreen> {
         backgroundColor: Colors.purple,
       ),
     );
+  }
+
+  void _showClearAllDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Logs'),
+        content: const Text(
+            'This will permanently delete all your wellness logs from both your device and the cloud. This action cannot be undone.\n\nAre you sure you want to continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _clearAllData();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearAllData() async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Clearing all data...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // 1. Clear local storage (SharedPreferences)
+      setState(() {
+        _dailyLogs.clear();
+      });
+      await _saveLogs();
+
+      // 2. Clear data from Supabase (if user is authenticated)
+      if (_supabaseService.isAuthenticated) {
+        await _supabaseService.clearAllWellnessLogs();
+      }
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All logs cleared successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Refresh the UI
+      setState(() {});
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing logs: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      print('Error clearing all data: $e');
+    }
   }
 }

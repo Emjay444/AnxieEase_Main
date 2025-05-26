@@ -456,10 +456,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     )
                                   : _fieldErrors['email']!.isNotEmpty
-                                      ? Icon(Icons.error_outline,
+                                      ? const Icon(Icons.error_outline,
                                           color: Colors.red)
                                       : _emailFieldTouched
-                                          ? Icon(Icons.check_circle,
+                                          ? const Icon(Icons.check_circle,
                                               color: Colors.green)
                                           : null,
                             ),
@@ -570,9 +570,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             });
                           },
                           checkColor: Colors.white,
-                          fillColor: MaterialStateProperty.resolveWith<Color>(
-                            (Set<MaterialState> states) {
-                              if (states.contains(MaterialState.selected)) {
+                          fillColor: WidgetStateProperty.resolveWith<Color>(
+                            (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.selected)) {
                                 return const Color(0xFF3AA772);
                               }
                               return Colors.white.withAlpha(128); // 0.5 opacity

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'services/supabase_service.dart';
 import 'reset_password.dart';
 
 class ManualCodeEntryScreen extends StatefulWidget {

@@ -179,63 +179,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _markAllAsRead() async {
     try {
+      setState(() => _isLoading = true);
       await _supabaseService.markAllNotificationsAsRead();
-      setState(() {
-        for (var notification in _notifications) {
-          notification['read'] = true;
-        }
-        _unreadCount = 0;
-      });
-      await _notificationService.updateBadgeCount(0);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All notifications marked as read'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      await _loadNotifications();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error marking notifications as read: $e')),
         );
       }
-    }
-  }
-
-  Future<void> _addTestNotification() async {
-    try {
-      setState(() => _isLoading = true);
-      await _supabaseService.addTestNotification();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Test notification added!')),
-        );
-      }
-
-      await _loadNotifications();
-
-      // Notify home screen of changes
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context, true);
-        // Re-open notifications screen to maintain state
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const NotificationsScreen(),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error creating test notification: $e')),
-        );
-      }
-      setState(() => _isLoading = false);
     }
   }
 
@@ -422,12 +374,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               tooltip: 'Clear all',
             ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addTestNotification,
-        backgroundColor: Colors.teal[700],
-        child: const Icon(Icons.add_alert),
-        tooltip: 'Add Test Notification',
       ),
       body: RefreshIndicator(
         onRefresh: _loadNotifications,

@@ -4,12 +4,14 @@ import '../services/notification_service.dart';
 class NotificationProvider extends ChangeNotifier {
   final NotificationService _notificationService = NotificationService();
   bool _isNotificationEnabled = false;
+  int _refreshCounter = 0;
 
   NotificationProvider() {
     _checkNotificationStatus();
   }
 
   bool get isNotificationEnabled => _isNotificationEnabled;
+  int get refreshCounter => _refreshCounter;
 
   Future<void> _checkNotificationStatus() async {
     final status = await _notificationService.checkNotificationPermissions();
@@ -32,5 +34,12 @@ class NotificationProvider extends ChangeNotifier {
 
   Future<void> refreshNotificationStatus() async {
     await _checkNotificationStatus();
+  }
+
+  // Method to trigger notification list refresh
+  void triggerNotificationRefresh() {
+    _refreshCounter++;
+    notifyListeners();
+    debugPrint('🔄 Triggered notification refresh: $_refreshCounter');
   }
 }

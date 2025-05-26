@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'services/supabase_service.dart';
 import 'login.dart';
 import 'forgotpass.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String? token;

@@ -27,10 +27,10 @@ class AppTheme {
       useMaterial3: true,
       primaryColor: primaryColor,
       scaffoldBackgroundColor: backgroundColor,
-      colorScheme: ColorScheme.light(
+      colorScheme: const ColorScheme.light(
         primary: primaryColor,
         secondary: secondaryColor,
-        background: backgroundColor,
+        surface: backgroundColor,
         error: errorColor,
       ),
 
@@ -197,17 +197,17 @@ class AppTheme {
       useMaterial3: true,
       primaryColor: darkPrimaryColor,
       scaffoldBackgroundColor: darkBackgroundColor,
-      colorScheme: ColorScheme.dark(
+      colorScheme: const ColorScheme.dark(
         primary: darkPrimaryColor,
         secondary: darkSecondaryColor,
-        background: darkBackgroundColor,
+        surface: darkBackgroundColor,
         error: errorColor,
       ),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: darkCardColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: darkTextColor),
-        titleTextStyle: const TextStyle(
+        iconTheme: IconThemeData(color: darkTextColor),
+        titleTextStyle: TextStyle(
           color: darkTextColor,
           fontSize: 20,
           fontWeight: FontWeight.w600,
@@ -220,10 +220,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      bottomSheetTheme: BottomSheetThemeData(
+      bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: darkCardColor,
         modalBackgroundColor: darkCardColor,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
             top: Radius.circular(20),
           ),
@@ -266,11 +266,11 @@ class AppTheme {
         fillColor: const Color(0xFF2C2C2E),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: darkDividerColor),
+          borderSide: const BorderSide(color: darkDividerColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: darkDividerColor),
+          borderSide: const BorderSide(color: darkDividerColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -278,11 +278,11 @@ class AppTheme {
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        hintStyle: TextStyle(color: darkSubtitleColor),
+        hintStyle: const TextStyle(color: darkSubtitleColor),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: darkCardColor,
-        contentTextStyle: TextStyle(color: darkTextColor),
+        contentTextStyle: const TextStyle(color: darkTextColor),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -294,13 +294,13 @@ class AppTheme {
         selectedColor: darkPrimaryColor,
         secondarySelectedColor: darkPrimaryColor,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        labelStyle: TextStyle(color: darkTextColor),
-        secondaryLabelStyle: TextStyle(color: darkTextColor),
+        labelStyle: const TextStyle(color: darkTextColor),
+        secondaryLabelStyle: const TextStyle(color: darkTextColor),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
       ),
-      dividerTheme: DividerThemeData(
+      dividerTheme: const DividerThemeData(
         color: darkDividerColor,
         thickness: 1,
         space: 1,
@@ -309,12 +309,12 @@ class AppTheme {
         backgroundColor: darkPrimaryColor,
         foregroundColor: Colors.white,
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: darkCardColor,
         selectedItemColor: darkPrimaryColor,
         unselectedItemColor: darkSubtitleColor,
       ),
-      textTheme: TextTheme(
+      textTheme: const TextTheme(
         displayLarge: TextStyle(
           color: darkTextColor,
           fontSize: 57,
