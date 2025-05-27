@@ -131,24 +131,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildSettingsSection(
                       'App Settings',
                       [
-                        Consumer<ThemeProvider>(
-                          builder: (context, themeProvider, child) {
-                            return _buildSettingsTile(
-                              icon: themeProvider.isDarkMode
-                                  ? Icons.dark_mode
-                                  : Icons.light_mode,
-                              title: 'Dark Mode',
-                              subtitle: themeProvider.isDarkMode
-                                  ? 'Dark theme is enabled'
-                                  : 'Light theme is enabled',
-                              trailing: Switch(
-                                value: themeProvider.isDarkMode,
-                                onChanged: (value) =>
-                                    themeProvider.toggleTheme(),
-                              ),
-                            );
-                          },
-                        ),
                         Consumer<NotificationProvider>(
                           builder: (context, notificationProvider, child) {
                             return _buildSettingsTile(

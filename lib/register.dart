@@ -373,7 +373,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await authProvider.signUp(
         email: emailController.text.trim(),
         password: passwordController.text,
-        fullName: fullName,
+        firstName: firstNameController.text.trim(),
+        middleName: middleNameController.text.trim(),
+        lastName: lastNameController.text.trim(),
       );
 
       // Close loading indicator

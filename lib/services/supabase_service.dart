@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'dart:io';
 
 class SupabaseService {
   static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
@@ -63,7 +64,9 @@ class SupabaseService {
         password: password,
         emailRedirectTo: redirectUrl,
         data: {
-          'full_name': userData['full_name'],
+          'first_name': userData['first_name'],
+          'middle_name': userData['middle_name'],
+          'last_name': userData['last_name'],
           'email': email,
           'role': 'patient', // Always set as patient for mobile app
         },
@@ -82,7 +85,12 @@ class SupabaseService {
           'id': response.user!.id,
           'email': email,
           'password_hash': 'MANAGED_BY_SUPABASE_AUTH',
-          'full_name': userData['full_name'],
+          'first_name': userData['first_name'],
+          'middle_name': userData['middle_name'],
+          'last_name': userData['last_name'],
+          'age': userData['age'],
+          'contact_number': userData['contact_number'],
+          'gender': userData['gender'],
           'role': 'patient',
           'created_at': timestamp,
           'updated_at': timestamp,
@@ -384,10 +392,50 @@ class SupabaseService {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _supabaseClient.from('users').update({
-      ...data,
-      'updated_at': DateTime.now().toIso8601String(),
-    }).eq('id', user.id);
+    try {
+      // First, verify which columns exist in the table
+      final safeData = Map<String, dynamic>.from(data);
+      final updatedData = {
+        ...safeData,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      await _supabaseClient.from('users').update(updatedData).eq('id', user.id);
+      print(
+          'Successfully updated user profile: ${updatedData.keys.join(', ')}');
+    } catch (e) {
+      if (e.toString().contains('Could not find')) {
+        // If we get a PostgrestException about missing columns, try to update each field individually
+        print(
+            'Warning: Schema error detected. Trying individual field updates...');
+
+        // Always update the timestamp
+        try {
+          await _supabaseClient.from('users').update({
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', user.id);
+        } catch (_) {
+          // Ignore errors with timestamp update
+        }
+
+        // Try each field individually
+        for (var entry in data.entries) {
+          try {
+            await _supabaseClient.from('users').update({
+              entry.key: entry.value,
+            }).eq('id', user.id);
+            print('Successfully updated field: ${entry.key}');
+          } catch (fieldError) {
+            print('Failed to update field ${entry.key}: $fieldError');
+            // Continue with other fields
+          }
+        }
+      } else {
+        // For other errors, rethrow
+        print('Error updating user profile: $e');
+        rethrow;
+      }
+    }
   }
 
   // Anxiety records methods
@@ -639,7 +687,60 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      // Return hardcoded psychologist data for demonstration
+      // First get the user's assigned psychologist ID
+      final userProfile = await getUserProfile();
+      if (userProfile == null) {
+        // If no user profile found, try fetching a default psychologist
+        final psychologists = await _supabaseClient
+            .from('psychologists')
+            .select()
+            .limit(1)
+            .maybeSingle();
+
+        if (psychologists != null) {
+          return _ensurePsychologistFields(psychologists);
+        }
+        return null;
+      }
+
+      // If user has assigned_psychologist_id, use it
+      if (userProfile['assigned_psychologist_id'] != null) {
+        final psychologistId = userProfile['assigned_psychologist_id'];
+
+        // Get the psychologist details
+        final psychologist = await _supabaseClient
+            .from('psychologists')
+            .select()
+            .eq('id', psychologistId)
+            .maybeSingle();
+
+        if (psychologist != null) {
+          return _ensurePsychologistFields(psychologist);
+        }
+        return null;
+      } else {
+        // If user doesn't have assigned psychologist, get the first available one
+        final psychologist = await _supabaseClient
+            .from('psychologists')
+            .select()
+            .limit(1)
+            .maybeSingle();
+
+        // If a psychologist is found, assign it to the user
+        if (psychologist != null) {
+          await _supabaseClient
+              .from('users')
+              .update({'assigned_psychologist_id': psychologist['id']}).eq(
+                  'id', user.id);
+
+          return _ensurePsychologistFields(psychologist);
+        }
+        return null;
+      }
+    } catch (e) {
+      Logger.error('Error fetching assigned psychologist', e);
+
+      // Fallback to hardcoded data in case of error
       return {
         'id': 'psy-001',
         'name': 'Dr. Sarah Johnson',
@@ -650,30 +751,6 @@ class SupabaseService {
             'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management. She completed her Ph.D. at Stanford University and has published numerous research papers on cognitive behavioral therapy techniques for anxiety management. Dr. Johnson takes a holistic approach to mental health, combining evidence-based therapeutic techniques with mindfulness practices to help patients develop effective coping strategies for their anxiety.',
         'image_url': null,
       };
-
-      // Original implementation (commented out)
-      /*
-      // First get the user's assigned psychologist ID
-      final userProfile = await getUserProfile();
-      if (userProfile == null ||
-          userProfile['assigned_psychologist_id'] == null) {
-        return null;
-      }
-
-      final psychologistId = userProfile['assigned_psychologist_id'];
-
-      // Then get the psychologist details
-      final response = await _supabaseClient
-          .from('psychologists')
-          .select()
-          .eq('id', psychologistId)
-          .maybeSingle();
-
-      return response;
-      */
-    } catch (e) {
-      Logger.error('Error fetching assigned psychologist', e);
-      return null;
     }
   }
 
@@ -683,9 +760,66 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      // Return hardcoded appointment data for demonstration
-      final now = DateTime.now();
+      // First try to create the table if it doesn't exist
+      await createAppointmentsTableIfNotExists();
 
+      // Query appointments table for this user
+      try {
+        final response = await _supabaseClient
+            .from('appointments')
+            .select()
+            .eq('user_id', user.id)
+            .order('appointment_date', ascending: false);
+
+        if (response != null) {
+          return List<Map<String, dynamic>>.from(response);
+        }
+
+        // If no appointments found, return empty list
+        return [];
+      } catch (e) {
+        final errorMsg = e.toString().toLowerCase();
+        if (errorMsg.contains('does not exist') ||
+            errorMsg.contains('relation "appointments" does not exist')) {
+          // If appointments table doesn't exist, check for appointment_request notifications
+          final notifications = await _supabaseClient
+              .from('notifications')
+              .select()
+              .eq('user_id', user.id)
+              .eq('type', 'appointment_request')
+              .order('created_at', ascending: false);
+
+          if (notifications != null && notifications.isNotEmpty) {
+            // Convert notifications to appointment format
+            return notifications.map<Map<String, dynamic>>((notification) {
+              // Parse the message to extract details
+              final createdAt = DateTime.parse(notification['created_at']);
+
+              return {
+                'id': notification['id'] ?? 'temp-id',
+                'psychologist_id': notification['related_id'] ?? 'unknown',
+                'user_id': user.id,
+                'appointment_date': notification[
+                    'created_at'], // Use notification date as appointment date
+                'reason': notification['message'] ?? 'Appointment request',
+                'status': 'pending',
+                'created_at': notification['created_at'],
+              };
+            }).toList();
+          }
+
+          // If no notifications found, return empty list
+          return [];
+        } else {
+          // Some other error occurred
+          throw e;
+        }
+      }
+    } catch (e) {
+      Logger.error('Error fetching appointments', e);
+
+      // Fallback to hardcoded data in case of error
+      final now = DateTime.now();
       return [
         // Past appointments (only 2)
         {
@@ -710,60 +844,36 @@ class SupabaseService {
           'created_at':
               DateTime(now.year, now.month, now.day - 10).toIso8601String(),
         },
-
-        // Appointment requests with different statuses
-        {
-          'id': 'apt-003',
-          'psychologist_id': 'psy-001',
-          'user_id': user.id,
-          'appointment_date': DateTime(now.year, now.month, now.day + 3, 14, 30)
-              .toIso8601String(),
-          'reason': 'Follow-up session to discuss coping strategies',
-          'status': 'pending',
-          'created_at':
-              DateTime(now.year, now.month, now.day - 1).toIso8601String(),
-        },
-        {
-          'id': 'apt-004',
-          'psychologist_id': 'psy-001',
-          'user_id': user.id,
-          'appointment_date': DateTime(now.year, now.month, now.day + 5, 9, 30)
-              .toIso8601String(),
-          'reason': 'Urgent session to discuss recent panic attack',
-          'status': 'accepted',
-          'created_at':
-              DateTime(now.year, now.month, now.day - 2).toIso8601String(),
-          'response_message':
-              'I can see you on this date. Please arrive 10 minutes early to complete intake forms.',
-        },
-        {
-          'id': 'apt-005',
-          'psychologist_id': 'psy-001',
-          'user_id': user.id,
-          'appointment_date': DateTime(now.year, now.month, now.day + 2, 11, 0)
-              .toIso8601String(),
-          'reason': 'Discussion about sleep issues',
-          'status': 'denied',
-          'created_at':
-              DateTime(now.year, now.month, now.day - 3).toIso8601String(),
-          'response_message':
-              'I\'m unavailable at this time. Please try scheduling for the following week or contact my assistant for urgent matters.',
-        },
       ];
+    }
+  }
 
-      // Original implementation (commented out)
-      /*
-      final response = await _supabaseClient
-          .from('appointments')
-          .select()
-          .eq('user_id', user.id)
-          .order('appointment_date', ascending: false);
-
-      return List<Map<String, dynamic>>.from(response);
-      */
+  // Method to create the appointments table if it doesn't exist
+  Future<bool> createAppointmentsTableIfNotExists() async {
+    try {
+      // First check if the table exists by querying it
+      try {
+        await _supabaseClient.from('appointments').select('count').limit(1);
+        Logger.info('Appointments table already exists');
+        return true; // Table exists
+      } catch (e) {
+        final errorMsg = e.toString().toLowerCase();
+        if (errorMsg.contains('does not exist') ||
+            errorMsg.contains('relation "appointments" does not exist')) {
+          // Table doesn't exist, create it using SQL
+          Logger.info('Creating appointments table...');
+          final response =
+              await _supabaseClient.rpc('create_appointments_table');
+          Logger.info('Appointments table created successfully');
+          return true;
+        } else {
+          Logger.error('Error checking appointments table', e);
+          return false;
+        }
+      }
     } catch (e) {
-      Logger.error('Error fetching appointments', e);
-      return [];
+      Logger.error('Error creating appointments table', e);
+      return false;
     }
   }
 
@@ -773,16 +883,13 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      // For demonstration, just return a success without actually saving to database
+      // First try to create the table if it doesn't exist
+      await createAppointmentsTableIfNotExists();
 
-      // Log the appointment data for debugging
-      Logger.info('New appointment request: ${appointmentData.toString()}');
+      // Get the current timestamp for created_at
+      final timestamp = DateTime.now().toIso8601String();
 
-      // Return a mock appointment ID
-      return 'apt-${DateTime.now().millisecondsSinceEpoch}';
-
-      // Original implementation (commented out)
-      /*
+      // Try to insert the appointment record
       final response = await _supabaseClient.from('appointments').insert({
         'user_id': user.id,
         ...appointmentData,
@@ -794,10 +901,28 @@ class SupabaseService {
         throw Exception('Failed to create appointment');
       }
 
+      // Log success for debugging
+      Logger.info('Successfully created appointment: ${response[0]['id']}');
+
+      // Return the newly created appointment ID
       return response[0]['id'];
-      */
     } catch (e) {
       Logger.error('Error requesting appointment', e);
+
+      // If it's a table-not-exists error, create a notification as fallback
+      final errorMsg = e.toString().toLowerCase();
+      if (errorMsg.contains('does not exist') ||
+          errorMsg.contains('relation "appointments" does not exist')) {
+        // Create a notification record as fallback
+        await createNotification(
+          title: 'New Appointment Request',
+          message:
+              'You requested an appointment with a psychologist. Please contact them directly.',
+          type: 'appointment_request',
+        );
+        return 'temp-${DateTime.now().millisecondsSinceEpoch}';
+      }
+
       throw Exception('Failed to request appointment: ${e.toString()}');
     }
   }
@@ -932,5 +1057,278 @@ class SupabaseService {
       'related_screen': relatedScreen,
       'related_id': relatedId,
     });
+  }
+
+  // Additional psychologist methods
+  Future<List<Map<String, dynamic>>> getAllPsychologists() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Query all psychologists from the database
+      final response =
+          await _supabaseClient.from('psychologists').select().order('name');
+
+      // Ensure all required fields are present for each psychologist
+      return List<Map<String, dynamic>>.from(response
+          .map((psychologist) => _ensurePsychologistFields(psychologist)));
+    } catch (e) {
+      Logger.error('Error fetching all psychologists', e);
+
+      // Fallback to hardcoded data in case of error
+      return [
+        {
+          'id': 'psy-001',
+          'name': 'Dr. Sarah Johnson',
+          'specialization': 'Clinical Psychologist, Anxiety Specialist',
+          'contact_email': 'sarah.johnson@anxiease.com',
+          'contact_phone': '(555) 123-4567',
+          'biography':
+              'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management.',
+          'image_url': null,
+        },
+        {
+          'id': 'psy-002',
+          'name': 'Dr. Michael Chen',
+          'specialization': 'Psychiatrist, Depression & Anxiety Treatment',
+          'contact_email': 'michael.chen@anxiease.com',
+          'contact_phone': '(555) 234-5678',
+          'biography':
+              'Dr. Michael Chen is a board-certified psychiatrist specializing in medication management for anxiety and depression. He combines pharmacological approaches with lifestyle interventions.',
+          'image_url': null,
+        },
+        {
+          'id': 'psy-003',
+          'name': 'Dr. Emily Rodriguez',
+          'specialization': 'Cognitive Behavioral Therapist',
+          'contact_email': 'emily.rodriguez@anxiease.com',
+          'contact_phone': '(555) 345-6789',
+          'biography':
+              'Dr. Emily Rodriguez is an expert in cognitive behavioral therapy (CBT) with a focus on helping clients overcome anxiety through evidence-based techniques and practical coping strategies.',
+          'image_url': null,
+        },
+      ];
+    }
+  }
+
+  Future<void> assignPsychologist(String psychologistId) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Update the user's assigned psychologist
+      await _supabaseClient.from('users').update(
+          {'assigned_psychologist_id': psychologistId}).eq('id', user.id);
+
+      Logger.info(
+          'Successfully assigned psychologist $psychologistId to user ${user.id}');
+    } catch (e) {
+      Logger.error('Error assigning psychologist', e);
+      throw Exception('Failed to assign psychologist: ${e.toString()}');
+    }
+  }
+
+  // Helper method to ensure all required psychologist fields are present
+  Map<String, dynamic> _ensurePsychologistFields(
+      Map<String, dynamic> psychologist) {
+    return {
+      'id': psychologist['id'] ?? 'unknown-id',
+      'name': psychologist['name'] ?? 'Unknown Psychologist',
+      'specialization': psychologist['specialization'] ?? 'General Psychology',
+      'contact_email': psychologist['contact_email'] ?? 'contact@anxiease.com',
+      'contact_phone':
+          psychologist['contact'] ?? psychologist['contact_phone'] ?? 'N/A',
+      'biography': psychologist['bio'] ??
+          psychologist['biography'] ??
+          'No biography available',
+      'image_url': psychologist['image_url'] ?? psychologist['avatar_url'],
+    };
+  }
+
+  // Profile picture methods
+  Future<String?> uploadPsychologistProfilePicture(
+      String psychologistId, File imageFile) async {
+    try {
+      final fileExt = imageFile.path.split('.').last;
+      final fileName = '$psychologistId.$fileExt';
+      final filePath = 'psychologists/$fileName';
+
+      // Upload file to Supabase Storage
+      final response = await _supabaseClient.storage
+          .from('profile_pictures')
+          .upload(filePath, imageFile,
+              fileOptions:
+                  const FileOptions(cacheControl: '3600', upsert: true));
+
+      // Get public URL
+      final imageUrl = _supabaseClient.storage
+          .from('profile_pictures')
+          .getPublicUrl(filePath);
+
+      // Update psychologist record with image URL
+      await _supabaseClient
+          .from('psychologists')
+          .update({'image_url': imageUrl}).eq('id', psychologistId);
+
+      return imageUrl;
+    } catch (e) {
+      Logger.error('Error uploading profile picture', e);
+      return null;
+    }
+  }
+
+  Future<String?> getPsychologistProfilePictureUrl(
+      String psychologistId) async {
+    try {
+      // First check if the psychologist has an avatar_url directly in their record
+      final psychologist = await _supabaseClient
+          .from('psychologists')
+          .select('avatar_url')
+          .eq('id', psychologistId)
+          .maybeSingle();
+
+      // If there's an avatar_url in the database record, use that directly
+      if (psychologist != null &&
+          psychologist['avatar_url'] != null &&
+          psychologist['avatar_url'].toString().isNotEmpty) {
+        return psychologist['avatar_url'];
+      }
+
+      // Fallback to storage bucket lookup
+      final files = await _supabaseClient.storage
+          .from('profile_pictures')
+          .list(path: 'psychologists');
+
+      // Find files that start with the psychologist ID
+      final profilePic = files
+          .where((file) => file.name.startsWith(psychologistId))
+          .firstOrNull;
+
+      if (profilePic != null) {
+        return _supabaseClient.storage
+            .from('profile_pictures')
+            .getPublicUrl('psychologists/${profilePic.name}');
+      }
+
+      return null;
+    } catch (e) {
+      Logger.error('Error fetching profile picture', e);
+      return null;
+    }
+  }
+
+  // Method to manually refresh an appointment's status from the database
+  Future<Map<String, dynamic>?> refreshAppointmentStatus(
+      String appointmentId) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Query the appointments table for the specific appointment
+      final response = await _supabaseClient
+          .from('appointments')
+          .select()
+          .eq('id', appointmentId)
+          .maybeSingle();
+
+      // If the appointment has a response message but is still pending, update it to accepted
+      if (response != null &&
+          response['status'] == 'pending' &&
+          response['response_message'] != null &&
+          response['response_message'].toString().isNotEmpty) {
+        Logger.info(
+            'Appointment has response but still pending. Updating to accepted.');
+
+        // Update the status to accepted
+        final updatedResponse = await _supabaseClient
+            .from('appointments')
+            .update({'status': 'accepted'})
+            .eq('id', appointmentId)
+            .select();
+
+        if (updatedResponse.isNotEmpty) {
+          return updatedResponse[0];
+        }
+      }
+
+      return response;
+    } catch (e) {
+      Logger.error('Error refreshing appointment status', e);
+      return null;
+    }
+  }
+
+  // Method to update an appointment's status
+  Future<bool> updateAppointmentStatus(
+      String appointmentId, String newStatus) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Update the status in the database
+      await _supabaseClient.from('appointments').update({
+        'status': newStatus,
+        'updated_at': DateTime.now().toIso8601String()
+      }).eq('id', appointmentId);
+
+      Logger.info(
+          'Successfully updated appointment $appointmentId status to $newStatus');
+      return true;
+    } catch (e) {
+      Logger.error('Error updating appointment status', e);
+      return false;
+    }
+  }
+
+  // Method to auto-archive old appointments
+  Future<int> autoArchiveOldAppointments() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      final now = DateTime.now();
+      final cutoffDate =
+          now.subtract(const Duration(days: 30)).toIso8601String();
+      int totalArchived = 0;
+
+      // Get completed appointments older than 30 days
+      final completedAppointments = await _supabaseClient
+          .from('appointments')
+          .update({'status': 'archived', 'updated_at': now.toIso8601String()})
+          .eq('user_id', user.id)
+          .eq('status', 'completed')
+          .lt('appointment_date', cutoffDate)
+          .select();
+
+      totalArchived += completedAppointments.length;
+
+      // Get expired but unattended appointments
+      final expiredAppointments = await _supabaseClient
+          .from('appointments')
+          .update({'status': 'archived', 'updated_at': now.toIso8601String()})
+          .eq('user_id', user.id)
+          .or('status.eq.accepted,status.eq.approved')
+          .lt('appointment_date', cutoffDate)
+          .select();
+
+      totalArchived += expiredAppointments.length;
+
+      // Get old cancelled/denied appointments
+      final cancelledAppointments = await _supabaseClient
+          .from('appointments')
+          .update({'status': 'archived', 'updated_at': now.toIso8601String()})
+          .eq('user_id', user.id)
+          .or('status.eq.cancelled,status.eq.denied')
+          .lt('updated_at', cutoffDate)
+          .select();
+
+      totalArchived += cancelledAppointments.length;
+
+      Logger.info('Auto-archived $totalArchived old appointments');
+      return totalArchived;
+    } catch (e) {
+      Logger.error('Error auto-archiving old appointments', e);
+      return 0;
+    }
   }
 }

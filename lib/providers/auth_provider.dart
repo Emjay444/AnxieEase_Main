@@ -41,16 +41,22 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signUp({
     required String email,
     required String password,
-    required String fullName,
+    String? firstName,
+    String? middleName,
+    String? lastName,
     int? age,
+    String? contactNumber,
     String? gender,
   }) async {
     try {
       _setLoading(true);
 
       final userData = {
-        'full_name': fullName,
+        'first_name': firstName,
+        'middle_name': middleName,
+        'last_name': lastName,
         'age': age,
+        'contact_number': contactNumber,
         'gender': gender,
       };
 
@@ -117,19 +123,36 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> updateProfile({
-    String? fullName,
+    String? firstName,
+    String? middleName,
+    String? lastName,
     int? age,
+    String? contactNumber,
     String? gender,
   }) async {
     try {
       _setLoading(true);
 
       final updates = {
-        if (fullName != null) 'full_name': fullName,
-        if (age != null) 'age': age,
+        if (firstName != null) 'first_name': firstName,
+        if (middleName != null) 'middle_name': middleName,
+        if (lastName != null) 'last_name': lastName,
+        if (contactNumber != null) 'contact_number': contactNumber,
         if (gender != null) 'gender': gender,
       };
 
+      // Only include age if it's valid and not null
+      if (age != null && age > 0) {
+        // We'll wrap this in a try-catch to handle potential schema issues
+        try {
+          await _supabaseService.updateUserProfile({'age': age});
+        } catch (e) {
+          print('Warning: Failed to update age: $e');
+          // Continue with other updates even if age update fails
+        }
+      }
+
+      // Update the rest of the profile fields
       await _supabaseService.updateUserProfile(updates);
 
       final userProfile = await _supabaseService.getUserProfile();
@@ -137,6 +160,9 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = UserModel.fromJson(userProfile);
         notifyListeners();
       }
+    } catch (e) {
+      print('Error updating profile: $e');
+      throw Exception('Error updating profile: $e');
     } finally {
       _setLoading(false);
     }

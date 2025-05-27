@@ -5,27 +5,19 @@ class ThemeProvider with ChangeNotifier {
   bool _isDarkMode = false;
   static const String _themeKey = 'isDarkMode';
 
-  bool get isDarkMode => _isDarkMode;
+  bool get isDarkMode => false;
 
   ThemeProvider() {
-    _loadThemeFromPrefs();
-  }
-
-  Future<void> _loadThemeFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkMode = prefs.getBool(_themeKey) ?? false;
-    notifyListeners();
+    // No need to load theme preference
   }
 
   Future<void> toggleTheme() async {
-    _isDarkMode = !_isDarkMode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_themeKey, _isDarkMode);
+    // Do nothing - we always use light theme
     notifyListeners();
   }
 
   ThemeData get themeData {
-    return _isDarkMode ? _darkTheme : _lightTheme;
+    return _lightTheme;
   }
 
   static final ThemeData _lightTheme = ThemeData(
@@ -57,36 +49,5 @@ class ThemeProvider with ChangeNotifier {
       bodyMedium: TextStyle(color: Colors.grey[600]),
     ),
     brightness: Brightness.light,
-  );
-
-  static final ThemeData _darkTheme = ThemeData(
-    useMaterial3: true,
-    primaryColor: const Color(0xFF3AA772),
-    scaffoldBackgroundColor: const Color(0xFF121212),
-    colorScheme: const ColorScheme.dark(
-      primary: Color(0xFF3AA772),
-      secondary: Color(0xFF2D9254),
-      surface: Color(0xFF1E1E1E),
-      error: Color(0xFFFF6B6B),
-    ),
-    cardColor: const Color(0xFF1E1E1E),
-    dividerColor: Colors.grey[800],
-    unselectedWidgetColor: Colors.grey[400],
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFF1E1E1E),
-      foregroundColor: Colors.white,
-      elevation: 0,
-    ),
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-      backgroundColor: Color(0xFF1E1E1E),
-      selectedItemColor: Color(0xFF3AA772),
-      unselectedItemColor: Colors.grey,
-    ),
-    textTheme: const TextTheme(
-      titleLarge: TextStyle(color: Colors.white),
-      bodyLarge: TextStyle(color: Colors.white),
-      bodyMedium: TextStyle(color: Colors.white70),
-    ),
-    brightness: Brightness.dark,
   );
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'services/supabase_service.dart';
+import 'providers/notification_provider.dart';
 
 class DailyLog {
   final List<String> feelings;
@@ -272,6 +274,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       await logToSync?.syncWithSupabase();
 
+      // Initialize notification variables
+      bool notificationCreated = false;
+
       // Create notification for high stress levels
       if (stressLevel >= 7) {
         await _supabaseService.createNotification(
@@ -282,6 +287,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
         );
+        notificationCreated = true;
       }
 
       // Create notification for anxiety symptoms if there are any
@@ -294,6 +300,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
         );
+        notificationCreated = true;
       }
 
       // Create notification for mood patterns - check for anxious or fearful moods
@@ -307,6 +314,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
         );
+        notificationCreated = true;
       }
 
       // Create notification for journal entry if it exists and has content
@@ -318,6 +326,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
         );
+        notificationCreated = true;
+      }
+
+      // Trigger notification refresh in NotificationProvider if needed
+      if (notificationCreated) {
+        // Find and refresh the notification provider
+        final notificationProvider =
+            Provider.of<NotificationProvider>(context, listen: false);
+        notificationProvider.triggerNotificationRefresh();
+        debugPrint('Triggered notification refresh after saving log');
       }
     } catch (e) {
       debugPrint('Error syncing with Supabase: $e');

@@ -11,6 +11,10 @@ import 'package:provider/provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/severity_notifier.dart';
 import 'profile.dart';
+import 'providers/auth_provider.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 // Task class removed
 
@@ -1287,53 +1291,56 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // Helper function to categorize notifications - not displayed to user
     String getSeverityLevel() {
       if (title.contains('🟢') || title.contains('Mild')) return 'Mild';
       if (title.contains('🟠') || title.contains('Moderate')) return 'Moderate';
       if (title.contains('🔴') || title.contains('Severe')) return 'Severe';
-      return 'Unknown';
+      if (title.contains('Mood Pattern')) return 'Informational';
+      return 'Normal';
     }
 
     String getRecommendation() {
-      final severity = getSeverityLevel();
-      switch (severity) {
-        case 'Mild':
-          return 'Consider taking a short break and practicing deep breathing exercises.';
-        case 'Moderate':
-          return 'Try some relaxation techniques or engage in a calming activity.';
-        case 'Severe':
-          return 'Please consider using breathing exercises immediately or contact a healthcare professional if symptoms persist.';
-        default:
-          return 'Monitor your symptoms and take appropriate action as needed.';
+      if (title.contains('Mood Pattern')) {
+        return 'Consider using calming exercises to help manage anxiety when feeling anxious or fearful.';
+      } else if (title.contains('High Stress')) {
+        return 'Try breathing exercises to help reduce stress levels and promote relaxation.';
+      } else if (title.contains('Symptom')) {
+        return 'Monitor your symptoms and use appropriate techniques to manage your anxiety.';
+      } else {
+        return 'Consider using the breathing exercises and other tools available in the app.';
       }
     }
 
     List<String> getActionItems() {
-      final severity = getSeverityLevel();
-      switch (severity) {
-        case 'Mild':
-          return [
-            'Practice 4-7-8 breathing technique',
-            'Take a 5-minute walk',
-            'Listen to calming music',
-            'Stay hydrated'
-          ];
-        case 'Moderate':
-          return [
-            'Use guided meditation app',
-            'Practice progressive muscle relaxation',
-            'Step away from stressful situations',
-            'Contact a friend or family member'
-          ];
-        case 'Severe':
-          return [
-            'Use emergency breathing exercises',
-            'Find a quiet, safe space',
-            'Consider contacting healthcare provider',
-            'Use grounding techniques (5-4-3-2-1 method)'
-          ];
-        default:
-          return ['Monitor symptoms', 'Stay calm', 'Seek help if needed'];
+      if (title.contains('Mood Pattern')) {
+        return [
+          'Use breathing exercises',
+          'Practice mindfulness meditation',
+          'Record your triggers in journal',
+          'Try progressive muscle relaxation'
+        ];
+      } else if (title.contains('High Stress')) {
+        return [
+          'Practice 4-7-8 breathing technique',
+          'Take a short break from current activities',
+          'Use guided meditation',
+          'Find a quiet space to relax'
+        ];
+      } else if (title.contains('Symptom')) {
+        return [
+          'Track your symptoms in the journal',
+          'Use appropriate breathing techniques',
+          'Consider relaxation exercises',
+          'Monitor changes in symptoms'
+        ];
+      } else {
+        return [
+          'Use breathing exercises',
+          'Monitor symptoms',
+          'Practice self-care activities',
+          'Use the app resources'
+        ];
       }
     }
 
@@ -1412,26 +1419,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Severity Level
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: getTypeColor().withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${getSeverityLevel()} Level',
-                          style: TextStyle(
-                            color: getTypeColor(),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
                       // Details Section
                       const Text(
                         'Details',
@@ -1886,6 +1873,25 @@ class _HomeContentState extends State<HomeContent> {
     });
   }
 
+  // Method to load the profile image from the application documents directory
+  Future<File?> _loadProfileImage(String? userId) async {
+    if (userId == null) return null;
+
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final imagePath = path.join(directory.path, 'profile_$userId.jpg');
+      final imageFile = File(imagePath);
+
+      if (await imageFile.exists()) {
+        return imageFile;
+      }
+    } catch (e) {
+      print('Error loading profile image: $e');
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1918,12 +1924,24 @@ class _HomeContentState extends State<HomeContent> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Hello Mejia',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontSize: screenWidth * 0.055,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        // Default to 'Guest' if no user or no first name
+                        String firstName = 'Guest';
+                        // Use firstName directly from user model
+                        if (authProvider.currentUser != null &&
+                            authProvider.currentUser!.firstName != null &&
+                            authProvider.currentUser!.firstName!.isNotEmpty) {
+                          firstName = authProvider.currentUser!.firstName!;
+                        }
+                        return Text(
+                          'Hello $firstName',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontSize: screenWidth * 0.055,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      },
                     ),
                     Text(
                       'Welcome back',
@@ -1942,18 +1960,58 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                     );
                   },
-                  child: Container(
-                    width: screenWidth * 0.12,
-                    height: screenWidth * 0.12,
-                    decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.person,
-                      color: theme.primaryColor,
-                      size: screenWidth * 0.06,
-                    ),
+                  child: Consumer<AuthProvider>(
+                    builder: (context, authProvider, child) {
+                      return FutureBuilder<File?>(
+                        future: _loadProfileImage(authProvider.currentUser?.id),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return CircleAvatar(
+                              radius: screenWidth * 0.06,
+                              backgroundColor:
+                                  theme.primaryColor.withOpacity(0.1),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: theme.primaryColor,
+                              ),
+                            );
+                          }
+
+                          if (snapshot.hasData && snapshot.data != null) {
+                            // Use the actual profile image
+                            return CircleAvatar(
+                              radius: screenWidth * 0.06,
+                              backgroundImage: FileImage(snapshot.data!),
+                            );
+                          } else {
+                            // If no profile image, show first letter of name or fallback icon
+                            String firstLetter = 'G';
+                            if (authProvider.currentUser != null &&
+                                authProvider.currentUser!.firstName != null &&
+                                authProvider
+                                    .currentUser!.firstName!.isNotEmpty) {
+                              firstLetter = authProvider
+                                  .currentUser!.firstName![0]
+                                  .toUpperCase();
+                            }
+
+                            return CircleAvatar(
+                              radius: screenWidth * 0.06,
+                              backgroundColor: const Color(0xFF3AA772),
+                              child: Text(
+                                firstLetter,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
                   ),
                 ),
               ],

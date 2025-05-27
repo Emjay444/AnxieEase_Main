@@ -13,15 +13,21 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController fullNameController = TextEditingController();
+  final TextEditingController firstNameController = TextEditingController();
+  final TextEditingController middleNameController = TextEditingController();
+  final TextEditingController lastNameController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
+  final TextEditingController contactNumberController = TextEditingController();
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    fullNameController.dispose();
+    firstNameController.dispose();
+    middleNameController.dispose();
+    lastNameController.dispose();
     ageController.dispose();
+    contactNumberController.dispose();
     super.dispose();
   }
 
@@ -30,8 +36,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await context.read<AuthProvider>().signUp(
             email: emailController.text,
             password: passwordController.text,
-            fullName: fullNameController.text,
+            firstName: firstNameController.text,
+            middleName: middleNameController.text,
+            lastName: lastNameController.text,
             age: int.tryParse(ageController.text),
+            contactNumber: contactNumberController.text,
           );
 
       if (!mounted) return;
@@ -63,34 +72,50 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            TextField(
-              controller: passwordController,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            TextField(
-              controller: fullNameController,
-              decoration: const InputDecoration(labelText: 'Full Name'),
-            ),
-            TextField(
-              controller: ageController,
-              decoration: const InputDecoration(labelText: 'Age'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _handleRegistration,
-              child: const Text('Register'),
-            ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(labelText: 'Email'),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(labelText: 'Password'),
+                obscureText: true,
+              ),
+              TextField(
+                controller: firstNameController,
+                decoration: const InputDecoration(labelText: 'First Name'),
+              ),
+              TextField(
+                controller: middleNameController,
+                decoration:
+                    const InputDecoration(labelText: 'Middle Name (Optional)'),
+              ),
+              TextField(
+                controller: lastNameController,
+                decoration: const InputDecoration(labelText: 'Last Name'),
+              ),
+              TextField(
+                controller: ageController,
+                decoration: const InputDecoration(labelText: 'Age'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: contactNumberController,
+                decoration: const InputDecoration(labelText: 'Contact Number'),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _handleRegistration,
+                child: const Text('Register'),
+              ),
+            ],
+          ),
         ),
       ),
     );

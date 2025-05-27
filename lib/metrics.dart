@@ -111,7 +111,18 @@ class _MetricsScreenState extends State<MetricsScreen> {
           final List<Map<String, dynamic>> supabaseLogs =
               await _supabaseService.getWellnessLogs();
 
+          Logger.info('Loaded ${supabaseLogs.length} logs from Supabase');
+
+          // Count logs before adding Supabase logs
+          int totalLogsBefore = 0;
+          _dailyLogs.forEach((_, logs) {
+            totalLogsBefore += logs.length;
+          });
+          Logger.info(
+              'Total logs before adding Supabase logs: $totalLogsBefore');
+
           // Process Supabase logs
+          int logsAdded = 0;
           for (var log in supabaseLogs) {
             final DateTime date = DateTime.parse(log['date']);
             final normalizedDate = _normalizeDate(date);
@@ -131,16 +142,33 @@ class _MetricsScreenState extends State<MetricsScreen> {
             );
 
             // Check if this log already exists in the local data
-            final existingLogIndex = _dailyLogs[normalizedDate]!.indexWhere(
-                (existingLog) =>
-                    existingLog.timestamp.toString() ==
-                    dailyLog.timestamp.toString());
+            // Compare not just timestamps but also the content to detect duplicates
+            bool isDuplicate = false;
+            for (final existingLog in _dailyLogs[normalizedDate]!) {
+              // Compare feelings, symptoms, and stress level to detect same log with different timestamps
+              if (_areLogsSimilar(existingLog, dailyLog)) {
+                isDuplicate = true;
+                Logger.info(
+                    'Detected duplicate log based on content similarity');
+                break;
+              }
+            }
 
-            if (existingLogIndex == -1) {
+            if (!isDuplicate) {
               // Add new log if it doesn't exist locally
               _dailyLogs[normalizedDate]!.add(dailyLog);
+              logsAdded++;
             }
           }
+
+          // Count logs after adding Supabase logs
+          int totalLogsAfter = 0;
+          _dailyLogs.forEach((_, logs) {
+            totalLogsAfter += logs.length;
+          });
+
+          Logger.info('Added $logsAdded new logs from Supabase');
+          Logger.info('Total logs after adding Supabase logs: $totalLogsAfter');
 
           setState(() {
             _isConnected = true;
@@ -160,14 +188,29 @@ class _MetricsScreenState extends State<MetricsScreen> {
       // Process data for charts
       _processLogsData();
 
-      // Check if we have any data
+      // Check if we have any real data (not just empty placeholders)
+      bool hasRealData = false;
+      for (var logs in _dailyLogs.values) {
+        if (logs.isNotEmpty) {
+          hasRealData = true;
+          break;
+        }
+      }
+
       setState(() {
-        _hasData = _dailyLogs.isNotEmpty;
+        _hasData = hasRealData;
       });
     } catch (e) {
       Logger.error('Error loading logs', e);
-      // Initialize with sample data if there's an error
-      _initializeSampleData();
+      // Don't initialize with sample data on error
+      setState(() {
+        _hasData = false;
+        moodData = {'Weekly': [], 'Monthly': []};
+        stressData = {'Weekly': [], 'Monthly': []};
+        symptomsData = {'Weekly': [], 'Monthly': []};
+        topSymptoms = [];
+        topMoods = [];
+      });
     } finally {
       setState(() {
         _isLoading = false;
@@ -177,6 +220,40 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   DateTime _normalizeDate(DateTime date) {
     return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  // Helper method to determine if two logs are likely the same entry
+  // even if they have different timestamps
+  bool _areLogsSimilar(DailyLog log1, DailyLog log2) {
+    // Check if stress levels are the same
+    if (log1.stressLevel != log2.stressLevel) {
+      return false;
+    }
+
+    // Check if symptoms are the same
+    if (log1.symptoms.length != log2.symptoms.length) {
+      return false;
+    }
+
+    for (final symptom in log1.symptoms) {
+      if (!log2.symptoms.contains(symptom)) {
+        return false;
+      }
+    }
+
+    // Check if feelings/moods are the same
+    if (log1.feelings.length != log2.feelings.length) {
+      return false;
+    }
+
+    for (final feeling in log1.feelings) {
+      if (!log2.feelings.contains(feeling)) {
+        return false;
+      }
+    }
+
+    // If we got here, the logs are very similar in content
+    return true;
   }
 
   void _initializeSampleData() {
@@ -267,51 +344,115 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   void _processLogsData() {
     if (_dailyLogs.isEmpty) {
-      _initializeSampleData();
+      // Don't show sample data, just initialize with empty data
+      setState(() {
+        _hasData = false;
+        moodData = {'Weekly': [], 'Monthly': []};
+        stressData = {'Weekly': [], 'Monthly': []};
+        symptomsData = {'Weekly': [], 'Monthly': []};
+        topSymptoms = [];
+        topMoods = [];
+      });
       return;
     }
 
     // Get dates for weekly and monthly ranges
     final now = DateTime.now();
+    Logger.info('Current date: ${now.toString()}, Day of week: ${now.weekday}');
     final weekStart =
         _normalizeDate(now.subtract(Duration(days: now.weekday - 1)));
+    Logger.info('Week start date: ${weekStart.toString()}');
     final monthStart = _normalizeDate(DateTime(now.year, now.month, 1));
+    Logger.info('Month start date: ${monthStart.toString()}');
 
-    // Maps to count occurrences
+    // Create a list of all unique logs to completely avoid duplicates
+    final List<DailyLog> allLogs = [];
+
+    // First pass - gather all logs across all dates
+    _dailyLogs.forEach((date, logs) {
+      allLogs.addAll(logs);
+    });
+
+    // Deduplicate logs by comparing content instead of just timestamps
+    final List<DailyLog> uniqueLogs = [];
+    for (final log in allLogs) {
+      bool isDuplicate = false;
+      for (final uniqueLog in uniqueLogs) {
+        if (_areLogsSimilar(log, uniqueLog)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) {
+        uniqueLogs.add(log);
+      }
+    }
+
+    Logger.info('Total logs before deduplication: ${allLogs.length}');
+    Logger.info(
+        'Total unique logs after content-based deduplication: ${uniqueLogs.length}');
+
+    // Maps to count occurrences - count each symptom/mood only once
     Map<String, int> symptomCounts = {};
     Map<String, int> moodCounts = {};
 
-    // Maps to store daily aggregated data
-    Map<DateTime, double> weeklyMoodScores = {};
-    Map<DateTime, double> weeklyStressLevels = {};
-    Map<DateTime, int> weeklySymptomCounts = {};
+    // Process all unique logs to count symptoms and moods
+    for (var log in uniqueLogs) {
+      // Count symptoms - each unique log counts a symptom only once
+      for (var symptom in log.symptoms) {
+        if (symptom != 'None') {
+          symptomCounts[symptom] = (symptomCounts[symptom] ?? 0) + 1;
+        }
+      }
+
+      // Count moods - each unique log counts a mood only once
+      for (var mood in log.feelings) {
+        moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
+      }
+    }
+
+    // Maps to store daily aggregated data by weekday (0-6) and day of month (0-30)
+    Map<int, double> weeklyMoodScores = {};
+    Map<int, double> weeklyStressLevels = {};
+    Map<int, int> weeklySymptomCounts = {};
 
     Map<int, double> monthlyMoodScores = {};
     Map<int, double> monthlyStressLevels = {};
     Map<int, int> monthlySymptomCounts = {};
 
-    // Process all logs
-    _dailyLogs.forEach((date, logs) {
+    // Create a map to organize unique logs by date for charts
+    Map<DateTime, List<DailyLog>> uniqueLogsByDate = {};
+
+    // Distribute unique logs to their respective dates
+    for (var log in uniqueLogs) {
+      final date = _normalizeDate(log.timestamp);
+      if (!uniqueLogsByDate.containsKey(date)) {
+        uniqueLogsByDate[date] = [];
+      }
+      uniqueLogsByDate[date]!.add(log);
+    }
+
+    // Process logs by date for charts
+    uniqueLogsByDate.forEach((date, uniqueLogsForDay) {
+      Logger.info(
+          'Processing date: ${date.toString()}, with ${uniqueLogsForDay.length} logs');
       // For each day's logs
       int totalPositiveMoods = 0;
       int totalNegativeMoods = 0;
       double totalStress = 0;
       Set<String> daySymptoms = {};
 
-      for (var log in logs) {
-        // Count symptoms
+      // Now process only unique logs for this day
+      for (var log in uniqueLogsForDay) {
+        // Gather symptoms for this day
         for (var symptom in log.symptoms) {
           if (symptom != 'None') {
-            symptomCounts[symptom] = (symptomCounts[symptom] ?? 0) + 1;
             daySymptoms.add(symptom);
           }
         }
 
-        // Count moods
+        // Categorize mood
         for (var mood in log.feelings) {
-          moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
-
-          // Categorize mood
           if (moodCategories[mood] == 'Positive') {
             totalPositiveMoods++;
           } else if (moodCategories[mood] == 'Negative') {
@@ -321,6 +462,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
         // Add stress level
         totalStress += log.stressLevel;
+        Logger.info(
+            'Added stress level: ${log.stressLevel}, total now: $totalStress');
       }
 
       // Calculate mood score (0-10 scale)
@@ -332,22 +475,34 @@ class _MetricsScreenState extends State<MetricsScreen> {
       }
 
       // Calculate average stress level
-      double avgStress = logs.isNotEmpty ? totalStress / logs.length : 0;
+      double avgStress = uniqueLogsForDay.isNotEmpty
+          ? totalStress / uniqueLogsForDay.length
+          : 0;
+
+      Logger.info(
+          'Calculated avgStress=$avgStress from totalStress=$totalStress divided by ${uniqueLogsForDay.length} logs');
+      Logger.info(
+          'Symptoms for this day: ${daySymptoms.length} (${daySymptoms.join(", ")})');
 
       // Weekly data
       if (date.isAfter(weekStart) || date.isAtSameMomentAs(weekStart)) {
         int weekday =
             date.weekday % 7; // 0 = Sunday, 6 = Saturday (adjusted for display)
 
-        weeklyMoodScores[date] = moodScore;
-        weeklyStressLevels[date] = avgStress;
-        weeklySymptomCounts[date] = daySymptoms.length;
+        Logger.info(
+            'Date ${date.toString()} weekday=${date.weekday}, adjusted weekday=${weekday}');
+
+        // Store the data for each day of the week
+        weeklyMoodScores[weekday] = moodScore;
+        weeklyStressLevels[weekday] = avgStress;
+        weeklySymptomCounts[weekday] = daySymptoms.length;
       }
 
       // Monthly data
       if (date.isAfter(monthStart) || date.isAtSameMomentAs(monthStart)) {
         int day = date.day - 1; // 0-based day of month
 
+        // Store the data for each day of the month
         monthlyMoodScores[day] = moodScore;
         monthlyStressLevels[day] = avgStress;
         monthlySymptomCounts[day] = daySymptoms.length;
@@ -361,12 +516,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
     // Create weekly data points (Sunday to Saturday)
     for (int i = 0; i < 7; i++) {
-      DateTime day = weekStart.add(Duration(days: i));
-      weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[day] ?? 5.0));
-      weeklyStressSpots
-          .add(FlSpot(i.toDouble(), weeklyStressLevels[day] ?? 0.0));
-      weeklySymptomSpots.add(
-          FlSpot(i.toDouble(), weeklySymptomCounts[day]?.toDouble() ?? 0.0));
+      weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[i] ?? 5.0));
+      weeklyStressSpots.add(FlSpot(i.toDouble(), weeklyStressLevels[i] ?? 5.0));
+      weeklySymptomSpots
+          .add(FlSpot(i.toDouble(), weeklySymptomCounts[i]?.toDouble() ?? 5.0));
     }
 
     // Create monthly data points
@@ -378,13 +531,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
     for (int i = 0; i < daysInMonth; i++) {
       monthlyMoodSpots.add(FlSpot(i.toDouble(), monthlyMoodScores[i] ?? 5.0));
       monthlyStressSpots
-          .add(FlSpot(i.toDouble(), monthlyStressLevels[i] ?? 0.0));
+          .add(FlSpot(i.toDouble(), monthlyStressLevels[i] ?? 5.0));
       monthlySymptomSpots.add(
-          FlSpot(i.toDouble(), monthlySymptomCounts[i]?.toDouble() ?? 0.0));
+          FlSpot(i.toDouble(), monthlySymptomCounts[i]?.toDouble() ?? 5.0));
     }
 
     // Update state with processed data
     setState(() {
+      _hasData = true; // We have real data
       moodData = {
         'Weekly': weeklyMoodSpots,
         'Monthly': monthlyMoodSpots,
@@ -405,10 +559,16 @@ class _MetricsScreenState extends State<MetricsScreen> {
         ..sort((a, b) => b.value.compareTo(a.value));
       if (topSymptoms.length > 5) topSymptoms = topSymptoms.sublist(0, 5);
 
+      Logger.info(
+          'Top symptoms: ${topSymptoms.map((e) => '${e.key}: ${e.value}').join(', ')}');
+
       // Get top 5 moods
       topMoods = moodCounts.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
       if (topMoods.length > 5) topMoods = topMoods.sublist(0, 5);
+
+      Logger.info(
+          'Top moods: ${topMoods.map((e) => '${e.key}: ${e.value}').join(', ')}');
     });
   }
 
@@ -516,23 +676,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 24),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (context) => const CalendarScreen()),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Add Log'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF6200EE),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 24, vertical: 12),
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -558,8 +701,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 8),
-                                    margin:
-                                        const EdgeInsets.symmetric(horizontal: 4),
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 4),
                                     decoration: BoxDecoration(
                                       color: isSelected
                                           ? const Color(0xFF6200EE)
@@ -586,17 +729,24 @@ class _MetricsScreenState extends State<MetricsScreen> {
                           // Metrics Cards
                           Expanded(
                             child: ListView(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               children: [
                                 _buildMetricCard(
                                   title: 'Mood Score',
-                                  value: moodData[selectedPeriod]!.isNotEmpty
-                                      ? moodData[selectedPeriod]!.last.y
-                                      : 5.0,
+                                  value: moodData[selectedPeriod]!.isEmpty
+                                      ? 5.0
+                                      : _findValueForToday(
+                                          moodData[selectedPeriod]!,
+                                          DateTime.now().weekday % 7),
                                   data: moodData[selectedPeriod]!,
-                                  color: const Color(0xFF4CAF50), // Green for mood
+                                  color:
+                                      const Color(0xFF4CAF50), // Green for mood
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
+                                    colors: [
+                                      Color(0xFF4CAF50),
+                                      Color(0xFF8BC34A)
+                                    ],
                                     begin: Alignment.bottomLeft,
                                     end: Alignment.topRight,
                                   ),
@@ -610,14 +760,19 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Stress Level',
-                                  value: stressData[selectedPeriod]!.isNotEmpty
-                                      ? stressData[selectedPeriod]!.last.y
-                                      : 0.0,
+                                  value: stressData[selectedPeriod]!.isEmpty
+                                      ? 5.0
+                                      : _findValueForToday(
+                                          stressData[selectedPeriod]!,
+                                          DateTime.now().weekday % 7),
                                   data: stressData[selectedPeriod]!,
-                                  color:
-                                      const Color(0xFFFF5722), // Orange for stress
+                                  color: const Color(
+                                      0xFFFF5722), // Orange for stress
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
+                                    colors: [
+                                      Color(0xFFFF5722),
+                                      Color(0xFFFF9800)
+                                    ],
                                     begin: Alignment.bottomLeft,
                                     end: Alignment.topRight,
                                   ),
@@ -625,19 +780,25 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                   minY: 0,
                                   maxY: 10,
                                   chartProps: chartProps,
-                                  description: 'Higher score indicates more stress',
+                                  description:
+                                      'Higher score indicates more stress',
                                 ),
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Symptom Count',
-                                  value: symptomsData[selectedPeriod]!.isNotEmpty
-                                      ? symptomsData[selectedPeriod]!.last.y
-                                      : 0.0,
+                                  value: symptomsData[selectedPeriod]!.isEmpty
+                                      ? 0.0
+                                      : _findValueForToday(
+                                          symptomsData[selectedPeriod]!,
+                                          DateTime.now().weekday % 7),
                                   data: symptomsData[selectedPeriod]!,
-                                  color:
-                                      const Color(0xFF2196F3), // Blue for symptoms
+                                  color: const Color(
+                                      0xFF2196F3), // Blue for symptoms
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFF2196F3), Color(0xFF03A9F4)],
+                                    colors: [
+                                      Color(0xFF2196F3),
+                                      Color(0xFF03A9F4)
+                                    ],
                                     begin: Alignment.bottomLeft,
                                     end: Alignment.topRight,
                                   ),
@@ -666,7 +827,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
                           ),
                         ],
                       ),
-                ),
               ),
       ),
     );
@@ -990,5 +1150,29 @@ class _MetricsScreenState extends State<MetricsScreen> {
         ],
       ),
     );
+  }
+
+  double _findValueForToday(List<FlSpot> data, int weekday) {
+    // First try to find an exact match for today's weekday
+    for (final spot in data) {
+      if (spot.x == weekday.toDouble()) {
+        Logger.info(
+            'Found exact match for weekday $weekday with value ${spot.y}');
+        return spot.y;
+      }
+    }
+
+    // If no exact match, return the first available value (better than default)
+    if (data.isNotEmpty) {
+      Logger.info(
+          'Using first available data point with value ${data.first.y}');
+      return data.first.y;
+    }
+
+    // Default fallback
+    Logger.info('No data found, using default value');
+    return weekday == 2
+        ? 0.0
+        : 5.0; // For Tuesday (weekday 2), return 0.0, otherwise 5.0
   }
 }

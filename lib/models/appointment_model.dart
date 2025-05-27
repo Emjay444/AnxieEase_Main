@@ -1,10 +1,12 @@
 enum AppointmentStatus {
   pending,
   accepted,
+  approved,
   denied,
   confirmed,
   completed,
   cancelled,
+  archived,
 }
 
 class AppointmentModel {
@@ -14,8 +16,8 @@ class AppointmentModel {
   final DateTime appointmentDate;
   final String reason;
   final AppointmentStatus status;
-  final DateTime createdAt;
   final String? responseMessage;
+  final DateTime createdAt;
 
   AppointmentModel({
     required this.id,
@@ -24,23 +26,44 @@ class AppointmentModel {
     required this.appointmentDate,
     required this.reason,
     required this.status,
-    required this.createdAt,
     this.responseMessage,
+    required this.createdAt,
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
+    // Parse status from string
+    AppointmentStatus parseStatus(String statusStr) {
+      switch (statusStr.toLowerCase()) {
+        case 'pending':
+          return AppointmentStatus.pending;
+        case 'accepted':
+          return AppointmentStatus.accepted;
+        case 'approved':
+          return AppointmentStatus.approved;
+        case 'denied':
+          return AppointmentStatus.denied;
+        case 'confirmed':
+          return AppointmentStatus.confirmed;
+        case 'completed':
+          return AppointmentStatus.completed;
+        case 'cancelled':
+          return AppointmentStatus.cancelled;
+        case 'archived':
+          return AppointmentStatus.archived;
+        default:
+          return AppointmentStatus.pending;
+      }
+    }
+
     return AppointmentModel(
-      id: json['id'],
-      psychologistId: json['psychologist_id'],
-      userId: json['user_id'],
+      id: json['id'] ?? 'unknown',
+      psychologistId: json['psychologist_id'] ?? 'unknown',
+      userId: json['user_id'] ?? 'unknown',
       appointmentDate: DateTime.parse(json['appointment_date']),
-      reason: json['reason'],
-      status: AppointmentStatus.values.firstWhere(
-        (e) => e.toString().split('.').last == json['status'],
-        orElse: () => AppointmentStatus.pending,
-      ),
-      createdAt: DateTime.parse(json['created_at']),
+      reason: json['reason'] ?? 'No reason provided',
+      status: parseStatus(json['status'] ?? 'pending'),
       responseMessage: json['response_message'],
+      createdAt: DateTime.parse(json['created_at']),
     );
   }
 
@@ -63,6 +86,8 @@ class AppointmentModel {
         return 'Pending';
       case AppointmentStatus.accepted:
         return 'Accepted';
+      case AppointmentStatus.approved:
+        return 'Approved';
       case AppointmentStatus.denied:
         return 'Denied';
       case AppointmentStatus.confirmed:
@@ -71,6 +96,8 @@ class AppointmentModel {
         return 'Completed';
       case AppointmentStatus.cancelled:
         return 'Cancelled';
+      case AppointmentStatus.archived:
+        return 'Archived';
     }
   }
 }

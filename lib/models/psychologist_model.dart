@@ -19,12 +19,12 @@ class PsychologistModel {
 
   factory PsychologistModel.fromJson(Map<String, dynamic> json) {
     return PsychologistModel(
-      id: json['id'],
-      name: json['name'],
-      specialization: json['specialization'],
-      contactEmail: json['contact_email'],
-      contactPhone: json['contact_phone'],
-      biography: json['biography'],
+      id: json['id'] ?? 'unknown-id',
+      name: json['name'] ?? 'Unknown Psychologist',
+      specialization: json['specialization'] ?? 'General Psychology',
+      contactEmail: json['contact_email'] ?? 'contact@anxiease.com',
+      contactPhone: json['contact_phone'] ?? 'N/A',
+      biography: json['biography'] ?? 'No biography available',
       imageUrl: json['image_url'],
     );
   }
@@ -39,5 +39,21 @@ class PsychologistModel {
       'biography': biography,
       'image_url': imageUrl,
     };
+  }
+
+  // Get initials from name (e.g., "John Doe" -> "JD")
+  String get initials {
+    final nameParts = name.split(' ').where((part) => part.isNotEmpty).toList();
+
+    if (nameParts.length >= 2) {
+      // Get first letter of first and last name
+      return nameParts.first[0] + nameParts.last[0];
+    } else if (nameParts.isNotEmpty) {
+      // If only one name, use the first letter
+      return nameParts.first[0];
+    } else {
+      // Fallback if name is empty
+      return '?';
+    }
   }
 }
