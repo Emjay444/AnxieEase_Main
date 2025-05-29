@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +7,62 @@ import 'dart:convert';
 import 'calendar_screen.dart';
 import 'utils/logger.dart';
 import 'services/supabase_service.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+
+class DailyLog {
+  final List<String> feelings; // Moods
+  final double stressLevel;
+  final List<String> symptoms;
+  final DateTime timestamp;
+  final String? journal;
+  final String? id; // Supabase record ID
+
+  DailyLog({
+    required this.feelings,
+    required this.stressLevel,
+    required this.symptoms,
+    required this.timestamp,
+    this.journal,
+    this.id,
+  });
+
+  // Create from Hive JSON
+  factory DailyLog.fromJson(Map<dynamic, dynamic> json) {
+    return DailyLog(
+      feelings: List<String>.from(json['feelings'] ?? []),
+      stressLevel: (json['stressLevel'] ?? 5.0).toDouble(),
+      symptoms: List<String>.from(json['symptoms'] ?? []),
+      timestamp: DateTime.parse(json['timestamp']),
+      journal: json['journal'],
+      id: json['id'],
+    );
+  }
+
+  // Convert to JSON for Hive
+  Map<String, dynamic> toJson() {
+    return {
+      'feelings': feelings,
+      'stressLevel': stressLevel,
+      'symptoms': symptoms,
+      'timestamp': timestamp.toIso8601String(),
+      'journal': journal,
+      'id': id,
+    };
+  }
+
+  // Convert to JSON for Supabase
+  Map<String, dynamic> toSupabaseJson() {
+    return {
+      'date': DateFormat('yyyy-MM-dd').format(timestamp),
+      'feelings': feelings,
+      'stress_level': stressLevel,
+      'symptoms': symptoms,
+      'timestamp': timestamp.toIso8601String(),
+      'journal': journal ?? '',
+    };
+  }
+}
 
 class MetricsScreen extends StatefulWidget {
   const MetricsScreen({super.key});
@@ -39,6 +97,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     'Confused': 'Negative',
     'Anxious': 'Negative',
     'Awe': 'Neutral',
+    'Custom': 'Neutral', // Add custom mood as a neutral category
   };
 
   // Data for charts
@@ -407,7 +466,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
       // Count moods - each unique log counts a mood only once
       for (var mood in log.feelings) {
-        moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
+        // Consolidate all custom moods under a single "Custom" entry
+        if (mood.startsWith('Custom:')) {
+          moodCounts['Custom'] = (moodCounts['Custom'] ?? 0) + 1;
+        } else {
+          moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
+        }
       }
     }
 
@@ -490,7 +554,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             date.weekday % 7; // 0 = Sunday, 6 = Saturday (adjusted for display)
 
         Logger.info(
-            'Date ${date.toString()} weekday=${date.weekday}, adjusted weekday=${weekday}');
+            'Date ${date.toString()} weekday=${date.weekday}, adjusted weekday=$weekday');
 
         // Store the data for each day of the week
         weeklyMoodScores[weekday] = moodScore;
@@ -612,7 +676,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chartProps = getChartProperties(selectedPeriod);
+    final Map<String, dynamic> chartProps = getChartProperties(selectedPeriod);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1110,6 +1174,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     final percentage =
                         maxCount > 0 ? (item.value / maxCount) * 100 : 0.0;
 
+                    // Modify display name for custom moods
+                    String displayName = item.key;
+                    if (displayName.startsWith('Custom:')) {
+                      displayName = 'Custom';
+                    }
+
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12.0),
                       child: Column(
@@ -1119,7 +1189,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                item.key,
+                                displayName,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,

@@ -71,8 +71,338 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (!mounted) return;
 
-    // Navigate to the appropriate screen
-    switch (notification['related_screen']) {
+    // Show notification details modal instead of just navigating
+    _showNotificationDetails(
+      notification['title'],
+      notification['message'],
+      _getDisplayTime(notification['created_at']),
+      notification['type'] ?? 'info',
+      notification,
+    );
+  }
+
+  String _getDisplayTime(String createdAt) {
+    final DateTime date = DateTime.parse(createdAt);
+    final String timeAgo = timeago.format(date);
+    return timeAgo;
+  }
+
+  // Add a method to show notification details
+  void _showNotificationDetails(String title, String message, String time,
+      String type, Map<String, dynamic> notification) {
+    Color getTypeColor() {
+      switch (type) {
+        case 'warning':
+          return Colors.orange;
+        case 'alert':
+          return Colors.red;
+        case 'log':
+          return Colors.green;
+        case 'info':
+          return Colors.blue;
+        default:
+          return Colors.grey;
+      }
+    }
+
+    IconData getTypeIcon() {
+      switch (type) {
+        case 'warning':
+        case 'alert':
+          return Icons.warning;
+        case 'log':
+          return Icons.check_circle;
+        case 'info':
+        case 'reminder':
+          return Icons.notifications;
+        default:
+          return Icons.notifications;
+      }
+    }
+
+    // Helper function to categorize notifications - not displayed to user
+    String getSeverityLevel() {
+      if (title.contains('🟢') || title.contains('Mild')) return 'Mild';
+      if (title.contains('🟠') || title.contains('Moderate')) return 'Moderate';
+      if (title.contains('🔴') || title.contains('Severe')) return 'Severe';
+      if (title.contains('Mood Pattern')) return 'Informational';
+      return 'Normal';
+    }
+
+    String getRecommendation() {
+      if (title.contains('Mood Pattern')) {
+        return 'Consider using calming exercises to help manage anxiety when feeling anxious or fearful.';
+      } else if (title.contains('High Stress')) {
+        return 'Try breathing exercises to help reduce stress levels and promote relaxation.';
+      } else if (title.contains('Symptom')) {
+        return 'Monitor your symptoms and use appropriate techniques to manage your anxiety.';
+      } else {
+        return 'Consider using the breathing exercises and other tools available in the app.';
+      }
+    }
+
+    List<String> getActionItems() {
+      if (title.contains('Mood Pattern')) {
+        return [
+          'Use breathing exercises',
+          'Practice mindfulness meditation',
+          'Record your triggers in journal',
+          'Try progressive muscle relaxation'
+        ];
+      } else if (title.contains('High Stress')) {
+        return [
+          'Practice 4-7-8 breathing technique',
+          'Take a short break from current activities',
+          'Use guided meditation',
+          'Find a quiet space to relax'
+        ];
+      } else if (title.contains('Symptom')) {
+        return [
+          'Track your symptoms in the journal',
+          'Use appropriate breathing techniques',
+          'Consider relaxation exercises',
+          'Monitor changes in symptoms'
+        ];
+      } else {
+        return [
+          'Use breathing exercises',
+          'Monitor symptoms',
+          'Practice self-care activities',
+          'Use the app resources'
+        ];
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: getTypeColor().withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        getTypeIcon(),
+                        color: getTypeColor(),
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E2432),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Details Section
+                      const Text(
+                        'Details',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          message,
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 16,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Recommendation Section
+                      const Text(
+                        'Recommendation',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue[100]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.lightbulb_outline,
+                                color: Colors.blue[600]),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                getRecommendation(),
+                                style: TextStyle(
+                                  color: Colors.blue[800],
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Action Items Section
+                      const Text(
+                        'Suggested Actions',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E2432),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...getActionItems()
+                          .map((action) => Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_outline,
+                                      color: getTypeColor(),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        action,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Color(0xFF1E2432),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Action Button
+              Container(
+                padding: const EdgeInsets.all(24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      // Navigate to breathing exercise screen instead
+                      Navigator.pushNamed(context, '/breathing');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: getTypeColor(),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Try Breathing Exercise',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper method to navigate to related screens
+  void _navigateToRelatedScreen(Map<String, dynamic> notification) {
+    final String? relatedScreen = notification['related_screen'];
+    if (relatedScreen == null) return;
+
+    switch (relatedScreen) {
       case 'alert_log':
         Navigator.pushNamed(context, '/alert_log');
         break;
@@ -196,6 +526,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final String timeAgo = timeago.format(createdAt);
     final String formattedDate = _dateFormatter.format(createdAt);
     final bool isRead = notification['read'] ?? false;
+    final String title = notification['title'] ?? '';
+    final String type = notification['type'] ?? '';
+
+    // Check if this is a reminder notification that should not have a popup modal
+    bool isReminder = type == 'reminder' ||
+        title.contains('Anxiety Check-in') ||
+        title.contains('Anxiety Prevention') ||
+        title.contains('Wellness Reminder') ||
+        title.contains('Mental Health Moment') ||
+        title.contains('Relaxation Reminder');
 
     return Dismissible(
       key: Key(notification['id']),
@@ -258,27 +598,42 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             Text(notification['message']),
             const SizedBox(height: 4),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  timeAgo,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      timeAgo,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formattedDate,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  formattedDate,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
+                // Show arrow indicator only for clickable notifications
+                if (!isReminder)
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 12,
+                    color: Colors.grey[400],
                   ),
-                ),
               ],
             ),
           ],
         ),
-        onTap: () => _handleNotificationTap(notification),
+        // For regular notifications, show modal. For reminders or unread notifications, just mark as read
+        onTap: isReminder
+            ? (!isRead ? () => _markNotificationAsRead(notification) : null)
+            : () => _handleNotificationTap(notification),
       ),
     );
   }
@@ -305,6 +660,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           backgroundColor: Colors.grey,
           child: Icon(Icons.notifications, color: Colors.white),
         );
+    }
+  }
+
+  // Add a method to just mark notifications as read without showing details
+  Future<void> _markNotificationAsRead(
+      Map<String, dynamic> notification) async {
+    if (!notification['read']) {
+      try {
+        await _supabaseService.markNotificationAsRead(notification['id']);
+        setState(() {
+          notification['read'] = true;
+          _unreadCount = _unreadCount - 1;
+        });
+        await _notificationService.updateBadgeCount(_unreadCount);
+      } catch (e) {
+        debugPrint('Error marking notification as read: $e');
+      }
     }
   }
 

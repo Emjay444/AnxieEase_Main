@@ -7,7 +7,6 @@ import 'providers/notification_provider.dart';
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
-import 'services/severity_notifier.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -43,11 +42,8 @@ void main() async {
   // Initialize storage service
   await StorageService().init();
 
-  // Initialize SeverityNotifier for anxiety alerts
-  final severityNotifier = SeverityNotifier();
-
   // Start listening for Firebase data changes (but skip initial notifications)
-  severityNotifier.initializeListener();
+  notificationService.initializeListener();
 
   runApp(
     MultiProvider(
@@ -55,7 +51,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
-        ChangeNotifierProvider.value(value: severityNotifier),
+        ChangeNotifierProvider.value(value: notificationService),
       ],
       child: const MyApp(),
     ),

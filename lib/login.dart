@@ -4,7 +4,6 @@ import 'dart:async'; // Import for Timer
 import 'homepage.dart';
 import 'forgotpass.dart';
 import 'providers/auth_provider.dart';
-import 'register.dart';
 import 'utils/logger.dart';
 import 'services/storage_service.dart';
 

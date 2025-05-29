@@ -30,7 +30,7 @@ class BreathingExercise {
       holdTime: 7,
       exhaleTime: 8,
       technique: 'Inhale through nose, hold, then exhale through mouth',
-      soundUrl: 'assets/audio/478breathing.mp3',
+      soundUrl: 'assets/audio/Bilateral1.mp3',
     ),
     BreathingExercise(
       id: '2',
@@ -41,7 +41,7 @@ class BreathingExercise {
       exhaleTime: 4,
       holdOutTime: 4,
       technique: 'Equal counts for inhale, hold, exhale, and hold',
-      soundUrl: 'assets/audio/boxbreathing.mp3',
+      soundUrl: 'assets/audio/Bilateral2.mp3',
     ),
     BreathingExercise(
       id: '3',
@@ -50,7 +50,7 @@ class BreathingExercise {
       inhaleTime: 4,
       exhaleTime: 6,
       technique: 'Longer exhale to activate relaxation response',
-      soundUrl: 'assets/audio/calmingbreath.mp3',
+      soundUrl: 'assets/audio/Bilateral3.mp3',
     ),
   ];
 }

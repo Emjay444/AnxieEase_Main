@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
+import 'package:intl/intl.dart';
 
 class RegisterScreen extends StatefulWidget {
   final VoidCallback onSwitch;
@@ -15,10 +16,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController middleNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
+  final TextEditingController birthDateController = TextEditingController();
+  final TextEditingController contactNumberController = TextEditingController();
+  final TextEditingController emergencyContactController =
+      TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
+
+  DateTime? _selectedBirthDate;
+  String? _selectedGender;
+
+  // List of gender options for dropdown
+  final List<String> _genderOptions = [
+    'Male',
+    'Female',
+    'Other',
+    'Prefer not to say'
+  ];
 
   // Form validation
   final _formKey = GlobalKey<FormState>();
@@ -26,6 +42,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'firstName': '',
     'middleName': '',
     'lastName': '',
+    'birthDate': '',
+    'gender': '',
+    'contactNumber': '',
+    'emergencyContact': '',
     'email': '',
     'password': '',
     'confirmPassword': '',
@@ -78,6 +98,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 'Numbers and special characters are not allowed';
           } else {
             _fieldErrors['lastName'] = '';
+          }
+        });
+      }
+    });
+
+    // Add listener for contact number validation
+    contactNumberController.addListener(() {
+      if (contactNumberController.text.isNotEmpty) {
+        setState(() {
+          if (!_isValidPhoneNumber(contactNumberController.text)) {
+            _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
+          } else {
+            _fieldErrors['contactNumber'] = '';
+          }
+        });
+      }
+    });
+
+    // Add listener for emergency contact validation
+    emergencyContactController.addListener(() {
+      if (emergencyContactController.text.isNotEmpty) {
+        setState(() {
+          if (!_isValidPhoneNumber(emergencyContactController.text)) {
+            _fieldErrors['emergencyContact'] =
+                'Please enter a valid phone number';
+          } else {
+            _fieldErrors['emergencyContact'] = '';
           }
         });
       }
@@ -137,6 +184,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     firstNameController.dispose();
     middleNameController.dispose();
     lastNameController.dispose();
+    birthDateController.dispose();
+    contactNumberController.dispose();
+    emergencyContactController.dispose();
     emailController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
@@ -158,6 +208,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return emailRegExp.hasMatch(email);
   }
 
+  // Validate birth date
+  bool _isValidBirthDate(DateTime? birthDate) {
+    if (birthDate == null) return false;
+
+    final now = DateTime.now();
+    final minDate = DateTime(now.year - 120); // 120 years ago maximum
+    final maxDate = DateTime(now.year - 13); // At least 13 years old
+
+    return birthDate.isAfter(minDate) && birthDate.isBefore(maxDate);
+  }
+
+  // Validate phone number
+  bool _isValidPhoneNumber(String phone) {
+    // Allow digits, spaces, dashes, and parentheses
+    final RegExp phoneRegExp = RegExp(r'^[\d\s\-()]+$');
+    return phoneRegExp.hasMatch(phone) &&
+        phone.length >= 7; // Basic length check
+  }
+
   // Reset all field errors
   void _resetFieldErrors() {
     setState(() {
@@ -165,6 +234,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _fieldErrors[key] = '';
       }
     });
+  }
+
+  // Show date picker to select birth date
+  Future<void> _selectBirthDate(BuildContext context) async {
+    final DateTime now = DateTime.now();
+    final DateTime initialDate =
+        _selectedBirthDate ?? DateTime(now.year - 20, now.month, now.day);
+    final DateTime firstDate =
+        DateTime(now.year - 120); // 120 years ago maximum
+    final DateTime lastDate =
+        DateTime(now.year - 13, now.month, now.day); // At least 13 years old
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isAfter(lastDate) ? lastDate : initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF3AA772), // Header background color
+              onPrimary: Colors.white, // Header text color
+              onSurface: Colors.black, // Calendar text color
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF3AA772), // Button text color
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && picked != _selectedBirthDate) {
+      setState(() {
+        _selectedBirthDate = picked;
+        birthDateController.text = DateFormat('MMM dd, yyyy').format(picked);
+
+        // Validate birth date
+        if (!_isValidBirthDate(picked)) {
+          _fieldErrors['birthDate'] =
+              'Please enter a valid birth date (13-120 years old)';
+        } else {
+          _fieldErrors['birthDate'] = '';
+        }
+      });
+    }
   }
 
   // Validate all fields and return true if valid
@@ -203,6 +322,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } else if (!_isValidName(lastNameController.text.trim())) {
       _fieldErrors['lastName'] =
           'Numbers and special characters are not allowed';
+      isValid = false;
+    }
+
+    // Birth Date validation
+    if (_selectedBirthDate == null) {
+      _fieldErrors['birthDate'] = 'Birth date is required';
+      isValid = false;
+    } else if (!_isValidBirthDate(_selectedBirthDate)) {
+      _fieldErrors['birthDate'] =
+          'Please enter a valid birth date (13-120 years old)';
+      isValid = false;
+    }
+
+    // Gender validation
+    if (_selectedGender == null) {
+      _fieldErrors['gender'] = 'Please select a gender';
+      isValid = false;
+    }
+
+    // Contact number validation
+    if (contactNumberController.text.trim().isNotEmpty &&
+        !_isValidPhoneNumber(contactNumberController.text.trim())) {
+      _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
+      isValid = false;
+    }
+
+    // Emergency contact validation
+    if (emergencyContactController.text.trim().isNotEmpty &&
+        !_isValidPhoneNumber(emergencyContactController.text.trim())) {
+      _fieldErrors['emergencyContact'] = 'Please enter a valid phone number';
       isValid = false;
     }
 
@@ -245,7 +394,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // Helper method to build input field
   Widget buildInputField(TextEditingController controller, String label,
-      {String? errorText}) {
+      {String? errorText, bool isDatePicker = false}) {
     bool isPassword = label.toLowerCase().contains('password');
 
     // Check if there's an error with this field
@@ -279,6 +428,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         obscureText: isPassword
             ? (label == "Password" ? _obscurePassword : _obscureConfirmPassword)
             : false,
+        readOnly:
+            isDatePicker, // Make the field read-only if it's a date picker
+        onTap: isDatePicker
+            ? () => _selectBirthDate(context)
+            : null, // Show date picker when tapped
         // Allow all input, validation will show errors for invalid characters
         decoration: InputDecoration(
           labelText: label,
@@ -308,29 +462,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: Colors.red, width: 2),
           ),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    label == "Password"
-                        ? (_obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility)
-                        : (_obscureConfirmPassword
-                            ? Icons.visibility_off
-                            : Icons.visibility),
-                    color: Colors.grey,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      if (label == "Password") {
-                        _obscurePassword = !_obscurePassword;
-                      } else {
-                        _obscureConfirmPassword = !_obscureConfirmPassword;
-                      }
-                    });
-                  },
-                )
-              : null,
+          suffixIcon: isDatePicker
+              ? const Icon(Icons.calendar_today, color: Colors.grey)
+              : (isPassword
+                  ? IconButton(
+                      icon: Icon(
+                        label == "Password"
+                            ? (_obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility)
+                            : (_obscureConfirmPassword
+                                ? Icons.visibility_off
+                                : Icons.visibility),
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          if (label == "Password") {
+                            _obscurePassword = !_obscurePassword;
+                          } else {
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
+                          }
+                        });
+                      },
+                    )
+                  : null),
         ),
       ),
     );
@@ -363,6 +519,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       );
 
+      // Debug log start of registration
+      print(
+          'Starting registration process for email: ${emailController.text.trim()}');
+
       // Combine first, middle, and last name into full name
       String fullName = firstNameController.text.trim();
       if (middleNameController.text.trim().isNotEmpty) {
@@ -370,13 +530,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
       fullName += " ${lastNameController.text.trim()}";
 
+      print(
+          'Calling authProvider.signUp with email: ${emailController.text.trim()}, name: $fullName');
+
       await authProvider.signUp(
         email: emailController.text.trim(),
         password: passwordController.text,
         firstName: firstNameController.text.trim(),
         middleName: middleNameController.text.trim(),
         lastName: lastNameController.text.trim(),
+        birthDate: _selectedBirthDate,
+        contactNumber: contactNumberController.text.trim(),
+        emergencyContact: emergencyContactController.text.trim(),
+        gender: _selectedGender,
       );
+
+      print('authProvider.signUp completed successfully');
 
       // Close loading indicator
       if (mounted) {
@@ -441,13 +610,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       String errorMessage = e.toString();
+      print('Registration error: $errorMessage');
 
       // Clean up the error message
       if (errorMessage.contains('Exception: ')) {
         errorMessage = errorMessage.replaceAll('Exception: ', '');
       }
 
-      // Show error message
+      // Show error message to user
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(errorMessage),
@@ -457,9 +627,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             label: 'OK',
             textColor: Colors.white,
             onPressed: () {
-              if (mounted) {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              }
+              // Dismiss the snackbar early
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
             },
           ),
         ),
@@ -542,6 +711,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           lastNameController,
                           "Last Name",
                           errorText: _fieldErrors['lastName'],
+                        ),
+                        const SizedBox(height: 15),
+                        buildInputField(
+                          birthDateController,
+                          "Birth Date",
+                          errorText: _fieldErrors['birthDate'],
+                          isDatePicker: true,
+                        ),
+                        const SizedBox(height: 15),
+                        // Gender dropdown
+                        _buildGenderDropdown(),
+                        const SizedBox(height: 15),
+                        buildInputField(
+                          contactNumberController,
+                          "Contact Number",
+                          errorText: _fieldErrors['contactNumber'],
+                        ),
+                        const SizedBox(height: 15),
+                        buildInputField(
+                          emergencyContactController,
+                          "Emergency Contact Number",
+                          errorText: _fieldErrors['emergencyContact'],
                         ),
                         const SizedBox(height: 15),
                         buildInputField(
@@ -653,6 +844,75 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGenderDropdown() {
+    // Check if there's an error with this field
+    bool hasError = _fieldErrors['gender']?.isNotEmpty == true;
+
+    // Only show error text if form has been submitted or if the field has been edited and has an error
+    String? displayErrorText =
+        (_formSubmitted || (_selectedGender != null && hasError))
+            ? _fieldErrors['gender']
+            : null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(25),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: DropdownButtonFormField<String>(
+        value: _selectedGender,
+        decoration: InputDecoration(
+          labelText: 'Gender',
+          errorText: displayErrorText,
+          errorStyle: const TextStyle(color: Colors.red),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.grey),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF00634A)),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.red, width: 2),
+          ),
+        ),
+        onChanged: (String? newValue) {
+          setState(() {
+            _selectedGender = newValue;
+            if (_fieldErrors['gender']?.isNotEmpty == true) {
+              _fieldErrors['gender'] = '';
+            }
+          });
+        },
+        items: _genderOptions.map<DropdownMenuItem<String>>((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
+        hint: const Text('Select Gender'),
       ),
     );
   }

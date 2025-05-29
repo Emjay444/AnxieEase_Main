@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'services/breathing_service.dart';
+import 'dart:async';
 
 class BreathingScreen extends StatefulWidget {
   const BreathingScreen({super.key});
@@ -19,8 +20,18 @@ class _BreathingScreenState extends State<BreathingScreen>
   final ValueNotifier<String> _motivationalMessage = ValueNotifier<String>('');
   bool _isDisposed = false;
   BreathingExercise? selectedExercise;
-  int? _selectedDuration; // in minutes
+  int _selectedMinutes = 5; // Default 5 minutes
+  int _selectedSeconds = 0; // Default 0 seconds
   bool _showDurationSelection = false;
+
+  // Add timer-related variables
+  Timer? _sessionTimer;
+  int _remainingSeconds = 0;
+  String get _formattedRemainingTime {
+    final minutes = _remainingSeconds ~/ 60;
+    final seconds = _remainingSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   final List<String> _motivationalMessages = [
     "You're doing great, keep breathing",
@@ -82,6 +93,7 @@ class _BreathingScreenState extends State<BreathingScreen>
     _animationController?.dispose();
     _audioPlayer?.stop();
     _audioPlayer?.dispose();
+    _sessionTimer?.cancel();
     super.dispose();
   }
 
@@ -103,7 +115,8 @@ class _BreathingScreenState extends State<BreathingScreen>
             if (selectedExercise != null) {
               setState(() {
                 selectedExercise = null;
-                _selectedDuration = null;
+                _selectedMinutes = 5;
+                _selectedSeconds = 0;
                 _showDurationSelection = false;
               });
             } else {
@@ -169,6 +182,16 @@ class _BreathingScreenState extends State<BreathingScreen>
   }
 
   Widget _buildDurationSelection() {
+    // List of available minutes (from 0 to 30)
+    final List<int> minutes = List.generate(31, (index) => index);
+
+    // List of available seconds (0 to 59)
+    final List<int> seconds = List.generate(60, (index) => index);
+
+    // Calculate the initial item for both pickers
+    final int initialMinutesItem = minutes.indexOf(_selectedMinutes);
+    final int initialSecondsItem = seconds.indexOf(_selectedSeconds);
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -178,39 +201,148 @@ class _BreathingScreenState extends State<BreathingScreen>
               fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         const SizedBox(height: 40),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildDurationButton(1),
-                const SizedBox(width: 20),
-                _buildDurationButton(3),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildDurationButton(5),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildDurationButton(10),
-              ],
-            ),
-          ],
+
+        // Time picker container
+        Container(
+          height: 200,
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          child: Row(
+            children: [
+              // Minutes picker
+              Expanded(
+                child: ListWheelScrollView.useDelegate(
+                  itemExtent: 50,
+                  perspective: 0.005,
+                  diameterRatio: 1.2,
+                  physics: const FixedExtentScrollPhysics(),
+                  controller: FixedExtentScrollController(
+                      initialItem: initialMinutesItem),
+                  onSelectedItemChanged: (index) {
+                    setState(() {
+                      _selectedMinutes = minutes[index];
+                    });
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: minutes.length,
+                    builder: (context, index) {
+                      return Center(
+                        child: Text(
+                          '${minutes[index]}',
+                          style: TextStyle(
+                            fontSize: index == initialMinutesItem ? 30 : 20,
+                            fontWeight: index == initialMinutesItem
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: index == initialMinutesItem
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // Center divider
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  child: Text(
+                    ':',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Seconds picker
+              Expanded(
+                child: ListWheelScrollView.useDelegate(
+                  itemExtent: 50,
+                  perspective: 0.005,
+                  diameterRatio: 1.2,
+                  physics: const FixedExtentScrollPhysics(),
+                  controller: FixedExtentScrollController(
+                      initialItem: initialSecondsItem),
+                  onSelectedItemChanged: (index) {
+                    setState(() {
+                      _selectedSeconds = seconds[index];
+                    });
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: seconds.length,
+                    builder: (context, index) {
+                      return Center(
+                        child: Text(
+                          seconds[index].toString().padLeft(2, '0'),
+                          style: TextStyle(
+                            fontSize: index == initialSecondsItem ? 30 : 20,
+                            fontWeight: index == initialSecondsItem
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: index == initialSecondsItem
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+
         const SizedBox(height: 40),
+
+        // Start button
+        ElevatedButton(
+          onPressed: () {
+            if (_selectedMinutes == 0 && _selectedSeconds == 0) {
+              // Show error if no time selected
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Please select a valid duration'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            _showTemporaryHeadphoneReminder();
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green.shade600,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(200, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(25),
+            ),
+          ),
+          child: const Text(
+            'Start Session',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
         TextButton(
           onPressed: () {
             setState(() {
               selectedExercise = null;
-              _selectedDuration = null;
+              _selectedMinutes = 5;
+              _selectedSeconds = 0;
               _showDurationSelection = false;
             });
           },
@@ -226,47 +358,6 @@ class _BreathingScreenState extends State<BreathingScreen>
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildDurationButton(int minutes) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              _selectedDuration = minutes;
-            });
-            _showTemporaryHeadphoneReminder();
-          },
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            width: 100,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            child: Text(
-              '$minutes min',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: Colors.green.shade700,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -348,6 +439,33 @@ class _BreathingScreenState extends State<BreathingScreen>
           ),
           child: Column(
             children: [
+              // Add remaining time indicator
+              if (_isPlaying || _isPaused)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.timer, color: Colors.green.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        _formattedRemainingTime,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Text(
                 selectedExercise?.description ?? '',
                 textAlign: TextAlign.center,
@@ -407,7 +525,8 @@ class _BreathingScreenState extends State<BreathingScreen>
                   _stopExercise();
                   setState(() {
                     selectedExercise = null;
-                    _selectedDuration = null;
+                    _selectedMinutes = 5;
+                    _selectedSeconds = 0;
                     _showDurationSelection = false;
                   });
                 },
@@ -743,6 +862,25 @@ class _BreathingScreenState extends State<BreathingScreen>
         }
       });
 
+    // Calculate total session duration in seconds
+    _remainingSeconds = (_selectedMinutes * 60) + _selectedSeconds;
+
+    // Set up session timer
+    _sessionTimer?.cancel();
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isPaused) return; // Don't decrement time if paused
+
+      setState(() {
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          // Session complete
+          _completeSession();
+          timer.cancel();
+        }
+      });
+    });
+
     setState(() {
       _isPlaying = true;
       _isPaused = false;
@@ -784,6 +922,84 @@ class _BreathingScreenState extends State<BreathingScreen>
 
     _animationController?.stop();
     _audioPlayer?.pause();
+    _sessionTimer?.cancel();
+  }
+
+  void _completeSession() {
+    _stopExercise();
+
+    // Show completion dialog
+    if (!_isDisposed && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  size: 60,
+                  color: Colors.green.shade600,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Session Complete',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Great job! You\'ve completed your breathing session.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    setState(() {
+                      selectedExercise = null;
+                      _selectedMinutes = 5;
+                      _selectedSeconds = 0;
+                      _showDurationSelection = false;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text(
+                    'Return to Selection',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   int _calculateTotalDuration(BreathingExercise exercise) {

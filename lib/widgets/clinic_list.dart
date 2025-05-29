@@ -105,7 +105,7 @@ class _ClinicListViewState extends State<ClinicListView> {
           ),
         ),
 
-        // Travel mode selection
+        // Travel mode selection (improved visual distinction)
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -167,10 +167,12 @@ class _ClinicListViewState extends State<ClinicListView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Improved illustration
           Icon(
-            Icons.location_off,
+            Icons.local_hospital,
             size: 80,
-            color: Colors.grey[400],
+            color: Colors.teal[200],
+            semanticLabel: 'No clinics found',
           ),
           const SizedBox(height: 16),
           Text(
@@ -186,7 +188,7 @@ class _ClinicListViewState extends State<ClinicListView> {
           const SizedBox(height: 8),
           Text(
             _searchQuery.isEmpty
-                ? 'Try adjusting your search area or travel mode'
+                ? 'Try adjusting your travel mode or check your location settings.'
                 : 'Try different keywords or clear your search',
             style: TextStyle(
               color: Colors.grey[600],
@@ -222,33 +224,34 @@ class _ClinicListViewState extends State<ClinicListView> {
   }) {
     final isSelected = widget.selectedTravelMode == mode;
 
-    return GestureDetector(
-      onTap: () => widget.onTravelModeChanged(mode),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.teal[700] : Colors.grey[200],
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.grey[600],
-              size: 22,
-            ),
+    return Tooltip(
+      message: label,
+      child: GestureDetector(
+        onTap: () => widget.onTravelModeChanged(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.teal[700] : Colors.grey[200],
+            shape: BoxShape.circle,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.teal.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isSelected ? Colors.teal[700] : Colors.grey[600],
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            ),
+          child: Icon(
+            icon,
+            color: isSelected ? Colors.white : Colors.grey[600],
+            size: 22,
+            semanticLabel: label,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -261,9 +264,15 @@ class _ClinicListViewState extends State<ClinicListView> {
       isHospital = types.contains('hospital');
     }
 
+    // Color and icon for type
+    final Color typeColor = isHospital ? Colors.red[700]! : Colors.teal[700]!;
+    final IconData typeIcon =
+        isHospital ? Icons.local_hospital : Icons.psychology;
+    final String typeLabel = isHospital ? 'Hospital' : 'Clinic';
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
+      elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -281,15 +290,14 @@ class _ClinicListViewState extends State<ClinicListView> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isHospital ? Colors.red[50] : Colors.blue[50],
+                      color: typeColor.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      isHospital
-                          ? Icons.local_hospital
-                          : Icons.medical_services,
-                      color: isHospital ? Colors.red[700] : Colors.blue[700],
-                      size: 24,
+                      typeIcon,
+                      color: typeColor,
+                      size: 28,
+                      semanticLabel: typeLabel,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -297,12 +305,35 @@ class _ClinicListViewState extends State<ClinicListView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          clinic['name'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              clinic['name'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: typeColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                typeLabel,
+                                style: TextStyle(
+                                  color: typeColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -311,10 +342,25 @@ class _ClinicListViewState extends State<ClinicListView> {
                             color: Colors.grey[600],
                             fontSize: 14,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 8),
                         if (clinic['rating'] != null)
-                          _buildRatingBar(clinic['rating']),
+                          Row(
+                            children: [
+                              Icon(Icons.star,
+                                  color: Colors.amber,
+                                  size: 16,
+                                  semanticLabel: 'Rating'),
+                              const SizedBox(width: 2),
+                              Text(
+                                clinic['rating'].toString(),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -324,13 +370,13 @@ class _ClinicListViewState extends State<ClinicListView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // We'd calculate this based on real data in a real app
                   Row(
                     children: [
                       Icon(
                         _getTravelModeIcon(),
                         size: 16,
                         color: Colors.grey[600],
+                        semanticLabel: 'Travel mode',
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -370,33 +416,6 @@ class _ClinicListViewState extends State<ClinicListView> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRatingBar(dynamic rating) {
-    final double ratingValue =
-        rating is int ? rating.toDouble() : (rating as double);
-    return Row(
-      children: [
-        ...List.generate(5, (index) {
-          return Icon(
-            index < ratingValue.floor()
-                ? Icons.star
-                : (index < ratingValue ? Icons.star_half : Icons.star_border),
-            color: Colors.amber,
-            size: 16,
-          );
-        }),
-        const SizedBox(width: 4),
-        Text(
-          ratingValue.toStringAsFixed(1),
-          style: TextStyle(
-            color: Colors.grey[700],
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 

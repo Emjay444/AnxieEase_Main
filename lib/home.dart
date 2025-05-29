@@ -1,20 +1,30 @@
 import 'package:flutter/material.dart';
-import 'watch.dart';
-import 'search.dart';
-import 'breathing_screen.dart';
-import 'calendar_screen.dart';
-import 'psychologist_profile.dart';
-import 'services/supabase_service.dart';
-import 'package:timeago/timeago.dart' as timeago;
-import 'screens/notifications_screen.dart';
 import 'package:provider/provider.dart';
-import 'providers/notification_provider.dart';
-import 'services/severity_notifier.dart';
-import 'profile.dart';
-import 'providers/auth_provider.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/painting.dart';
+
+import 'services/supabase_service.dart';
+import 'services/notification_service.dart';
+
+import 'providers/auth_provider.dart';
+import 'providers/notification_provider.dart';
+import 'providers/theme_provider.dart';
+
+import 'models/user_model.dart';
+
+import 'breathing_screen.dart';
+import 'calendar_screen.dart';
+import 'login.dart';
+import 'metrics.dart';
+import 'profile.dart';
+import 'psychologist_profile.dart';
+import 'screens/notifications_screen.dart';
+import 'search.dart';
+import 'watch.dart';
 
 // Task class removed
 
@@ -84,6 +94,23 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Clear image cache on initialization
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+
+    // Set up the connection between NotificationService and NotificationProvider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notificationService =
+          Provider.of<NotificationService>(context, listen: false);
+      final notificationProvider =
+          Provider.of<NotificationProvider>(context, listen: false);
+
+      // Set the callback so NotificationService can trigger notification refreshes
+      notificationService.setOnNotificationAddedCallback(() {
+        notificationProvider.triggerNotificationRefresh();
+      });
+    });
   }
 
   // Helper method to create test notifications if none exist
@@ -367,6 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: ElevatedButton(
                       onPressed: () {
                         // Save selected moods
+                        _saveMoodsToSupabase(selectedMoods, "");
                         Navigator.pop(context);
                       },
                       style: ElevatedButton.styleFrom(
@@ -1194,86 +1222,104 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    return GestureDetector(
-      onTap: () => _showNotificationDetails(title, message, time, type, icon),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 6,
-              offset: const Offset(0, 3),
+    // Check if this is a reminder notification (should not be clickable)
+    bool isReminder = type == 'reminder' ||
+        title.contains('Anxiety Check-in') ||
+        title.contains('Anxiety Prevention') ||
+        title.contains('Wellness Reminder') ||
+        title.contains('Mental Health Moment') ||
+        title.contains('Relaxation Reminder');
+
+    // Wrap in GestureDetector only if it's not a reminder
+    Widget notificationCard = Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: getTypeColor().withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: getTypeColor().withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: getTypeColor(),
-                size: 24,
-              ),
+            child: Icon(
+              icon,
+              color: getTypeColor(),
+              size: 24,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Color(0xFF1E2432),
-                    ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF1E2432),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    message,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        time,
-                        style: TextStyle(
-                          color: Colors.grey[400],
-                          fontSize: 12,
-                        ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      time,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 12,
                       ),
+                    ),
+                    // Only show arrow for clickable notifications
+                    if (!isReminder)
                       Icon(
                         Icons.arrow_forward_ios,
                         size: 12,
                         color: Colors.grey[400],
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    // Wrap in GestureDetector only if it's not a reminder
+    if (!isReminder) {
+      return GestureDetector(
+        onTap: () => _showNotificationDetails(title, message, time, type, icon),
+        child: notificationCard,
+      );
+    } else {
+      return notificationCard;
+    }
   }
 
   void _showNotificationDetails(
@@ -1333,6 +1379,20 @@ class _HomeScreenState extends State<HomeScreen> {
           'Use appropriate breathing techniques',
           'Consider relaxation exercises',
           'Monitor changes in symptoms'
+        ];
+      } else if (getSeverityLevel() == 'Severe') {
+        // For severe alerts, show safety plan with crisis hotlines
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final emergencyContact = authProvider.currentUser?.emergencyContact;
+
+        return [
+          'Consider finding nearest clinic',
+          'NCMH: (Landline) 1553, (Mobile) 0917-899-8727',
+          'DOH Hopeline: 0917-558-4673',
+          'Emergency Contact: ${emergencyContact ?? "Not set - update in profile"}',
+          'Use breathing exercises',
+          'Monitor symptoms',
+          'Practice self-care activities'
         ];
       } else {
         return [
@@ -1486,9 +1546,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 24),
 
                       // Action Items Section
-                      const Text(
-                        'Suggested Actions',
-                        style: TextStyle(
+                      Text(
+                        getSeverityLevel() == 'Severe'
+                            ? 'Safety Plan'
+                            : 'Suggested Actions',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF1E2432),
@@ -1532,48 +1594,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // Action Buttons
+              // Action Button - Updated to match the See All screen
               Container(
                 padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Close'),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      // Navigate to breathing exercise screen
+                      Navigator.pushNamed(context, '/breathing');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: getTypeColor(),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          if (getSeverityLevel() == 'Severe') {
-                            _showBreathingExercises();
-                          } else {
-                            _showBreathingExercises(); // You can customize this for different severity levels
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: getTypeColor(),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Take Action',
-                          style: TextStyle(color: Colors.white),
-                        ),
+                    child: const Text(
+                      'Try Breathing Exercise',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -1845,6 +1892,68 @@ class _HomeScreenState extends State<HomeScreen> {
         return '';
     }
   }
+
+  // Helper method to save moods to Supabase wellness_logs table
+  Future<void> _saveMoodsToSupabase(
+      Set<String> selectedMoods, String customMood) async {
+    try {
+      final supabaseService = SupabaseService();
+      final now = DateTime.now();
+      final date =
+          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+      // Create a list of feelings that includes both selected moods and custom mood if provided
+      final List<String> feelings = selectedMoods.toList();
+      if (customMood.isNotEmpty) {
+        feelings.add("Custom: $customMood");
+      }
+
+      if (feelings.isEmpty) {
+        debugPrint('No moods selected or entered, not saving to database');
+        return;
+      }
+
+      // Create the wellness log entry
+      final Map<String, dynamic> logEntry = {
+        'date': date,
+        'feelings': feelings,
+        'stress_level': stressLevel.toInt(),
+        'symptoms': symptoms.entries
+            .where((entry) => entry.value)
+            .map((entry) => entry.key)
+            .toList(),
+        'journal': '', // No journal entry in this context
+        'timestamp': now.toIso8601String(),
+      };
+
+      // Save to Supabase
+      await supabaseService.saveWellnessLog(logEntry);
+      debugPrint(
+          'Successfully saved mood log to Supabase: ${feelings.join(", ")}');
+
+      // Show a success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Mood saved: ${feelings.join(", ")}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving mood log to Supabase: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save mood: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
 }
 
 class HomeContent extends StatefulWidget {
@@ -1859,15 +1968,15 @@ class _HomeContentState extends State<HomeContent> {
   void initState() {
     super.initState();
 
-    // Set up the connection between SeverityNotifier and NotificationProvider
+    // Set up the connection between NotificationService and NotificationProvider
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final severityNotifier =
-          Provider.of<SeverityNotifier>(context, listen: false);
+      final notificationService =
+          Provider.of<NotificationService>(context, listen: false);
       final notificationProvider =
           Provider.of<NotificationProvider>(context, listen: false);
 
-      // Set the callback so SeverityNotifier can trigger notification refreshes
-      severityNotifier.setNotificationRefreshCallback(() {
+      // Set the callback so NotificationService can trigger notification refreshes
+      notificationService.setOnNotificationAddedCallback(() {
         notificationProvider.triggerNotificationRefresh();
       });
     });
@@ -1879,14 +1988,33 @@ class _HomeContentState extends State<HomeContent> {
 
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final imagePath = path.join(directory.path, 'profile_$userId.jpg');
-      final imageFile = File(imagePath);
+      final dir = Directory(directory.path);
+      List<FileSystemEntity> profileImages = [];
 
-      if (await imageFile.exists()) {
-        return imageFile;
+      // Collect all profile images for this user
+      await for (var entity in dir.list()) {
+        if (entity is File) {
+          final filename = path.basename(entity.path);
+          if (filename.startsWith('profile_$userId')) {
+            profileImages.add(entity);
+          }
+        }
+      }
+
+      if (profileImages.isNotEmpty) {
+        // Sort to get the most recent one (assuming timestamp in filename)
+        profileImages.sort((a, b) => b.path.compareTo(a.path));
+        final latestImage = profileImages.first as File;
+
+        debugPrint(
+            'Found most recent profile image for home screen: ${latestImage.path}');
+        return latestImage;
+      } else {
+        debugPrint(
+            'No profile images found for user ID: $userId in home screen');
       }
     } catch (e) {
-      print('Error loading profile image: $e');
+      debugPrint('Error loading profile image in home screen: $e');
     }
 
     return null;
@@ -1952,13 +2080,19 @@ class _HomeContentState extends State<HomeContent> {
                   ],
                 ),
                 GestureDetector(
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const ProfilePage(),
                       ),
                     );
+
+                    // Refresh image cache when returning from profile page
+                    setState(() {
+                      PaintingBinding.instance.imageCache.clear();
+                      PaintingBinding.instance.imageCache.clearLiveImages();
+                    });
                   },
                   child: Consumer<AuthProvider>(
                     builder: (context, authProvider, child) {
@@ -1982,7 +2116,13 @@ class _HomeContentState extends State<HomeContent> {
                             // Use the actual profile image
                             return CircleAvatar(
                               radius: screenWidth * 0.06,
-                              backgroundImage: FileImage(snapshot.data!),
+                              backgroundImage: FileImage(
+                                snapshot.data!,
+                                // Add a scale parameter to force refresh
+                                scale: 1.0,
+                              ),
+                              // Add a key with timestamp to force widget rebuild
+                              key: ValueKey(snapshot.data!.path),
                             );
                           } else {
                             // If no profile image, show first letter of name or fallback icon

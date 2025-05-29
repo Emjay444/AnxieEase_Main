@@ -50,6 +50,7 @@ class SupabaseService {
   }) async {
     try {
       print('Starting user registration process for: $email');
+      print('User data to be saved: ${userData.toString()}');
 
       // Set up redirect URL based on platform
       const redirectUrl = kIsWeb
@@ -59,6 +60,7 @@ class SupabaseService {
       print('Using redirect URL for verification: $redirectUrl');
 
       // Proceed with signup in auth
+      print('Calling Supabase auth.signUp...');
       final AuthResponse response = await _supabaseClient.auth.signUp(
         email: email,
         password: password,
@@ -71,6 +73,8 @@ class SupabaseService {
           'role': 'patient', // Always set as patient for mobile app
         },
       );
+      print(
+          'Supabase auth.signUp response received: ${response.session != null ? 'Session created' : 'No session'}, User: ${response.user != null ? response.user!.id : 'No user'}');
 
       if (response.user == null) {
         throw Exception('Registration failed. Please try again.');
@@ -81,6 +85,7 @@ class SupabaseService {
       try {
         // Create user record in users table
         final timestamp = DateTime.now().toIso8601String();
+        print('Inserting user record into users table...');
         await _supabaseClient.from('users').upsert({
           'id': response.user!.id,
           'email': email,
@@ -88,8 +93,9 @@ class SupabaseService {
           'first_name': userData['first_name'],
           'middle_name': userData['middle_name'],
           'last_name': userData['last_name'],
-          'age': userData['age'],
+          'birth_date': userData['birth_date'],
           'contact_number': userData['contact_number'],
+          'emergency_contact': userData['emergency_contact'],
           'gender': userData['gender'],
           'role': 'patient',
           'created_at': timestamp,
@@ -100,15 +106,19 @@ class SupabaseService {
         print('User record created successfully');
       } catch (e) {
         print('Error creating user record: $e');
+        print('Error details: ${e.toString()}');
         // Don't throw here, as the auth user is already created
         // Just log the error and continue
       }
 
       // Sign out after registration to ensure clean state
+      print('Signing out to ensure clean state...');
       await signOut();
+      print('Sign-out complete. Registration process finished.');
 
       return response;
     } catch (e) {
+      print('Error during signup: ${e.toString()}');
       if (e.toString().contains('User already registered')) {
         throw Exception('Email already registered. Please login instead.');
       } else if (e.toString().contains('Invalid email')) {
@@ -443,24 +453,177 @@ class SupabaseService {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _supabaseClient.from('anxiety_records').insert({
-      'user_id': user.id,
-      ...record,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      // Ensure record has a timestamp
+      if (!record.containsKey('timestamp')) {
+        record['timestamp'] = DateTime.now().toIso8601String();
+      }
+
+      // Add additional fields for analytics
+      final recordToSave = {
+        'user_id': user.id,
+        'severity_level': record['severity_level'] ?? 'unknown',
+        'timestamp': record['timestamp'],
+        'created_at': DateTime.now().toIso8601String(),
+        'is_manual': record['is_manual'] ?? false,
+        'source': record['source'] ?? 'app',
+        'details': record['details'] ?? '',
+        'heart_rate': record['heart_rate'] ?? 0,
+      };
+
+      // Save to anxiety_records table
+      await _supabaseClient.from('anxiety_records').insert(recordToSave);
+
+      debugPrint(
+          'Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
+    } catch (e) {
+      debugPrint('Error saving anxiety record: $e');
+      throw Exception('Failed to save anxiety record: $e');
+    }
   }
 
-  Future<List<Map<String, dynamic>>> getAnxietyRecords() async {
+  Future<List<Map<String, dynamic>>> getAnxietyRecords({
+    String? userId,
+    String? severityLevel,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    final response = await _supabaseClient
-        .from('anxiety_records')
-        .select()
-        .eq('user_id', user.id)
-        .order('created_at', ascending: false);
+    try {
+      // Use the provided user ID or fall back to current user
+      final targetUserId = userId ?? user.id;
 
-    return List<Map<String, dynamic>>.from(response);
+      // Start building the query
+      var query = _supabaseClient
+          .from('anxiety_records')
+          .select()
+          .eq('user_id', targetUserId);
+
+      // Add severity level filter if provided
+      if (severityLevel != null) {
+        query = query.eq('severity_level', severityLevel);
+      }
+
+      // Add date range filters if provided
+      if (startDate != null) {
+        query = query.gte('timestamp', startDate.toIso8601String());
+      }
+
+      if (endDate != null) {
+        query = query.lte('timestamp', endDate.toIso8601String());
+      }
+
+      // Get the records ordered by created_at in descending order (newest first)
+      final response = await query.order('created_at', ascending: false);
+
+      debugPrint(
+          'Retrieved ${response.length} anxiety records for user: $targetUserId');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error retrieving anxiety records: $e');
+      throw Exception('Failed to retrieve anxiety records: $e');
+    }
+  }
+
+  // Get anxiety statistics for a specific user (for web dashboard)
+  Future<Map<String, dynamic>> getAnxietyStatistics({
+    String? userId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Use the provided user ID or fall back to current user
+      final targetUserId = userId ?? user.id;
+
+      // Get all anxiety records for the specified time period
+      final List<Map<String, dynamic>> records = await getAnxietyRecords(
+        userId: targetUserId,
+        startDate: startDate,
+        endDate: endDate,
+      );
+
+      if (records.isEmpty) {
+        return {
+          'total_attacks': 0,
+          'by_severity': {
+            'mild': 0,
+            'moderate': 0,
+            'severe': 0,
+            'unknown': 0,
+          },
+          'frequency_data': [],
+        };
+      }
+
+      // Count attacks by severity
+      int mildCount = 0;
+      int moderateCount = 0;
+      int severeCount = 0;
+      int unknownCount = 0;
+
+      // Maps to track frequency (by day)
+      final Map<String, int> dailyFrequency = {};
+
+      // Process each record
+      for (final record in records) {
+        // Count by severity
+        final String severity =
+            record['severity_level']?.toString().toLowerCase() ?? 'unknown';
+        switch (severity) {
+          case 'mild':
+            mildCount++;
+            break;
+          case 'moderate':
+            moderateCount++;
+            break;
+          case 'severe':
+            severeCount++;
+            break;
+          default:
+            unknownCount++;
+        }
+
+        // Track daily frequency
+        if (record['timestamp'] != null) {
+          final DateTime timestamp = DateTime.parse(record['timestamp']);
+          final String dateKey =
+              '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}';
+
+          dailyFrequency[dateKey] = (dailyFrequency[dateKey] ?? 0) + 1;
+        }
+      }
+
+      // Convert frequency map to list for charts
+      final List<Map<String, dynamic>> frequencyData = dailyFrequency.entries
+          .map((entry) => {
+                'date': entry.key,
+                'count': entry.value,
+              })
+          .toList();
+
+      // Sort frequency data by date
+      frequencyData.sort((a, b) => a['date'].compareTo(b['date']));
+
+      // Return statistics
+      return {
+        'total_attacks': records.length,
+        'by_severity': {
+          'mild': mildCount,
+          'moderate': moderateCount,
+          'severe': severeCount,
+          'unknown': unknownCount,
+        },
+        'frequency_data': frequencyData,
+      };
+    } catch (e) {
+      debugPrint('Error retrieving anxiety statistics: $e');
+      throw Exception('Failed to retrieve anxiety statistics: $e');
+    }
   }
 
   // Wellness logs methods (for moods, symptoms, stress levels)
@@ -468,19 +631,163 @@ class SupabaseService {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    // Add the record to the wellness_logs table with all the needed fields
-    await _supabaseClient.from('wellness_logs').insert({
-      'user_id': user.id,
-      'date': log['date'],
-      'feelings': log['feelings'],
-      'stress_level': log['stress_level'],
-      'symptoms': log['symptoms'],
-      'journal': log['journal'],
-      'timestamp': log['timestamp'],
-      'created_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      print('SaveWellnessLog called with log data: ${log.toString()}');
 
-    print('Successfully saved wellness log for user: ${user.id}');
+      // Check if this is an update of an existing log (log has an id)
+      if (log['id'] != null) {
+        print('Log has ID ${log['id']}, using updateWellnessLog directly');
+        // This is an update - use the updateWellnessLog method
+        await updateWellnessLog(log);
+        return;
+      }
+
+      // Even if no ID is provided, check if a log with the same timestamp already exists
+      if (log['timestamp'] != null) {
+        print('Checking for existing log with timestamp ${log['timestamp']}');
+        final existingLogs = await _supabaseClient
+            .from('wellness_logs')
+            .select('id, feelings, stress_level, symptoms, journal')
+            .eq('user_id', user.id)
+            .eq('timestamp', log['timestamp'])
+            .limit(1);
+
+        if (existingLogs.isNotEmpty) {
+          print(
+              'Found existing log with ID ${existingLogs[0]['id']} - updating instead of creating new record');
+
+          // Check if content has actually changed before updating
+          bool contentChanged = false;
+          final existingLog = existingLogs[0];
+
+          // Compare feelings
+          if (!_areListsEqual(existingLog['feelings'], log['feelings'])) {
+            print(
+                'Feelings have changed: ${existingLog['feelings']} -> ${log['feelings']}');
+            contentChanged = true;
+          }
+
+          // Compare stress level
+          if (existingLog['stress_level'] != log['stress_level']) {
+            print(
+                'Stress level has changed: ${existingLog['stress_level']} -> ${log['stress_level']}');
+            contentChanged = true;
+          }
+
+          // Compare symptoms
+          if (!_areListsEqual(existingLog['symptoms'], log['symptoms'])) {
+            print(
+                'Symptoms have changed: ${existingLog['symptoms']} -> ${log['symptoms']}');
+            contentChanged = true;
+          }
+
+          // Compare journal
+          if (existingLog['journal'] != log['journal']) {
+            print(
+                'Journal has changed: ${existingLog['journal']} -> ${log['journal']}');
+            contentChanged = true;
+          }
+
+          if (!contentChanged) {
+            print('No content changes detected, skipping update');
+            return;
+          }
+
+          // Add the ID to the log data and update
+          log['id'] = existingLogs[0]['id'];
+          await updateWellnessLog(log);
+          return;
+        } else {
+          print('No existing log found with timestamp ${log['timestamp']}');
+        }
+      }
+
+      // Add the record to the wellness_logs table with all the needed fields
+      print('Creating new wellness log record');
+      await _supabaseClient.from('wellness_logs').insert({
+        'user_id': user.id,
+        'date': log['date'],
+        'feelings': log['feelings'],
+        'stress_level': log['stress_level'],
+        'symptoms': log['symptoms'],
+        'journal': log['journal'],
+        'timestamp': log['timestamp'],
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print('Successfully saved wellness log for user: ${user.id}');
+    } catch (e) {
+      print('Error in saveWellnessLog: $e');
+      throw Exception('Failed to save wellness log: $e');
+    }
+  }
+
+  // Helper method to compare two lists
+  bool _areListsEqual(List<dynamic>? list1, List<dynamic>? list2) {
+    if (list1 == null && list2 == null) return true;
+    if (list1 == null || list2 == null) return false;
+    if (list1.length != list2.length) return false;
+
+    for (int i = 0; i < list1.length; i++) {
+      if (!list2.contains(list1[i])) return false;
+    }
+
+    return true;
+  }
+
+  // Update an existing wellness log
+  Future<void> updateWellnessLog(Map<String, dynamic> log) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      print('UpdateWellnessLog called with log data: ${log.toString()}');
+
+      if (log['id'] == null && log['timestamp'] == null) {
+        throw Exception('Cannot update log without an id or timestamp');
+      }
+
+      // Only include fields that are needed for the update
+      Map<String, dynamic> updateData = {
+        'date': log['date'],
+        'feelings': log['feelings'],
+        'stress_level': log['stress_level'],
+        'symptoms': log['symptoms'],
+      };
+
+      // Only include journal if it's provided
+      if (log['journal'] != null) {
+        updateData['journal'] = log['journal'];
+      }
+
+      // Include timestamp for consistency
+      updateData['timestamp'] = log['timestamp'];
+
+      print('Final update data: $updateData');
+
+      // Start building the query
+      var query = _supabaseClient
+          .from('wellness_logs')
+          .update(updateData)
+          .eq('user_id', user.id);
+
+      // Use ID if available, otherwise use timestamp
+      if (log['id'] != null) {
+        print('Updating by ID: ${log['id']}');
+        query = query.eq('id', log['id']);
+      } else {
+        print('Updating by timestamp: ${log['timestamp']}');
+        query = query.eq('timestamp', log['timestamp']);
+      }
+
+      final response = await query;
+      print('Update response: $response');
+
+      print('Successfully updated wellness log for user: ${user.id}');
+    } catch (e) {
+      print('Error updating wellness log: $e');
+      throw Exception('Failed to update wellness log: $e');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getWellnessLogs({String? userId}) async {
@@ -771,9 +1078,7 @@ class SupabaseService {
             .eq('user_id', user.id)
             .order('appointment_date', ascending: false);
 
-        if (response != null) {
-          return List<Map<String, dynamic>>.from(response);
-        }
+        return List<Map<String, dynamic>>.from(response);
 
         // If no appointments found, return empty list
         return [];
@@ -789,7 +1094,7 @@ class SupabaseService {
               .eq('type', 'appointment_request')
               .order('created_at', ascending: false);
 
-          if (notifications != null && notifications.isNotEmpty) {
+          if (notifications.isNotEmpty) {
             // Convert notifications to appointment format
             return notifications.map<Map<String, dynamic>>((notification) {
               // Parse the message to extract details
@@ -812,7 +1117,7 @@ class SupabaseService {
           return [];
         } else {
           // Some other error occurred
-          throw e;
+          rethrow;
         }
       }
     } catch (e) {

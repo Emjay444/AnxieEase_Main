@@ -4,7 +4,7 @@ import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
 import 'services/supabase_service.dart';
 import 'utils/logger.dart';
-import 'screens/psychologist_list_screen.dart';
+import 'psychologist_list_screen.dart';
 
 class PsychologistProfilePage extends StatefulWidget {
   const PsychologistProfilePage({super.key});
@@ -112,27 +112,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         }
       } else {
         // Handle case where no psychologist is found
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'No psychologist is assigned. Please select one from the list.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-
-          // Automatically navigate to psychologist selection screen
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PsychologistListScreen(),
-                ),
-              ).then((_) => _loadData());
-            }
-          });
-        }
+        setState(() {
+          _psychologist = null;
+        });
+        // Do not show snackbar or auto-navigate
       }
 
       // Load appointment history
@@ -452,103 +435,124 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       color: Colors.grey[100],
                     ),
 
-                    // Request appointment section
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Appointment Requests',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[800],
-                                ),
+                    // If no psychologist, show message and button
+                    if (_psychologist == null) ...[
+                      Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          children: [
+                            const Text(
+                              'No psychologist is currently assigned to you.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
                               ),
-                              Row(
-                                children: [
-                                  // Refresh button for appointments
-                                  IconButton(
-                                    icon: const Icon(Icons.refresh, size: 20),
-                                    onPressed: _loadData,
-                                    tooltip: 'Refresh appointments',
-                                    padding: EdgeInsets.zero,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      // Request appointment section
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Appointment Requests',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
                                   ),
-                                  if (_psychologist != null &&
-                                      !_showAppointmentForm)
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _showAppointmentForm = true;
-                                        });
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            const Color(0xFF3AA772),
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
+                                ),
+                                Row(
+                                  children: [
+                                    // Refresh button for appointments
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh, size: 20),
+                                      onPressed: _loadData,
+                                      tooltip: 'Refresh appointments',
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    if (!_showAppointmentForm)
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _showAppointmentForm = true;
+                                          });
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFF3AA772),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
                                         ),
+                                        child: const Text('Request'),
                                       ),
-                                      child: const Text('Request'),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Filter options
-                          if (!_showAppointmentForm) ...[
-                            Container(
-                              height: 40,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                children: _filterOptions.map((filter) {
-                                  final isSelected = _selectedFilter == filter;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: FilterChip(
-                                      label: Text(filter),
-                                      selected: isSelected,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _selectedFilter = filter;
-                                        });
-                                      },
-                                      backgroundColor: Colors.grey[200],
-                                      selectedColor: const Color(0xFF3AA772)
-                                          .withOpacity(0.2),
-                                      checkmarkColor: const Color(0xFF3AA772),
-                                      labelStyle: TextStyle(
-                                        color: isSelected
-                                            ? const Color(0xFF3AA772)
-                                            : Colors.black87,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
+                                  ],
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 16),
-                          ],
 
-                          // Show appointment form or appointment list
-                          if (_showAppointmentForm)
-                            _buildAppointmentForm()
-                          else
-                            _buildAppointmentsList(),
-                        ],
+                            // Filter options
+                            if (!_showAppointmentForm) ...[
+                              SizedBox(
+                                height: 40,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: _filterOptions.map((filter) {
+                                    final isSelected =
+                                        _selectedFilter == filter;
+                                    return Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8.0),
+                                      child: FilterChip(
+                                        label: Text(filter),
+                                        selected: isSelected,
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            _selectedFilter = filter;
+                                          });
+                                        },
+                                        backgroundColor: Colors.grey[200],
+                                        selectedColor: const Color(0xFF3AA772)
+                                            .withOpacity(0.2),
+                                        checkmarkColor: const Color(0xFF3AA772),
+                                        labelStyle: TextStyle(
+                                          color: isSelected
+                                              ? const Color(0xFF3AA772)
+                                              : Colors.black87,
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // Show appointment form or appointment list
+                            if (_showAppointmentForm)
+                              _buildAppointmentForm()
+                            else
+                              _buildAppointmentsList(),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -587,7 +591,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                           height: 100,
                           errorBuilder: (context, error, stackTrace) {
                             Logger.error(
-                                'Failed to load psychologist image: ${_psychologist!.imageUrl}',
+                                'Failed to load psychologist image: \\${_psychologist!.imageUrl}',
                                 error);
                             return _buildProfileInitials();
                           },
@@ -615,31 +619,32 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _psychologist?.name ?? 'No psychologist assigned',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                    if (_psychologist != null) ...[
+                      Text(
+                        _psychologist!.name,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Contact information
-                    if (_psychologist != null &&
-                        _psychologist!.contactPhone != 'N/A') ...[
-                      Row(
-                        children: [
-                          Icon(Icons.phone_outlined,
-                              size: 16, color: Colors.grey[600]),
-                          const SizedBox(width: 8),
-                          Text(
-                            _psychologist!.contactPhone,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
+                      const SizedBox(height: 12),
+                      // Contact information
+                      if (_psychologist!.contactPhone != 'N/A') ...[
+                        Row(
+                          children: [
+                            Icon(Icons.phone_outlined,
+                                size: 16, color: Colors.grey[600]),
+                            const SizedBox(width: 8),
+                            Text(
+                              _psychologist!.contactPhone,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ],
                   ],
                 ),

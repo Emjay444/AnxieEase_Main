@@ -87,9 +87,9 @@ flutter:
   assets:
     - assets/images/
     - assets/audio/
-    - assets/audio/478breathing.mp3
-    - assets/audio/boxbreathing.mp3
-    - assets/audio/calmingbreath.mp3
+    - assets/audio/Bilateral1.mp3
+    - assets/audio/Bilateral2.mp3
+    - assets/audio/Bilateral3.mp3
     # - assets/audio/soft_bells.mp3
     # - assets/audio/ocean_waves.mp3
 

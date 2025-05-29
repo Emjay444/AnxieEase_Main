@@ -4,8 +4,10 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'supabase_service.dart';
 
-class NotificationService {
+class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
@@ -13,6 +15,24 @@ class NotificationService {
   static const String notificationPermissionKey =
       'notification_permission_status';
   static const String badgeCountKey = 'notification_badge_count';
+  static const String reminderEnabledKey = 'anxiety_reminders_enabled';
+  static const String reminderIntervalKey = 'anxiety_reminder_interval_hours';
+
+  final SupabaseService _supabaseService = SupabaseService();
+  final DatabaseReference _firebaseRef =
+      FirebaseDatabase.instance.ref('devices/AnxieEase001/Metrics');
+  String _currentSeverity = 'unknown';
+  int _currentHeartRate = 0;
+  bool _isFirstRead = true;
+  VoidCallback? _onNotificationAdded;
+
+  String get currentSeverity => _currentSeverity;
+  int get currentHeartRate => _currentHeartRate;
+
+  // Set callback for when a notification is added
+  void setOnNotificationAddedCallback(VoidCallback callback) {
+    _onNotificationAdded = callback;
+  }
 
   Future<void> initialize() async {
     // Initialize awesome_notifications
@@ -35,11 +55,219 @@ class NotificationService {
           importance: NotificationImportance.High,
           ledColor: Colors.white,
         ),
+        NotificationChannel(
+          channelKey: 'reminders_channel',
+          channelName: 'Anxiety Reminders',
+          channelDescription:
+              'Regular reminders to help prevent anxiety attacks',
+          defaultColor: Colors.green,
+          importance: NotificationImportance.High,
+          ledColor: Colors.green,
+        ),
+        NotificationChannel(
+          channelKey: 'anxiety_alerts',
+          channelName: 'Anxiety Alerts',
+          channelDescription: 'Notifications for anxiety level alerts',
+          defaultColor: Colors.red,
+          importance: NotificationImportance.High,
+          ledColor: Colors.white,
+        ),
       ],
     );
 
     // Initialize badge count from storage
     await _loadBadgeCount();
+
+    // Check if reminders are enabled
+    final bool isEnabled = await isAnxietyReminderEnabled();
+    if (isEnabled) {
+      // Check if we already have active reminders before scheduling new ones
+      final List<NotificationModel> activeReminders =
+          await AwesomeNotifications().listScheduledNotifications();
+
+      if (!activeReminders.any((notification) =>
+          notification.content?.channelKey == 'reminders_channel')) {
+        final int intervalHours = await getAnxietyReminderInterval();
+        await scheduleAnxietyReminders(intervalHours);
+      } else {
+        debugPrint(
+            'Reminders already active. Skipping scheduling on initialize.');
+      }
+    }
+  }
+
+  // Initialize Firebase listener for anxiety severity
+  void initializeListener() {
+    _firebaseRef.onValue.listen((event) {
+      final data = event.snapshot.value as Map?;
+      if (data == null) return;
+
+      // Get heart rate from the root level
+      final heartRate = data['heartRate'] as int?;
+      if (heartRate != null) {
+        _currentHeartRate = heartRate;
+      }
+
+      // Get anxiety detection data
+      final anxietyData = data['anxietyDetected'] as Map?;
+      if (anxietyData == null) return;
+
+      final severity = anxietyData['severity']?.toString().toLowerCase();
+      if (severity == null) return;
+
+      // Update current severity and notify listeners
+      _currentSeverity = severity;
+      notifyListeners();
+
+      // Skip notification on first read (app startup)
+      if (_isFirstRead) {
+        _isFirstRead = false;
+        debugPrint(
+            '🔇 Skipping initial Firebase notification for: $severity (HR: $heartRate)');
+        return;
+      }
+
+      // Only send notifications for actual data changes
+      debugPrint(
+          '🔔 Firebase data changed - sending notification for: $severity (HR: $heartRate)');
+
+      String title = '';
+      String body = '';
+      String channelKey = '';
+      String notificationType = '';
+
+      switch (severity) {
+        case 'mild':
+          title = '🟢 Mild Alert';
+          body = 'Slight elevation in readings. HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        case 'moderate':
+          title = '🟠 Moderate Alert';
+          body = 'Noticeable symptoms detected. HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        case 'severe':
+          title = '🔴 Severe Alert';
+          body = 'URGENT: High risk! HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        default:
+          return;
+      }
+
+      _showSeverityNotification(title, body, channelKey, severity);
+      _saveNotificationToSupabase(title, body, notificationType, severity);
+      _saveAnxietyLevelRecord(severity, false, heartRate);
+    });
+  }
+
+  // Show a severity-based notification
+  Future<void> _showSeverityNotification(
+      String title, String body, String channelKey, String severity) async {
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        channelKey: channelKey,
+        title: title,
+        body: body,
+        notificationLayout: NotificationLayout.Default,
+        category: severity == 'severe'
+            ? NotificationCategory.Alarm
+            : NotificationCategory.Reminder,
+        wakeUpScreen: severity == 'severe',
+        fullScreenIntent: severity == 'severe',
+        criticalAlert: severity == 'severe',
+      ),
+      actionButtons: severity == 'severe'
+          ? [
+              NotificationActionButton(
+                key: 'DISMISS',
+                label: 'Dismiss',
+                actionType: ActionType.DismissAction,
+              ),
+              NotificationActionButton(
+                key: 'VIEW_DETAILS',
+                label: 'View Details',
+                actionType: ActionType.Default,
+              ),
+            ]
+          : null,
+    );
+  }
+
+  // Method to manually trigger a notification based on current severity
+  Future<void> sendManualNotification() async {
+    String title = '';
+    String body = '';
+    String channelKey = 'anxiety_alerts';
+
+    switch (_currentSeverity) {
+      case 'mild':
+        title = '🟢 Mild Alert (Manual)';
+        body = 'Slight elevation in anxiety readings detected.';
+        break;
+      case 'moderate':
+        title = '🟠 Moderate Alert (Manual)';
+        body = 'Moderate anxiety symptoms detected.';
+        break;
+      case 'severe':
+        title = '🔴 Severe Alert (Manual)';
+        body = 'URGENT: High anxiety levels detected!';
+        break;
+      default:
+        title = 'Status Update';
+        body = 'Current status: $_currentSeverity';
+    }
+
+    await _showSeverityNotification(title, body, channelKey, _currentSeverity);
+    await _saveNotificationToSupabase(title, body, 'alert', _currentSeverity);
+    await _saveAnxietyLevelRecord(_currentSeverity, true);
+  }
+
+  // Method to save anxiety level record to Supabase
+  Future<void> _saveAnxietyLevelRecord(String severity, bool isManual,
+      [int? heartRate]) async {
+    try {
+      debugPrint('📊 Saving anxiety level record to Supabase: $severity');
+
+      final anxietyRecord = {
+        'severity_level': severity,
+        'timestamp': DateTime.now().toIso8601String(),
+        'is_manual': isManual,
+        'source': 'app',
+        'details': isManual
+            ? 'Manually triggered alert'
+            : 'Automatically detected alert',
+        'heart_rate': heartRate ?? 0, // Use provided heart rate or default to 0
+      };
+
+      await _supabaseService.saveAnxietyRecord(anxietyRecord);
+      debugPrint('✅ Successfully saved anxiety level record to Supabase');
+    } catch (e) {
+      debugPrint('❌ Error saving anxiety level record to Supabase: $e');
+      debugPrintStack();
+    }
+  }
+
+  // Method to save notifications to Supabase
+  Future<void> _saveNotificationToSupabase(
+      String title, String message, String type, String severity) async {
+    try {
+      await _supabaseService.createNotification(
+        title: title,
+        message: message,
+        type: type,
+        relatedScreen: severity == 'severe' ? 'breathing_screen' : 'metrics',
+      );
+      debugPrint('💾 Saved severity notification to Supabase: $title');
+      _onNotificationAdded?.call();
+    } catch (e) {
+      debugPrint('❌ Error saving notification to Supabase: $e');
+    }
   }
 
   // Request notification permissions
@@ -129,5 +357,161 @@ class NotificationService {
         notificationLayout: NotificationLayout.Default,
       ),
     );
+  }
+
+  // ANXIETY PREVENTION REMINDERS
+
+  // Enable or disable anxiety prevention reminders
+  Future<void> setAnxietyReminderEnabled(bool enabled,
+      {int intervalHours = 6}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(reminderEnabledKey, enabled);
+    await prefs.setInt(reminderIntervalKey, intervalHours);
+
+    if (enabled) {
+      // Schedule the reminders
+      await scheduleAnxietyReminders(intervalHours);
+    } else {
+      // Cancel all scheduled reminders
+      await cancelAnxietyReminders();
+    }
+
+    debugPrint(
+        'Anxiety reminders ${enabled ? 'enabled' : 'disabled'} with interval of $intervalHours hours');
+  }
+
+  // Check if anxiety prevention reminders are enabled
+  Future<bool> isAnxietyReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(reminderEnabledKey) ?? false;
+  }
+
+  // Get the interval for anxiety prevention reminders (in hours)
+  Future<int> getAnxietyReminderInterval() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(reminderIntervalKey) ?? 6; // Default to 6 hours
+  }
+
+  // Schedule anxiety prevention reminders
+  Future<void> scheduleAnxietyReminders(int intervalHours) async {
+    try {
+      // First check if we already have active reminders
+      final List<NotificationModel> activeReminders =
+          await AwesomeNotifications().listScheduledNotifications();
+
+      // If we already have reminders scheduled, don't create new ones
+      if (activeReminders.any((notification) =>
+          notification.content?.channelKey == 'reminders_channel')) {
+        debugPrint('Anxiety prevention reminders already scheduled. Skipping.');
+        return;
+      }
+
+      // Cancel any existing scheduled reminders first
+      await cancelAnxietyReminders();
+
+      // Schedule the first reminder
+      await _scheduleNextAnxietyReminder(1, intervalHours);
+
+      debugPrint(
+          'Successfully scheduled anxiety prevention reminders every $intervalHours hours');
+    } catch (e) {
+      debugPrint('Error scheduling anxiety reminders: $e');
+    }
+  }
+
+  // Cancel all scheduled anxiety prevention reminders
+  Future<void> cancelAnxietyReminders() async {
+    await AwesomeNotifications()
+        .cancelNotificationsByChannelKey('reminders_channel');
+    debugPrint('Cancelled all anxiety prevention reminders');
+  }
+
+  // Schedule the next anxiety prevention reminder
+  Future<void> _scheduleNextAnxietyReminder(
+      int notificationId, int intervalHours) async {
+    // List of reminder messages for variety
+    final List<Map<String, String>> reminderMessages = [
+      {
+        'title': 'Anxiety Check-in',
+        'body': 'Take a moment to breathe deeply and check how you\'re feeling.'
+      },
+      {
+        'title': 'Anxiety Prevention',
+        'body':
+            'Remember to take short breaks and practice mindfulness throughout your day.'
+      },
+      {
+        'title': 'Wellness Reminder',
+        'body':
+            'Stay hydrated and take a few deep breaths to maintain your calm.'
+      },
+      {
+        'title': 'Mental Health Moment',
+        'body': 'Consider taking a short walk or stretching to reduce tension.'
+      },
+      {
+        'title': 'Relaxation Reminder',
+        'body':
+            'Try the 4-7-8 breathing technique: Inhale for 4, hold for 7, exhale for 8.'
+      },
+    ];
+
+    // Select a random message from the list
+    final message =
+        reminderMessages[DateTime.now().millisecond % reminderMessages.length];
+
+    // Calculate the next reminder time
+    final DateTime scheduledTime =
+        DateTime.now().add(Duration(hours: intervalHours));
+
+    // Check if a notification with this ID is already scheduled
+    final List<NotificationModel> activeNotifications =
+        await AwesomeNotifications().listScheduledNotifications();
+
+    if (activeNotifications
+        .any((notification) => notification.content?.id == notificationId)) {
+      debugPrint(
+          'Notification with ID $notificationId already exists. Skipping.');
+      return;
+    }
+
+    // Schedule the notification
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: notificationId,
+        channelKey: 'reminders_channel',
+        title: message['title'],
+        body: message['body'],
+        notificationLayout: NotificationLayout.Default,
+        category: NotificationCategory.Reminder,
+      ),
+      schedule: NotificationCalendar(
+        hour: scheduledTime.hour,
+        minute: scheduledTime.minute,
+        second: 0,
+        millisecond: 0,
+        repeats: false,
+      ),
+    );
+
+    // Also create a record in Supabase for display in the app
+    await _supabaseService.createNotification(
+      title: message['title'] ?? 'Anxiety Check-in',
+      message: message['body'] ?? 'Take a moment to check how you\'re feeling.',
+      type: 'reminder',
+      relatedScreen: 'breathing',
+    );
+
+    // Schedule the next notification with a new ID
+    int nextId = notificationId + 1;
+    if (nextId > 1000) nextId = 1; // Reset ID to avoid going too high
+
+    // Set up a delayed task to schedule the next reminder
+    Future.delayed(Duration(hours: intervalHours), () {
+      _scheduleNextAnxietyReminder(nextId, intervalHours);
+    });
+
+    debugPrint(
+        'Scheduled anxiety prevention reminder for ${scheduledTime.toString()} with ID $notificationId');
   }
 }

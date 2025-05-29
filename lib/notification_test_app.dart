@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'services/severity_notifier.dart';
+import 'services/notification_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -42,12 +42,13 @@ void main() async {
     await AwesomeNotifications().requestPermissionToSendNotifications();
   }
 
-  // Initialize the notifier
-  final notifier = SeverityNotifier();
+  // Initialize the notification service
+  final notificationService = NotificationService();
+  await notificationService.initialize();
 
   runApp(
     ChangeNotifierProvider(
-      create: (context) => notifier,
+      create: (context) => notificationService,
       child: const TestApp(),
     ),
   );
@@ -82,7 +83,8 @@ class _TestScreenState extends State<TestScreen> {
     super.initState();
 
     // Initialize the severity listener
-    Provider.of<SeverityNotifier>(context, listen: false).initializeListener();
+    Provider.of<NotificationService>(context, listen: false)
+        .initializeListener();
   }
 
   Future<void> _sendTestNotification() async {
@@ -104,7 +106,7 @@ class _TestScreenState extends State<TestScreen> {
   @override
   Widget build(BuildContext context) {
     // Get the severity
-    String severity = Provider.of<SeverityNotifier>(context).currentSeverity;
+    String severity = Provider.of<NotificationService>(context).currentSeverity;
 
     Color statusColor;
     String statusText;
@@ -172,7 +174,7 @@ class _TestScreenState extends State<TestScreen> {
             const SizedBox(height: 15),
             ElevatedButton(
               onPressed: () {
-                Provider.of<SeverityNotifier>(context, listen: false)
+                Provider.of<NotificationService>(context, listen: false)
                     .sendManualNotification();
               },
               style: ElevatedButton.styleFrom(

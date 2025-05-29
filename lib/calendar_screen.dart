@@ -50,6 +50,7 @@ class DailyLog {
         'symptoms': symptoms,
         'journal': journal,
         'timestamp': timestamp.toIso8601String(), // SQL TIMESTAMPTZ format
+        if (id != null) 'id': id, // Include ID if it exists for updates
       };
 
   // Save this log to Supabase
@@ -57,9 +58,26 @@ class DailyLog {
     try {
       final supabaseService = SupabaseService();
       final data = toSupabaseJson();
-      await supabaseService.saveWellnessLog(data);
+
+      // Print debug info to help troubleshoot
+      print(
+          'Syncing log with Supabase. Has ID? ${id != null ? 'Yes: $id' : 'No'}');
+      print('Log data: $data');
+
+      if (id != null) {
+        // If we have an ID, this is an update operation
+        print('Performing UPDATE operation for log with ID: $id');
+        await supabaseService.updateWellnessLog(data);
+        print('Successfully updated log in Supabase with ID: $id');
+      } else {
+        // If no ID, this is a create operation
+        print('Performing CREATE operation for new log');
+        await supabaseService.saveWellnessLog(data);
+        print('Successfully created new log in Supabase');
+      }
     } catch (e) {
       print('Error syncing log to Supabase: $e');
+      rethrow;
     }
   }
 }
@@ -139,9 +157,94 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
 
       print('Successfully synced ${allLogs.length} logs with Supabase');
+
+      // Fetch logs from Supabase to ensure we have the latest data
+      final List<Map<String, dynamic>> supabaseLogs =
+          await _supabaseService.getWellnessLogs();
+
+      print('Loaded ${supabaseLogs.length} logs from Supabase');
+
+      // Process Supabase logs
+      int logsAdded = 0;
+      for (var log in supabaseLogs) {
+        final DateTime date = DateTime.parse(log['date']);
+        final normalizedDate = _normalizeDate(date);
+
+        if (!_dailyLogs.containsKey(normalizedDate)) {
+          _dailyLogs[normalizedDate] = [];
+        }
+
+        // Create DailyLog from Supabase data
+        final dailyLog = DailyLog(
+          feelings: List<String>.from(log['feelings']),
+          stressLevel: log['stress_level'].toDouble(),
+          symptoms: List<String>.from(log['symptoms']),
+          timestamp: DateTime.parse(log['timestamp']),
+          journal: log['journal'],
+          id: log['id'],
+        );
+
+        // Check if this log already exists in the local data
+        bool isDuplicate = false;
+        for (final existingLog in _dailyLogs[normalizedDate]!) {
+          // Compare content to detect duplicates
+          if (_areLogsSimilar(existingLog, dailyLog)) {
+            isDuplicate = true;
+            print('Detected duplicate log based on content similarity');
+            break;
+          }
+        }
+
+        if (!isDuplicate) {
+          // Add new log if it doesn't exist locally
+          _dailyLogs[normalizedDate]!.add(dailyLog);
+          logsAdded++;
+        }
+      }
+
+      print('Added $logsAdded new logs from Supabase');
+
+      // Save updated logs to local storage
+      if (logsAdded > 0) {
+        await _saveLogs();
+        setState(() {}); // Refresh UI
+      }
     } catch (e) {
       print('Error syncing logs with Supabase: $e');
     }
+  }
+
+  // Helper method to determine if two logs are likely the same entry
+  bool _areLogsSimilar(DailyLog log1, DailyLog log2) {
+    // Check if stress levels are the same
+    if (log1.stressLevel != log2.stressLevel) {
+      return false;
+    }
+
+    // Check if symptoms are the same
+    if (log1.symptoms.length != log2.symptoms.length) {
+      return false;
+    }
+
+    for (final symptom in log1.symptoms) {
+      if (!log2.symptoms.contains(symptom)) {
+        return false;
+      }
+    }
+
+    // Check if feelings/moods are the same
+    if (log1.feelings.length != log2.feelings.length) {
+      return false;
+    }
+
+    for (final feeling in log1.feelings) {
+      if (!log2.feelings.contains(feeling)) {
+        return false;
+      }
+    }
+
+    // If we got here, the logs are very similar in content
+    return true;
   }
 
   Future<void> _saveLogs() async {
@@ -235,6 +338,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final normalizedDate = _normalizeDate(selectedDate);
     DailyLog? logToSync;
 
+    print(
+        '_saveDailyLog called, updating existing log: ${existingLog != null}');
+    if (existingLog != null) {
+      print(
+          'Existing log ID: ${existingLog.id}, timestamp: ${existingLog.timestamp}');
+    }
+
     setState(() {
       if (!_dailyLogs.containsKey(normalizedDate)) {
         _dailyLogs[normalizedDate] = [];
@@ -245,18 +355,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final index = _dailyLogs[normalizedDate]!
             .indexWhere((log) => log.timestamp == existingLog.timestamp);
         if (index != -1) {
+          print('Updating existing log with ID: ${existingLog.id}');
           logToSync = DailyLog(
             feelings: selectedMoods,
             stressLevel: stressLevel,
             symptoms: selectedSymptoms,
             timestamp: existingLog.timestamp,
             journal: journal,
-            id: existingLog.id,
+            id: existingLog.id, // Preserve the existing ID for update
           );
           _dailyLogs[normalizedDate]![index] = logToSync!;
+          print(
+              'Updated existing log in local storage at index $index, ID: ${logToSync!.id}');
+        } else {
+          print(
+              'Warning: Could not find existing log to update in local storage');
         }
       } else {
         // Create new log
+        print('Creating new log');
         logToSync = DailyLog(
           feelings: selectedMoods,
           stressLevel: stressLevel,
@@ -272,7 +389,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     // Sync with Supabase
     try {
-      await logToSync?.syncWithSupabase();
+      print(
+          'Starting Supabase sync for ${existingLog != null ? 'EXISTING' : 'NEW'} log');
+      if (logToSync != null) {
+        print(
+            'Log to sync - Has ID: ${logToSync!.id != null ? 'Yes: ${logToSync!.id}' : 'No'}, Timestamp: ${logToSync!.timestamp}');
+        await logToSync!.syncWithSupabase();
+        print('Supabase sync completed successfully');
+      }
 
       // Initialize notification variables
       bool notificationCreated = false;
@@ -305,7 +429,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       // Create notification for mood patterns - check for anxious or fearful moods
       if (selectedMoods.any((mood) =>
-          mood.toLowerCase() == 'anxious' || mood.toLowerCase() == 'fearful')) {
+          mood.toLowerCase().contains('anxious') ||
+          mood.toLowerCase().contains('fearful'))) {
         await _supabaseService.createNotification(
           title: 'Mood Pattern Alert',
           message:
@@ -330,7 +455,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
 
       // Trigger notification refresh in NotificationProvider if needed
-      if (notificationCreated) {
+      if (notificationCreated && mounted) {
         // Find and refresh the notification provider
         final notificationProvider =
             Provider.of<NotificationProvider>(context, listen: false);
@@ -365,7 +490,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     Map<String, bool> selectedSymptoms = Map<String, bool>.from(symptoms);
     double stressLevel = existingLog?.stressLevel ?? 3.0;
 
+    // Extract custom mood if it exists
+    String customMoodText = "";
     if (existingLog != null) {
+      for (String mood in existingLog.feelings) {
+        if (mood.startsWith("Custom: ")) {
+          customMoodText = mood.substring(8); // Remove "Custom: " prefix
+          selectedMoods.remove(
+              mood); // Remove from selected moods as we'll handle it separately
+        }
+      }
+
       for (final symptom in existingLog.symptoms) {
         selectedSymptoms[symptom] = true;
       }
@@ -386,14 +521,75 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return;
         }
 
-        _saveDailyLog(
-          _selectedDay!,
-          selectedMoods.toList(),
-          stressLevel,
-          selectedSymptomsList,
-          existingLog,
-          existingLog?.journal, // Preserve existing journal if updating
-        ).then((_) => Navigator.pop(context));
+        // Show loading indicator during save
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        // For update operations, don't navigate away immediately
+        if (existingLog != null) {
+          print('Updating existing log, will wait for completion');
+          _saveDailyLog(
+            _selectedDay!,
+            selectedMoods.toList(),
+            stressLevel,
+            selectedSymptomsList,
+            existingLog,
+            existingLog?.journal, // Preserve existing journal if updating
+          ).then((_) {
+            // Close loading indicator
+            Navigator.pop(context);
+            // Close feelings dialog
+            Navigator.pop(context);
+
+            // Show success message
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Log updated successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }).catchError((error) {
+            // Close loading indicator
+            Navigator.pop(context);
+
+            // Show error message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error updating log: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          });
+        } else {
+          // For new logs
+          _saveDailyLog(
+            _selectedDay!,
+            selectedMoods.toList(),
+            stressLevel,
+            selectedSymptomsList,
+          ).then((_) {
+            // Close loading indicator
+            Navigator.pop(context);
+            // Close feelings dialog
+            Navigator.pop(context);
+          }).catchError((error) {
+            // Close loading indicator
+            Navigator.pop(context);
+
+            // Show error message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error saving log: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          });
+        }
       } else {
         Navigator.pop(context);
       }
@@ -680,6 +876,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     void showMoodSelector() {
       bool showWarning = false;
+      // Controller for custom mood input
+      final TextEditingController customMoodController =
+          TextEditingController(text: customMoodText);
+      // Flag to show custom mood input - set to true if we have a custom mood
+      bool showCustomMoodInput = customMoodText.isNotEmpty;
 
       showModalBottomSheet(
         context: context,
@@ -721,7 +922,65 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ],
                         ),
                       ),
-                    const SizedBox(height: 20),
+
+                    // Custom mood input button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  showCustomMoodInput = !showCustomMoodInput;
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: showCustomMoodInput
+                                    ? const Color(0xFF3AA772)
+                                    : Colors.grey[200],
+                                foregroundColor: showCustomMoodInput
+                                    ? Colors.white
+                                    : Colors.grey[600],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Text(showCustomMoodInput
+                                  ? "Hide Custom Input"
+                                  : "Can't find how you feel? Click here"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Show text input if custom mood is selected
+                    if (showCustomMoodInput)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                        child: TextField(
+                          controller: customMoodController,
+                          decoration: InputDecoration(
+                            hintText: "Describe how you feel...",
+                            fillColor: Colors.grey[100],
+                            filled: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            prefixIcon: const Icon(Icons.edit,
+                                color: Color(0xFF3AA772)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 16),
+                          ),
+                          maxLines: 2,
+                        ),
+                      ),
+
+                    const SizedBox(height: 10),
                     Expanded(
                       child: GridView.builder(
                         gridDelegate:
@@ -789,12 +1048,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     _buildModalFooter(
                       onNext: () {
-                        if (selectedMoods.isEmpty) {
+                        // Check if either a predefined mood is selected or a custom mood is entered
+                        if (selectedMoods.isEmpty &&
+                            (customMoodController.text.isEmpty ||
+                                !showCustomMoodInput)) {
                           setState(() {
                             showWarning = true;
                           });
                           return;
                         }
+
+                        // If custom mood is entered, add it to selectedMoods
+                        if (showCustomMoodInput &&
+                            customMoodController.text.isNotEmpty) {
+                          selectedMoods
+                              .add("Custom: ${customMoodController.text}");
+                        }
+
                         Navigator.pop(context);
                         showStressLevelSelector();
                       },
@@ -1734,16 +2004,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
         .indexWhere((l) => l.timestamp == log.timestamp);
 
     if (index != -1) {
+      print(
+          'Updating journal for log with ID: ${log.id}, timestamp: ${log.timestamp}');
+
+      // Create updated log with preserved ID
+      final updatedLog = DailyLog(
+        feelings: log.feelings,
+        stressLevel: log.stressLevel,
+        symptoms: log.symptoms,
+        timestamp: log.timestamp,
+        journal: journalText.isEmpty ? null : journalText,
+        id: log.id, // Preserve the ID for updating
+      );
+
       setState(() {
-        _dailyLogs[normalizedDate]![index] = DailyLog(
-          feelings: log.feelings,
-          stressLevel: log.stressLevel,
-          symptoms: log.symptoms,
-          timestamp: log.timestamp,
-          journal: journalText.isEmpty ? null : journalText,
-        );
+        _dailyLogs[normalizedDate]![index] = updatedLog;
       });
+
       _saveLogs();
+
+      // Also sync with Supabase
+      try {
+        print(
+            'Syncing updated journal with Supabase. ID: ${log.id ?? "None"}, Timestamp: ${log.timestamp}');
+        updatedLog.syncWithSupabase();
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Journal updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        print('Error syncing journal with Supabase: $e');
+
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating journal: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } else {
+      print(
+          'Warning: Could not find log to update journal at timestamp: ${log.timestamp}');
     }
   }
 
@@ -1924,7 +2230,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     // Sync with Supabase
     try {
-      await logToSync?.syncWithSupabase();
+      await logToSync!.syncWithSupabase();
     } catch (e) {
       print('Error syncing journal with Supabase: $e');
       // Don't show error to user, as local storage still worked

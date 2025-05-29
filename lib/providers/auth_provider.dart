@@ -44,8 +44,9 @@ class AuthProvider extends ChangeNotifier {
     String? firstName,
     String? middleName,
     String? lastName,
-    int? age,
+    DateTime? birthDate,
     String? contactNumber,
+    String? emergencyContact,
     String? gender,
   }) async {
     try {
@@ -55,8 +56,9 @@ class AuthProvider extends ChangeNotifier {
         'first_name': firstName,
         'middle_name': middleName,
         'last_name': lastName,
-        'age': age,
+        'birth_date': birthDate?.toIso8601String(),
         'contact_number': contactNumber,
+        'emergency_contact': emergencyContact,
         'gender': gender,
       };
 
@@ -126,8 +128,9 @@ class AuthProvider extends ChangeNotifier {
     String? firstName,
     String? middleName,
     String? lastName,
-    int? age,
+    DateTime? birthDate,
     String? contactNumber,
+    String? emergencyContact,
     String? gender,
   }) async {
     try {
@@ -137,22 +140,13 @@ class AuthProvider extends ChangeNotifier {
         if (firstName != null) 'first_name': firstName,
         if (middleName != null) 'middle_name': middleName,
         if (lastName != null) 'last_name': lastName,
+        if (birthDate != null) 'birth_date': birthDate.toIso8601String(),
         if (contactNumber != null) 'contact_number': contactNumber,
+        if (emergencyContact != null) 'emergency_contact': emergencyContact,
         if (gender != null) 'gender': gender,
       };
 
-      // Only include age if it's valid and not null
-      if (age != null && age > 0) {
-        // We'll wrap this in a try-catch to handle potential schema issues
-        try {
-          await _supabaseService.updateUserProfile({'age': age});
-        } catch (e) {
-          print('Warning: Failed to update age: $e');
-          // Continue with other updates even if age update fails
-        }
-      }
-
-      // Update the rest of the profile fields
+      // Update the profile fields
       await _supabaseService.updateUserProfile(updates);
 
       final userProfile = await _supabaseService.getUserProfile();

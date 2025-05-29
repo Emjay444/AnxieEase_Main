@@ -74,6 +74,9 @@ class SearchScreenState extends State<SearchScreen>
   // Control for the draggable bottom sheet
   final DraggableScrollableController _dragController =
       DraggableScrollableController();
+  // Add a new controller for the clinic list draggable sheet
+  final DraggableScrollableController _clinicListController =
+      DraggableScrollableController();
 
   // Navigation state
   List<dynamic> _navigationSteps = [];
@@ -170,6 +173,7 @@ class SearchScreenState extends State<SearchScreen>
     flutterTts.stop();
     dio.close();
     _dragController.dispose();
+    _clinicListController.dispose();
     super.dispose();
   }
 
@@ -1951,75 +1955,47 @@ class SearchScreenState extends State<SearchScreen>
             bottomRight: Radius.circular(20),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Back button and app logo row
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  // Back button
-                  Material(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      onTap: () {
-                        // Navigate back to home page
-                        Navigator.of(context).pop();
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: Colors.grey.shade700,
-                          size: 20,
-                        ),
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              // Back button
+              Material(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  onTap: () {
+                    // Navigate back to home page
+                    Navigator.of(context).pop();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Icon(
+                      Icons.arrow_back,
+                      color: Colors.grey.shade700,
+                      size: 20,
                     ),
                   ),
-                  const Spacer(),
-                  // App logo and title
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.teal.shade300, Colors.teal.shade700],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.teal.withAlpha(76),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.psychology_alt,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
+                ),
+              ),
+              // Center the title
+              Expanded(
+                child: Center(
+                  child: Text(
                     'AnxieEase',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.teal[800],
-                      letterSpacing: 0.5,
                     ),
                   ),
-                  const Spacer(),
-                ],
+                ),
               ),
-            ),
-          ],
+              // Spacer to balance the back button
+              SizedBox(width: 36),
+            ],
+          ),
         ),
       ),
     );
@@ -2078,302 +2054,470 @@ class SearchScreenState extends State<SearchScreen>
       });
     }
 
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        height: 300,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.3, // Initial height (30% of screen)
+      minChildSize: 0.1, // Minimum height (10% of screen)
+      maxChildSize: 0.85, // Maximum height (85% of screen)
+      snap: true, // Snap to specific sizes
+      snapSizes: const [0.3, 0.6, 0.85], // Snap to these specific sizes
+      controller: _clinicListController, // Use the controller
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, Colors.teal.shade50],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(30),
+                blurRadius: 15,
+                offset: const Offset(0, -3),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(26),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle and title
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              width: double.infinity,
-              alignment: Alignment.center,
-              child: Column(
-                children: [
-                  // Just a handle indicator without text
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Enhanced handle and title - now clickable to expand
+              GestureDetector(
+                onTap: () {
+                  // Toggle between initial and expanded sizes
+                  if (_clinicListController.size <= 0.3) {
+                    _clinicListController.animateTo(
+                      0.6,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  } else {
+                    _clinicListController.animateTo(
+                      0.3,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: double.infinity,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            // Nearby Clinics Title
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.local_hospital,
-                    color: Colors.teal[700],
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Nearby Clinics',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[700],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // List of clinics
-            Expanded(
-              child: places.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off,
-                            size: 48,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No clinics or hospitals found nearby',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed: _searchNearbyHospitals,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Refresh'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.teal,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ],
+                  child: Column(
+                    children: [
+                      // Handle indicator
+                      Container(
+                        width: 50,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: places.length,
-                      itemBuilder: (context, index) {
-                        final place = places[index];
-                        final name = place['name'] ?? 'Unknown Clinic';
-                        final vicinity =
-                            place['vicinity'] ?? 'Address unavailable';
-                        final rating = place['rating'] ?? 0.0;
+                      const SizedBox(height: 12),
+                      // Header with icon and count
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.teal[50],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.local_hospital,
+                                color: Colors.teal[700],
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Nearby Clinics',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.teal[700],
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.teal[50],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${places.length} found',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.teal[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
-                        // Calculate distance
-                        String distance = '';
-                        if (_currentPosition != null) {
-                          final lat = place['geometry']['location']['lat'];
-                          final lng = place['geometry']['location']['lng'];
-                          final distanceInMeters = Geolocator.distanceBetween(
-                            _currentPosition!.latitude,
-                            _currentPosition!.longitude,
-                            lat,
-                            lng,
-                          );
+              // Divider
+              Divider(color: Colors.grey[200], height: 1),
 
-                          if (distanceInMeters < 1000) {
-                            distance =
-                                '${distanceInMeters.toStringAsFixed(0)} m';
-                          } else {
-                            distance =
-                                '${(distanceInMeters / 1000).toStringAsFixed(1)} km';
+              // List of clinics - now using the scrollController
+              Expanded(
+                child: places.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.search_off,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No clinics or hospitals found nearby',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Try adjusting your location or search radius',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: _searchNearbyHospitals,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Refresh'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.teal[600],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller:
+                            scrollController, // Use the provided controller
+                        padding: const EdgeInsets.only(
+                            top: 8, left: 16, right: 16, bottom: 80),
+                        itemCount: places.length,
+                        itemBuilder: (context, index) {
+                          final place = places[index];
+                          final name = place['name'] ?? 'Unknown Clinic';
+                          final vicinity =
+                              place['vicinity'] ?? 'Address unavailable';
+                          final rating = place['rating'] ?? 0.0;
+                          final types = place['types'] as List? ?? [];
+                          final isHospital = types.contains('hospital') ||
+                              name.toLowerCase().contains('hospital');
+                          final typeColor =
+                              isHospital ? Colors.red : Colors.teal;
+                          final typeIcon = isHospital
+                              ? Icons.local_hospital
+                              : Icons.psychology;
+                          final typeLabel = isHospital ? 'Hospital' : 'Clinic';
+
+                          // Status indicator (open/closed simulation - would come from API in real app)
+                          final bool isOpen = DateTime.now().hour > 8 &&
+                              DateTime.now().hour < 20;
+
+                          // Calculate distance
+                          String distance = '';
+                          if (_currentPosition != null) {
+                            final lat = place['geometry']['location']['lat'];
+                            final lng = place['geometry']['location']['lng'];
+                            final distanceInMeters = Geolocator.distanceBetween(
+                              _currentPosition!.latitude,
+                              _currentPosition!.longitude,
+                              lat,
+                              lng,
+                            );
+                            if (distanceInMeters < 1000) {
+                              distance =
+                                  '${distanceInMeters.toStringAsFixed(0)} m';
+                            } else {
+                              distance =
+                                  '${(distanceInMeters / 1000).toStringAsFixed(1)} km';
+                            }
                           }
-                        }
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: InkWell(
-                            onTap: () {
-                              // Select this place and move map to it
-                              _onMarkerTapped(place['place_id']);
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Clinic details
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: 2,
+                            shadowColor: Colors.black26,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            child: InkWell(
+                              onTap: () =>
+                                  _onMarkerTapped(place['place_id'] as String),
+                              borderRadius: BorderRadius.circular(16),
+                              splashColor: typeColor.withOpacity(0.1),
+                              highlightColor: typeColor.withOpacity(0.05),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Icon/avatar with indicator
+                                    Stack(
                                       children: [
-                                        Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
+                                        CircleAvatar(
+                                          backgroundColor:
+                                              typeColor.withOpacity(0.12),
+                                          child: Icon(typeIcon,
+                                              color: typeColor, size: 28),
+                                          radius: 28,
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          vicinity,
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 14,
+                                        Positioned(
+                                          right: 0,
+                                          bottom: 0,
+                                          child: Container(
+                                            width: 14,
+                                            height: 14,
+                                            decoration: BoxDecoration(
+                                              color: isOpen
+                                                  ? Colors.green
+                                                  : Colors.orange,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 2),
+                                            ),
                                           ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            // Rating
-                                            if (rating > 0) ...[
-                                              const Icon(
-                                                Icons.star,
-                                                color: Colors.amber,
-                                                size: 16,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                rating.toString(),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                            ],
-                                            // Distance
-                                            if (distance.isNotEmpty) ...[
-                                              Icon(
-                                                Icons.directions,
-                                                color: Colors.blue[700],
-                                                size: 16,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                distance,
-                                                style: TextStyle(
-                                                  color: Colors.blue[700],
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  // Directions button
-                                  Container(
-                                    margin: const EdgeInsets.only(left: 8),
-                                    child: ElevatedButton(
-                                      onPressed: () {
-                                        // Select this place and get directions
-                                        _onMarkerTapped(place['place_id']);
-                                        _getDirections(place);
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue[700],
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        minimumSize: const Size(40, 36),
+                                    const SizedBox(width: 16),
+
+                                    // Clinic info
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  name,
+                                                  style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 16),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: typeColor
+                                                      .withOpacity(0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  typeLabel,
+                                                  style: TextStyle(
+                                                    color: typeColor,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            vicinity,
+                                            style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 13),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              // Rating
+                                              Icon(Icons.star,
+                                                  color: Colors.amber,
+                                                  size: 16),
+                                              Text(rating.toString(),
+                                                  style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 13)),
+                                              const SizedBox(width: 12),
+
+                                              // Distance with icon
+                                              Icon(Icons.location_on,
+                                                  color: Colors.blue, size: 16),
+                                              Text(distance,
+                                                  style: const TextStyle(
+                                                      fontSize: 13)),
+
+                                              // Open/closed status
+                                              const SizedBox(width: 12),
+                                              Text(
+                                                isOpen ? 'Open' : 'Closed',
+                                                style: TextStyle(
+                                                  color: isOpen
+                                                      ? Colors.green
+                                                      : Colors.orange,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
-                                      child: const Icon(Icons.directions),
                                     ),
-                                  ),
-                                ],
+
+                                    // Directions button
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 8),
+                                      child: ElevatedButton.icon(
+                                        onPressed: () => _onMarkerTapped(
+                                            place['place_id'] as String),
+                                        icon: const Icon(Icons.directions,
+                                            size: 16),
+                                        label: const Text('Go'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.teal[600],
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 10,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-
-            // Bottom buttons
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        if (_currentPosition != null) {
-                          _moveCamera(
-                            LatLng(_currentPosition!.latitude,
-                                _currentPosition!.longitude),
-                            15.0,
                           );
-                        }
-                      },
-                      icon: const Icon(Icons.my_location),
-                      label: const Text('Your Location'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.blue[700],
-                        side: BorderSide(color: Colors.blue[700]!),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        },
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _searchNearbyHospitals,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Refresh'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ),
-            ),
-          ],
-        ),
-      ),
+
+              // Bottom buttons - now inside the draggable sheet
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.white.withOpacity(0.8), Colors.white],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          if (_currentPosition != null) {
+                            _moveCamera(
+                              LatLng(_currentPosition!.latitude,
+                                  _currentPosition!.longitude),
+                              15.0,
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.my_location, size: 16),
+                        label: const Text('Your Location'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.blue[700],
+                          side: BorderSide(color: Colors.blue[700]!),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _searchNearbyHospitals,
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Refresh'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

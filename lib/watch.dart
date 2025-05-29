@@ -15,7 +15,7 @@ class _WatchScreenState extends State<WatchScreen>
 
   late DatabaseReference _metricsRef;
   double heartRate = 0;
-  double temperature = 0;
+  bool isDeviceWorn = false;
 
   @override
   void initState() {
@@ -33,8 +33,6 @@ class _WatchScreenState extends State<WatchScreen>
     // Reference to your metrics
     _metricsRef =
         FirebaseDatabase.instance.ref().child('devices/AnxieEase001/Metrics');
-
-    // SeverityNotifier is now initialized globally in main.dart
 
     // Listen for changes
     _metricsRef.onValue.listen((event) {
@@ -55,16 +53,13 @@ class _WatchScreenState extends State<WatchScreen>
                   : double.tryParse(hrValue.toString()) ?? 0;
             }
 
-            if (data.containsKey('temperature')) {
-              var tempValue = data['temperature'];
-              temperature = (tempValue is num)
-                  ? tempValue.toDouble()
-                  : double.tryParse(tempValue.toString()) ?? 0;
+            if (data.containsKey('isDeviceWorn')) {
+              isDeviceWorn = data['isDeviceWorn'] as bool? ?? false;
             }
 
             // Print the values after processing for debugging
             debugPrint('Processed heartRate: $heartRate');
-            debugPrint('Processed temperature: $temperature');
+            debugPrint('Device worn status: $isDeviceWorn');
           });
         } catch (e) {
           debugPrint('Error parsing Firebase data: $e');
@@ -140,12 +135,9 @@ class _WatchScreenState extends State<WatchScreen>
                                           0;
                                 }
 
-                                if (data.containsKey('temperature')) {
-                                  var tempValue = data['temperature'];
-                                  temperature = (tempValue is num)
-                                      ? tempValue.toDouble()
-                                      : double.tryParse(tempValue.toString()) ??
-                                          0;
+                                if (data.containsKey('isDeviceWorn')) {
+                                  isDeviceWorn =
+                                      data['isDeviceWorn'] as bool? ?? false;
                                 }
                               });
                             } catch (e) {
@@ -163,81 +155,72 @@ class _WatchScreenState extends State<WatchScreen>
             // Main Content
             Expanded(
               child: Container(
-                margin: const EdgeInsets.only(top: 24),
+                margin: const EdgeInsets.only(top: 16),
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-                child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(32)),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: GridView.builder(
-                          padding: const EdgeInsets.all(24),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 20,
-                            crossAxisSpacing: 20,
-                            childAspectRatio: 0.85,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 4),
+                        // Heart Rate Card (Larger and centered)
+                        SizedBox(
+                          height: 220,
+                          child: Center(
+                            child: SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.88,
+                              child: _buildStatCard(
+                                title: 'Heart Rate',
+                                value: heartRate.toStringAsFixed(0),
+                                unit: 'BPM',
+                                icon: Icons.favorite,
+                                color: const Color(0xFFFF5252),
+                                progress: (heartRate / 100).clamp(0.0, 1.0),
+                                range: '60-100',
+                                isLarge: true,
+                              ),
+                            ),
                           ),
-                          itemCount: 4,
-                          itemBuilder: (context, index) {
-                            final items = [
-                              {
-                                'title': 'Heart Rate',
-                                'value': heartRate.toStringAsFixed(0),
-                                'unit': 'BPM',
-                                'icon': Icons.favorite,
-                                'color': const Color(0xFFFF5252),
-                                'progress': (heartRate / 100).clamp(0.0, 1.0),
-                                'range': '60-100',
-                              },
-                              {
-                                'title': 'SpO2',
-                                'value': '98',
-                                'unit': '%',
-                                'icon': Icons.water_drop,
-                                'color': const Color(0xFF2196F3),
-                                'progress': 0.98,
-                                'range': '95-100',
-                              },
-                              {
-                                'title': 'Battery',
-                                'value': '85',
-                                'unit': '%',
-                                'icon': Icons.battery_charging_full,
-                                'color': const Color(0xFF4CAF50),
-                                'progress': 0.85,
-                                'range': '0-100',
-                              },
-                              {
-                                'title': 'Temperature',
-                                'value': temperature.toStringAsFixed(1),
-                                'unit': '°C',
-                                'icon': Icons.thermostat,
-                                'color': const Color(0xFFFFA726),
-                                'progress':
-                                    ((temperature - 35) / 3).clamp(0.0, 1.0),
-                                'range': '35-38',
-                              },
-                            ];
-
-                            return _buildStatCard(
-                              title: items[index]['title'] as String,
-                              value: items[index]['value'] as String,
-                              unit: items[index]['unit'] as String,
-                              icon: items[index]['icon'] as IconData,
-                              color: items[index]['color'] as Color,
-                              progress: items[index]['progress'] as double,
-                              range: items[index]['range'] as String,
-                            );
-                          },
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        // Second row with Device Status and Battery
+                        SizedBox(
+                          height: 170,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatCard(
+                                  title: 'Device Status',
+                                  value: isDeviceWorn ? 'Worn' : 'Not Worn',
+                                  unit: '',
+                                  icon: Icons.watch,
+                                  color: const Color(0xFF9C27B0),
+                                  progress: isDeviceWorn ? 1.0 : 0.0,
+                                  range: 'Status',
+                                  isLarge: false,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildStatCard(
+                                  title: 'Battery',
+                                  value: '85',
+                                  unit: '%',
+                                  icon: Icons.battery_charging_full,
+                                  color: const Color(0xFF4CAF50),
+                                  progress: 0.85,
+                                  range: '0-100',
+                                  isLarge: false,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -256,129 +239,156 @@ class _WatchScreenState extends State<WatchScreen>
     required Color color,
     required double progress,
     required String range,
+    bool isLarge = false,
   }) {
+    // Determine if this is a status card with long value text
+    bool isStatusValue = title == 'Device Status';
+
+    // Choose font size based on value length and card type
+    double valueFontSize =
+        isLarge ? 46 : (isStatusValue ? 22 : 30); // Reduced from 26 to 22
+
     return FadeTransition(
       opacity: _animation,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withOpacity(0.1),
-              color.withOpacity(0.05),
+      child: LayoutBuilder(builder: (context, constraints) {
+        return Container(
+          padding: EdgeInsets.all(isLarge ? 20 : 14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: color.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row with icon and range
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(isLarge ? 10 : 6),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: color,
+                      size: isLarge ? 30 : 22,
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      range,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: isLarge ? 13 : 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Spacing
+              SizedBox(height: isLarge ? 20 : 12),
+
+              // Title
+              Text(
+                title,
+                style: TextStyle(
+                  color: const Color(0xFF2C3E50),
+                  fontSize: isLarge ? 18 : 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              // Spacing
+              SizedBox(height: isLarge ? 8 : 5),
+
+              // Value and unit
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: valueFontSize, // Use calculated font size
+                        fontWeight: isStatusValue
+                            ? FontWeight.w600
+                            : FontWeight.bold, // Lighter weight for status
+                        height: 0.9,
+                        letterSpacing: isStatusValue
+                            ? -0.5
+                            : 0, // Tighter letter spacing for status
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (unit.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      unit,
+                      style: TextStyle(
+                        color: color.withOpacity(0.7),
+                        fontSize: isLarge ? 16 : 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+
+              // Spacing - smaller to fit everything
+              SizedBox(height: isLarge ? 14 : 10),
+
+              // Progress bar
+              Stack(
+                children: [
+                  Container(
+                    height: isLarge ? 8 : 5,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(isLarge ? 4 : 3),
+                    ),
+                  ),
+                  FractionallySizedBox(
+                    widthFactor: progress,
+                    child: Container(
+                      height: isLarge ? 8 : 5,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(isLarge ? 4 : 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: color.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    range,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF2C3E50),
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    unit,
-                    style: TextStyle(
-                      color: color.withOpacity(0.7),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Stack(
-              children: [
-                Container(
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(-1, 0),
-                    end: Offset.zero,
-                  ).animate(_animation),
-                  child: Container(
-                    height: 6,
-                    width: MediaQuery.of(context).size.width * progress * 0.3,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+        );
+      }),
     );
   }
 }
