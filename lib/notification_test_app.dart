@@ -81,10 +81,6 @@ class _TestScreenState extends State<TestScreen> {
   @override
   void initState() {
     super.initState();
-
-    // Initialize the severity listener
-    Provider.of<NotificationService>(context, listen: false)
-        .initializeListener();
   }
 
   Future<void> _sendTestNotification() async {
@@ -169,22 +165,6 @@ class _TestScreenState extends State<TestScreen> {
               child: const Text(
                 'Send Test Notification',
                 style: TextStyle(fontSize: 16, color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 15),
-            ElevatedButton(
-              onPressed: () {
-                Provider.of<NotificationService>(context, listen: false)
-                    .sendManualNotification();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: statusColor,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              ),
-              child: Text(
-                'Send $severity Notification',
-                style: const TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
             const SizedBox(height: 20),

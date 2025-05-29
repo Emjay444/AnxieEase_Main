@@ -42,9 +42,6 @@ void main() async {
   // Initialize storage service
   await StorageService().init();
 
-  // Start listening for Firebase data changes (but skip initial notifications)
-  notificationService.initializeListener();
-
   runApp(
     MultiProvider(
       providers: [

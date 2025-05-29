@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:provider/provider.dart';
+import 'services/notification_service.dart';
 
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
@@ -12,9 +14,7 @@ class _WatchScreenState extends State<WatchScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-
   late DatabaseReference _metricsRef;
-  double heartRate = 0;
   bool isDeviceWorn = false;
 
   @override
@@ -30,36 +30,19 @@ class _WatchScreenState extends State<WatchScreen>
     );
     _controller.forward();
 
-    // Reference to your metrics
+    // Reference to your metrics (only for device worn status)
     _metricsRef =
         FirebaseDatabase.instance.ref().child('devices/AnxieEase001/Metrics');
 
-    // Listen for changes
+    // Listen only for device worn status
     _metricsRef.onValue.listen((event) {
       if (event.snapshot.value != null) {
-        // Debug print to see the actual data structure
-        debugPrint('Firebase data: ${event.snapshot.value}');
-
         try {
-          // Handle data based on its structure
           final data = event.snapshot.value as Map<dynamic, dynamic>;
-
           setState(() {
-            // Convert various number formats to double safely
-            if (data.containsKey('heartRate')) {
-              var hrValue = data['heartRate'];
-              heartRate = (hrValue is num)
-                  ? hrValue.toDouble()
-                  : double.tryParse(hrValue.toString()) ?? 0;
-            }
-
             if (data.containsKey('isDeviceWorn')) {
               isDeviceWorn = data['isDeviceWorn'] as bool? ?? false;
             }
-
-            // Print the values after processing for debugging
-            debugPrint('Processed heartRate: $heartRate');
-            debugPrint('Device worn status: $isDeviceWorn');
           });
         } catch (e) {
           debugPrint('Error parsing Firebase data: $e');
@@ -76,6 +59,10 @@ class _WatchScreenState extends State<WatchScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Get heart rate from NotificationService
+    double heartRate =
+        Provider.of<NotificationService>(context).currentHeartRate.toDouble();
+
     return Scaffold(
       backgroundColor: const Color(0xFF2C3E50),
       body: SafeArea(
@@ -119,32 +106,6 @@ class _WatchScreenState extends State<WatchScreen>
                       onPressed: () {
                         _controller.reset();
                         _controller.forward();
-
-                        // You can also refresh data manually here
-                        _metricsRef.get().then((snapshot) {
-                          if (snapshot.exists && snapshot.value != null) {
-                            try {
-                              final data =
-                                  snapshot.value as Map<dynamic, dynamic>;
-                              setState(() {
-                                if (data.containsKey('heartRate')) {
-                                  var hrValue = data['heartRate'];
-                                  heartRate = (hrValue is num)
-                                      ? hrValue.toDouble()
-                                      : double.tryParse(hrValue.toString()) ??
-                                          0;
-                                }
-
-                                if (data.containsKey('isDeviceWorn')) {
-                                  isDeviceWorn =
-                                      data['isDeviceWorn'] as bool? ?? false;
-                                }
-                              });
-                            } catch (e) {
-                              debugPrint('Error refreshing data: $e');
-                            }
-                          }
-                        });
                       },
                     ),
                   ),
