@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/notification_service.dart';
 import 'widgets/notification_permission_dialog.dart';
+import 'main.dart'; // Import to access the global servicesInitialized flag
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -11,25 +12,38 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   final NotificationService _notificationService = NotificationService();
+  bool _permissionsChecked = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeApp();
+    _checkInitialization();
   }
 
-  Future<void> _initializeApp() async {
-    // Initialize notification service
-    await _notificationService.initialize();
+  Future<void> _checkInitialization() async {
+    // Check every 500ms if services are initialized
+    while (!servicesInitialized) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+    }
 
-    // Wait for splash animation
-    await Future.delayed(const Duration(seconds: 3));
+    // Once services are initialized, check permissions
+    setState(() {
+      _isLoading = false;
+    });
 
+    // Wait a bit to show the splash screen
+    await Future.delayed(const Duration(seconds: 1));
     if (!mounted) return;
 
     // Check if we've already asked for notification permissions
     final permissionStatus =
         await _notificationService.getSavedPermissionStatus();
+
+    setState(() {
+      _permissionsChecked = true;
+    });
 
     if (permissionStatus == null) {
       // First time launch - show notification permission dialog
@@ -130,7 +144,28 @@ class _SplashScreenState extends State<SplashScreen> {
                   color: Colors.white,
                 ),
               ),
+              const SizedBox(height: 24),
+              if (_isLoading)
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
               const SizedBox(height: 16),
+              if (_isLoading)
+                const Text(
+                  'Loading...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              if (!_isLoading && !_permissionsChecked)
+                const Text(
+                  'Preparing your experience...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
             ],
           ),
         ),

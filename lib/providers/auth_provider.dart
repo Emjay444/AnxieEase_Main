@@ -6,32 +6,58 @@ class AuthProvider extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
   UserModel? _currentUser;
   bool _isLoading = false;
+  bool _isInitialized = false;
 
   AuthProvider() {
-    _checkCurrentUser();
+    // Don't check user immediately - wait for initialization
+    _initializeProvider();
+  }
+
+  Future<void> _initializeProvider() async {
+    // Delay the check until services are ready
+    Future.delayed(const Duration(seconds: 2), () {
+      _checkCurrentUser();
+      _isInitialized = true;
+    });
   }
 
   Future<void> _checkCurrentUser() async {
-    if (_supabaseService.isAuthenticated) {
-      _setLoading(true);
-      try {
-        final userProfile = await _supabaseService.getUserProfile();
-        if (userProfile != null) {
-          _currentUser = UserModel.fromJson(userProfile);
+    try {
+      final isAuth = _supabaseService.isAuthenticated;
+      if (isAuth) {
+        _setLoading(true);
+        try {
+          final userProfile = await _supabaseService.getUserProfile();
+          if (userProfile != null) {
+            _currentUser = UserModel.fromJson(userProfile);
+          }
+        } catch (e) {
+          debugPrint('Error loading user profile: $e');
+        } finally {
+          _setLoading(false);
         }
-      } finally {
-        _setLoading(false);
+      } else {
+        // Clear any existing state if not authenticated
+        _currentUser = null;
       }
-    } else {
-      // Clear any existing state if not authenticated
-      _currentUser = null;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error checking authentication status: $e');
+      // Don't notify on error - just leave current state
     }
-    notifyListeners();
   }
 
   UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
-  bool get isAuthenticated => _supabaseService.isAuthenticated;
+
+  bool get isAuthenticated {
+    try {
+      return _supabaseService.isAuthenticated;
+    } catch (e) {
+      debugPrint('Error checking authentication status: $e');
+      return false;
+    }
+  }
 
   void _setLoading(bool value) {
     _isLoading = value;

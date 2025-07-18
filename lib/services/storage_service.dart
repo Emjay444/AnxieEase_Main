@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/logger.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class StorageService {
   static final StorageService _instance = StorageService._internal();
@@ -12,6 +14,9 @@ class StorageService {
 
   // Shared preferences for non-sensitive settings
   late SharedPreferences _prefs;
+  bool _isInitialized = false;
+  bool _isInitializing = false;
+  final Completer<void> _initCompleter = Completer<void>();
 
   // Keys
   static const String _rememberMeKey = 'remember_me';
@@ -20,6 +25,44 @@ class StorageService {
 
   // Initialize shared preferences
   Future<void> init() async {
+    // If already initialized, return immediately
+    if (_isInitialized) {
+      debugPrint('StorageService already initialized');
+      return;
+    }
+
+    // If initialization is in progress, wait for it to complete
+    if (_isInitializing) {
+      debugPrint('StorageService initialization in progress, waiting...');
+      return _initCompleter.future;
+    }
+
+    _isInitializing = true;
+
+    try {
+      // Set a timeout for initialization
+      await Future.any([
+        _initializeStorage(),
+        Future.delayed(const Duration(seconds: 2), () {
+          debugPrint(
+              '⚠️ StorageService initialization timed out, continuing anyway');
+          // Don't throw exception, just continue
+        })
+      ]);
+
+      _isInitialized = true;
+      _isInitializing = false;
+      _initCompleter.complete();
+      debugPrint('✅ StorageService initialized successfully');
+    } catch (e) {
+      debugPrint('❌ Error initializing StorageService: $e');
+      _isInitializing = false;
+      _initCompleter.completeError(e);
+      // Don't rethrow - allow the app to continue even if storage fails
+    }
+  }
+
+  Future<void> _initializeStorage() async {
     _prefs = await SharedPreferences.getInstance();
     Logger.debug('StorageService initialized');
   }

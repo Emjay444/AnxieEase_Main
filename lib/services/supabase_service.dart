@@ -3,14 +3,17 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:io';
+import 'dart:async';
 
 class SupabaseService {
   static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxc3VzdGp4emp6Zm50Y3NudnBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMDg4NTgsImV4cCI6MjA1Njc4NDg1OH0.RCS_0fSVYnYVY2qr0Ow1__vBC4WRaVg_2SDatKREVHA';
 
-  late final SupabaseClient _supabaseClient;
+  SupabaseClient? _supabaseClient;
   bool _isInitialized = false;
+  bool _isInitializing = false;
+  final Completer<void> _initCompleter = Completer<void>();
 
   // Singleton pattern
   static final SupabaseService _instance = SupabaseService._internal();
@@ -21,25 +24,75 @@ class SupabaseService {
 
   SupabaseService._internal();
 
+  // Getter for supabase client that safely handles null case
+  SupabaseClient get client {
+    if (_supabaseClient != null) {
+      return _supabaseClient!;
+    }
+
+    // If client is null but Supabase is initialized, try to get the instance
+    try {
+      if (Supabase.instance != null) {
+        _supabaseClient = Supabase.instance.client;
+        return _supabaseClient!;
+      }
+    } catch (e) {
+      debugPrint('Error getting Supabase instance: $e');
+    }
+
+    // If we still don't have a client, throw an error
+    throw Exception('Supabase client is not initialized');
+  }
+
   Future<void> initialize() async {
+    // If already initialized, return immediately
     if (_isInitialized) {
-      print('Supabase is already initialized, skipping initialization');
-      _supabaseClient = Supabase.instance.client;
+      debugPrint('Supabase is already initialized, skipping initialization');
+      try {
+        _supabaseClient = Supabase.instance.client;
+      } catch (e) {
+        debugPrint('Error getting Supabase instance: $e');
+      }
       return;
     }
 
-    try {
-      await Supabase.initialize(
-        url: supabaseUrl,
-        anonKey: supabaseAnonKey,
-      );
-      _supabaseClient = Supabase.instance.client;
-      _isInitialized = true;
-      print('Supabase initialized successfully');
-    } catch (e) {
-      print('Error initializing Supabase: $e');
-      rethrow;
+    // If initialization is in progress, wait for it to complete
+    if (_isInitializing) {
+      debugPrint('Supabase initialization already in progress, waiting...');
+      return _initCompleter.future;
     }
+
+    _isInitializing = true;
+
+    try {
+      // Set a timeout for initialization
+      await Future.any([
+        _initializeSupabase(),
+        Future.delayed(const Duration(seconds: 5), () {
+          throw TimeoutException(
+              'Supabase initialization timed out after 5 seconds');
+        })
+      ]);
+
+      _isInitialized = true;
+      _isInitializing = false;
+      _initCompleter.complete();
+      debugPrint('Supabase initialized successfully');
+    } catch (e) {
+      _isInitializing = false;
+      _initCompleter.completeError(e);
+      debugPrint('Error initializing Supabase: $e');
+      // Don't rethrow - allow the app to continue even if Supabase fails
+      // The app will try to reconnect when needed
+    }
+  }
+
+  Future<void> _initializeSupabase() async {
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+    );
+    _supabaseClient = Supabase.instance.client;
   }
 
   // Authentication methods
@@ -61,7 +114,7 @@ class SupabaseService {
 
       // Proceed with signup in auth
       print('Calling Supabase auth.signUp...');
-      final AuthResponse response = await _supabaseClient.auth.signUp(
+      final AuthResponse response = await client.auth.signUp(
         email: email,
         password: password,
         emailRedirectTo: redirectUrl,
@@ -86,7 +139,7 @@ class SupabaseService {
         // Create user record in users table
         final timestamp = DateTime.now().toIso8601String();
         print('Inserting user record into users table...');
-        await _supabaseClient.from('users').upsert({
+        await client.from('users').upsert({
           'id': response.user!.id,
           'email': email,
           'password_hash': 'MANAGED_BY_SUPABASE_AUTH',
@@ -142,18 +195,15 @@ class SupabaseService {
   }) async {
     try {
       // First verify this email exists in users table
-      final user = await _supabaseClient
-          .from('users')
-          .select()
-          .eq('email', email)
-          .maybeSingle();
+      final user =
+          await client.from('users').select().eq('email', email).maybeSingle();
 
       if (user == null) {
         throw Exception(
             'This account is not registered. Please sign up first.');
       }
 
-      final response = await _supabaseClient.auth.signInWithPassword(
+      final response = await client.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -169,7 +219,7 @@ class SupabaseService {
       }
 
       // Update email verification status only
-      await _supabaseClient.from('users').update({
+      await client.from('users').update({
         'updated_at': DateTime.now().toIso8601String(),
         'is_email_verified': response.user?.emailConfirmedAt != null,
       }).eq('id', response.user!.id);
@@ -190,7 +240,7 @@ class SupabaseService {
   }
 
   Future<void> signOut() async {
-    await _supabaseClient.auth.signOut();
+    await client.auth.signOut();
   }
 
   Future<void> resetPassword(String email) async {
@@ -199,7 +249,7 @@ class SupabaseService {
       print('Requesting password reset for email: $email');
 
       // Set a longer expiration for the reset token
-      final response = await _supabaseClient.auth.resetPasswordForEmail(email,
+      final response = await client.auth.resetPasswordForEmail(email,
           redirectTo: null // Let Supabase handle the redirect
           );
 
@@ -212,7 +262,7 @@ class SupabaseService {
 
   Future<void> updatePassword(String newPassword) async {
     try {
-      await _supabaseClient.auth.updateUser(
+      await client.auth.updateUser(
         UserAttributes(
           password: newPassword,
         ),
@@ -225,7 +275,7 @@ class SupabaseService {
 
   // Get user profile
   Future<Map<String, dynamic>?> getUserProfile([String? userId]) async {
-    final currentUser = _supabaseClient.auth.currentUser;
+    final currentUser = client.auth.currentUser;
     if (currentUser == null) {
       print('getUserProfile: No user ID available');
       return null;
@@ -235,11 +285,8 @@ class SupabaseService {
     print('Fetching user profile for ID: $user');
 
     try {
-      final response = await _supabaseClient
-          .from('users')
-          .select()
-          .eq('id', user)
-          .maybeSingle();
+      final response =
+          await client.from('users').select().eq('id', user).maybeSingle();
       return response;
     } catch (e) {
       print('Error fetching user profile: $e');
@@ -332,7 +379,7 @@ class SupabaseService {
       print('Verifying password reset code: $token for email: $email');
 
       // Verify the OTP
-      final response = await _supabaseClient.auth.verifyOTP(
+      final response = await client.auth.verifyOTP(
         email: email,
         token: token,
         type: OtpType.recovery,
@@ -399,7 +446,7 @@ class SupabaseService {
 
   // Profile methods
   Future<void> updateUserProfile(Map<String, dynamic> data) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -410,7 +457,7 @@ class SupabaseService {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await _supabaseClient.from('users').update(updatedData).eq('id', user.id);
+      await client.from('users').update(updatedData).eq('id', user.id);
       print(
           'Successfully updated user profile: ${updatedData.keys.join(', ')}');
     } catch (e) {
@@ -421,7 +468,7 @@ class SupabaseService {
 
         // Always update the timestamp
         try {
-          await _supabaseClient.from('users').update({
+          await client.from('users').update({
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', user.id);
         } catch (_) {
@@ -431,7 +478,7 @@ class SupabaseService {
         // Try each field individually
         for (var entry in data.entries) {
           try {
-            await _supabaseClient.from('users').update({
+            await client.from('users').update({
               entry.key: entry.value,
             }).eq('id', user.id);
             print('Successfully updated field: ${entry.key}');
@@ -450,7 +497,7 @@ class SupabaseService {
 
   // Anxiety records methods
   Future<void> saveAnxietyRecord(Map<String, dynamic> record) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -472,7 +519,7 @@ class SupabaseService {
       };
 
       // Save to anxiety_records table
-      await _supabaseClient.from('anxiety_records').insert(recordToSave);
+      await client.from('anxiety_records').insert(recordToSave);
 
       debugPrint(
           'Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
@@ -488,7 +535,7 @@ class SupabaseService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -496,10 +543,8 @@ class SupabaseService {
       final targetUserId = userId ?? user.id;
 
       // Start building the query
-      var query = _supabaseClient
-          .from('anxiety_records')
-          .select()
-          .eq('user_id', targetUserId);
+      var query =
+          client.from('anxiety_records').select().eq('user_id', targetUserId);
 
       // Add severity level filter if provided
       if (severityLevel != null) {
@@ -533,7 +578,7 @@ class SupabaseService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -628,7 +673,7 @@ class SupabaseService {
 
   // Wellness logs methods (for moods, symptoms, stress levels)
   Future<void> saveWellnessLog(Map<String, dynamic> log) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -645,7 +690,7 @@ class SupabaseService {
       // Even if no ID is provided, check if a log with the same timestamp already exists
       if (log['timestamp'] != null) {
         print('Checking for existing log with timestamp ${log['timestamp']}');
-        final existingLogs = await _supabaseClient
+        final existingLogs = await client
             .from('wellness_logs')
             .select('id, feelings, stress_level, symptoms, journal')
             .eq('user_id', user.id)
@@ -704,7 +749,7 @@ class SupabaseService {
 
       // Add the record to the wellness_logs table with all the needed fields
       print('Creating new wellness log record');
-      await _supabaseClient.from('wellness_logs').insert({
+      await client.from('wellness_logs').insert({
         'user_id': user.id,
         'date': log['date'],
         'feelings': log['feelings'],
@@ -737,7 +782,7 @@ class SupabaseService {
 
   // Update an existing wellness log
   Future<void> updateWellnessLog(Map<String, dynamic> log) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -766,7 +811,7 @@ class SupabaseService {
       print('Final update data: $updateData');
 
       // Start building the query
-      var query = _supabaseClient
+      var query = client
           .from('wellness_logs')
           .update(updateData)
           .eq('user_id', user.id);
@@ -791,14 +836,14 @@ class SupabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getWellnessLogs({String? userId}) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     // If userId is provided, fetch logs for that user (for psychologists)
     // Otherwise, fetch logs for the current user (for patients)
     final targetUserId = userId ?? user.id;
 
-    final response = await _supabaseClient
+    final response = await client
         .from('wellness_logs')
         .select()
         .eq('user_id', targetUserId)
@@ -811,13 +856,13 @@ class SupabaseService {
 
   // Delete a wellness log
   Future<void> deleteWellnessLog(String date, DateTime timestamp) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     // Convert timestamp to ISO string for comparison
     final timestampString = timestamp.toIso8601String();
 
-    await _supabaseClient
+    await client
         .from('wellness_logs')
         .delete()
         .eq('user_id', user.id)
@@ -830,14 +875,11 @@ class SupabaseService {
 
   // Clear all wellness logs for the current user
   Future<void> clearAllWellnessLogs() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      await _supabaseClient
-          .from('wellness_logs')
-          .delete()
-          .eq('user_id', user.id);
+      await client.from('wellness_logs').delete().eq('user_id', user.id);
 
       print('Successfully cleared all wellness logs for user: ${user.id}');
     } catch (e) {
@@ -848,7 +890,7 @@ class SupabaseService {
 
   // Get all patients assigned to a psychologist
   Future<List<Map<String, dynamic>>> getAssignedPatients() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     // Check if the current user is a psychologist
@@ -875,7 +917,7 @@ class SupabaseService {
 
     // Original implementation (commented out)
     /*
-    final response = await _supabaseClient
+    final response = await client
         .from('users')
         .select()
         .eq('assigned_psychologist_id', user.id)
@@ -887,7 +929,7 @@ class SupabaseService {
 
   // Get mood log statistics for a patient
   Future<Map<String, dynamic>> getPatientMoodStats(String patientId) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     // Check if the current user is a psychologist
@@ -965,18 +1007,25 @@ class SupabaseService {
     };
   }
 
-  // Helper method to check if user is authenticated
-  bool get isAuthenticated => _supabaseClient.auth.currentUser != null;
+  // Check if user is authenticated
+  bool get isAuthenticated {
+    try {
+      return client.auth.currentUser != null;
+    } catch (e) {
+      debugPrint('Error checking authentication status: $e');
+      return false;
+    }
+  }
 
   // Get current user
-  User? get currentUser => _supabaseClient.auth.currentUser;
+  User? get currentUser => client.auth.currentUser;
 
   // Email verification methods
   Future<void> updateEmailVerificationStatus(String email) async {
     try {
       print('Updating email verification status for: $email');
 
-      await _supabaseClient.from('users').update({
+      await client.from('users').update({
         'is_email_verified': true,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('email', email);
@@ -990,7 +1039,7 @@ class SupabaseService {
 
   // Psychologist methods
   Future<Map<String, dynamic>?> getAssignedPsychologist() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -998,11 +1047,8 @@ class SupabaseService {
       final userProfile = await getUserProfile();
       if (userProfile == null) {
         // If no user profile found, try fetching a default psychologist
-        final psychologists = await _supabaseClient
-            .from('psychologists')
-            .select()
-            .limit(1)
-            .maybeSingle();
+        final psychologists =
+            await client.from('psychologists').select().limit(1).maybeSingle();
 
         if (psychologists != null) {
           return _ensurePsychologistFields(psychologists);
@@ -1015,7 +1061,7 @@ class SupabaseService {
         final psychologistId = userProfile['assigned_psychologist_id'];
 
         // Get the psychologist details
-        final psychologist = await _supabaseClient
+        final psychologist = await client
             .from('psychologists')
             .select()
             .eq('id', psychologistId)
@@ -1027,15 +1073,12 @@ class SupabaseService {
         return null;
       } else {
         // If user doesn't have assigned psychologist, get the first available one
-        final psychologist = await _supabaseClient
-            .from('psychologists')
-            .select()
-            .limit(1)
-            .maybeSingle();
+        final psychologist =
+            await client.from('psychologists').select().limit(1).maybeSingle();
 
         // If a psychologist is found, assign it to the user
         if (psychologist != null) {
-          await _supabaseClient
+          await client
               .from('users')
               .update({'assigned_psychologist_id': psychologist['id']}).eq(
                   'id', user.id);
@@ -1063,7 +1106,7 @@ class SupabaseService {
 
   // Appointment methods
   Future<List<Map<String, dynamic>>> getAppointments() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -1072,7 +1115,7 @@ class SupabaseService {
 
       // Query appointments table for this user
       try {
-        final response = await _supabaseClient
+        final response = await client
             .from('appointments')
             .select()
             .eq('user_id', user.id)
@@ -1087,7 +1130,7 @@ class SupabaseService {
         if (errorMsg.contains('does not exist') ||
             errorMsg.contains('relation "appointments" does not exist')) {
           // If appointments table doesn't exist, check for appointment_request notifications
-          final notifications = await _supabaseClient
+          final notifications = await client
               .from('notifications')
               .select()
               .eq('user_id', user.id)
@@ -1158,7 +1201,7 @@ class SupabaseService {
     try {
       // First check if the table exists by querying it
       try {
-        await _supabaseClient.from('appointments').select('count').limit(1);
+        await client.from('appointments').select('count').limit(1);
         Logger.info('Appointments table already exists');
         return true; // Table exists
       } catch (e) {
@@ -1167,8 +1210,7 @@ class SupabaseService {
             errorMsg.contains('relation "appointments" does not exist')) {
           // Table doesn't exist, create it using SQL
           Logger.info('Creating appointments table...');
-          final response =
-              await _supabaseClient.rpc('create_appointments_table');
+          final response = await client.rpc('create_appointments_table');
           Logger.info('Appointments table created successfully');
           return true;
         } else {
@@ -1184,7 +1226,7 @@ class SupabaseService {
 
   Future<String> requestAppointment(
       Map<String, dynamic> appointmentData) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -1195,7 +1237,7 @@ class SupabaseService {
       final timestamp = DateTime.now().toIso8601String();
 
       // Try to insert the appointment record
-      final response = await _supabaseClient.from('appointments').insert({
+      final response = await client.from('appointments').insert({
         'user_id': user.id,
         ...appointmentData,
         'status': 'pending',
@@ -1234,15 +1276,14 @@ class SupabaseService {
 
   // Notification methods
   Future<List<Map<String, dynamic>>> getNotifications({String? type}) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     debugPrint('getNotifications called with type: $type');
 
     try {
       // First get all notifications for this user
-      var query =
-          _supabaseClient.from('notifications').select().eq('user_id', user.id);
+      var query = client.from('notifications').select().eq('user_id', user.id);
 
       // Add type filter if specified
       if (type != null) {
@@ -1274,12 +1315,12 @@ class SupabaseService {
   }
 
   Future<void> deleteNotification(String id, {bool hardDelete = false}) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     if (hardDelete) {
       // Permanently delete the notification
-      await _supabaseClient
+      await client
           .from('notifications')
           .delete()
           .eq('id', id)
@@ -1288,7 +1329,7 @@ class SupabaseService {
       debugPrint('Permanently deleted notification $id');
     } else {
       // Soft delete (mark as deleted)
-      await _supabaseClient
+      await client
           .from('notifications')
           .update({'deleted_at': DateTime.now().toIso8601String()})
           .eq('id', id)
@@ -1299,20 +1340,17 @@ class SupabaseService {
   }
 
   Future<void> clearAllNotifications({bool hardDelete = false}) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     if (hardDelete) {
       // Permanently delete all notifications
-      await _supabaseClient
-          .from('notifications')
-          .delete()
-          .eq('user_id', user.id);
+      await client.from('notifications').delete().eq('user_id', user.id);
 
       debugPrint('Permanently deleted all notifications for user ${user.id}');
     } else {
       // Soft delete (mark as deleted)
-      await _supabaseClient
+      await client
           .from('notifications')
           .update({'deleted_at': DateTime.now().toIso8601String()}).eq(
               'user_id', user.id);
@@ -1322,10 +1360,10 @@ class SupabaseService {
   }
 
   Future<void> markNotificationAsRead(String id) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _supabaseClient
+    await client
         .from('notifications')
         .update({'read': true})
         .eq('id', id)
@@ -1333,10 +1371,10 @@ class SupabaseService {
   }
 
   Future<void> markAllNotificationsAsRead() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _supabaseClient
+    await client
         .from('notifications')
         .update({'read': true})
         .eq('user_id', user.id)
@@ -1351,10 +1389,10 @@ class SupabaseService {
     String? relatedScreen,
     String? relatedId,
   }) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _supabaseClient.from('notifications').insert({
+    await client.from('notifications').insert({
       'user_id': user.id,
       'title': title,
       'message': message,
@@ -1366,13 +1404,13 @@ class SupabaseService {
 
   // Additional psychologist methods
   Future<List<Map<String, dynamic>>> getAllPsychologists() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
       // Query all psychologists from the database
       final response =
-          await _supabaseClient.from('psychologists').select().order('name');
+          await client.from('psychologists').select().order('name');
 
       // Ensure all required fields are present for each psychologist
       return List<Map<String, dynamic>>.from(response
@@ -1417,12 +1455,12 @@ class SupabaseService {
   }
 
   Future<void> assignPsychologist(String psychologistId) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
       // Update the user's assigned psychologist
-      await _supabaseClient.from('users').update(
+      await client.from('users').update(
           {'assigned_psychologist_id': psychologistId}).eq('id', user.id);
 
       Logger.info(
@@ -1459,19 +1497,16 @@ class SupabaseService {
       final filePath = 'psychologists/$fileName';
 
       // Upload file to Supabase Storage
-      final response = await _supabaseClient.storage
-          .from('profile_pictures')
-          .upload(filePath, imageFile,
-              fileOptions:
-                  const FileOptions(cacheControl: '3600', upsert: true));
+      final response = await client.storage.from('profile_pictures').upload(
+          filePath, imageFile,
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
 
       // Get public URL
-      final imageUrl = _supabaseClient.storage
-          .from('profile_pictures')
-          .getPublicUrl(filePath);
+      final imageUrl =
+          client.storage.from('profile_pictures').getPublicUrl(filePath);
 
       // Update psychologist record with image URL
-      await _supabaseClient
+      await client
           .from('psychologists')
           .update({'image_url': imageUrl}).eq('id', psychologistId);
 
@@ -1486,7 +1521,7 @@ class SupabaseService {
       String psychologistId) async {
     try {
       // First check if the psychologist has an avatar_url directly in their record
-      final psychologist = await _supabaseClient
+      final psychologist = await client
           .from('psychologists')
           .select('avatar_url')
           .eq('id', psychologistId)
@@ -1500,7 +1535,7 @@ class SupabaseService {
       }
 
       // Fallback to storage bucket lookup
-      final files = await _supabaseClient.storage
+      final files = await client.storage
           .from('profile_pictures')
           .list(path: 'psychologists');
 
@@ -1510,7 +1545,7 @@ class SupabaseService {
           .firstOrNull;
 
       if (profilePic != null) {
-        return _supabaseClient.storage
+        return client.storage
             .from('profile_pictures')
             .getPublicUrl('psychologists/${profilePic.name}');
       }
@@ -1525,12 +1560,12 @@ class SupabaseService {
   // Method to manually refresh an appointment's status from the database
   Future<Map<String, dynamic>?> refreshAppointmentStatus(
       String appointmentId) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
       // Query the appointments table for the specific appointment
-      final response = await _supabaseClient
+      final response = await client
           .from('appointments')
           .select()
           .eq('id', appointmentId)
@@ -1545,7 +1580,7 @@ class SupabaseService {
             'Appointment has response but still pending. Updating to accepted.');
 
         // Update the status to accepted
-        final updatedResponse = await _supabaseClient
+        final updatedResponse = await client
             .from('appointments')
             .update({'status': 'accepted'})
             .eq('id', appointmentId)
@@ -1566,12 +1601,12 @@ class SupabaseService {
   // Method to update an appointment's status
   Future<bool> updateAppointmentStatus(
       String appointmentId, String newStatus) async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
       // Update the status in the database
-      await _supabaseClient.from('appointments').update({
+      await client.from('appointments').update({
         'status': newStatus,
         'updated_at': DateTime.now().toIso8601String()
       }).eq('id', appointmentId);
@@ -1587,7 +1622,7 @@ class SupabaseService {
 
   // Method to auto-archive old appointments
   Future<int> autoArchiveOldAppointments() async {
-    final user = _supabaseClient.auth.currentUser;
+    final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
@@ -1597,7 +1632,7 @@ class SupabaseService {
       int totalArchived = 0;
 
       // Get completed appointments older than 30 days
-      final completedAppointments = await _supabaseClient
+      final completedAppointments = await client
           .from('appointments')
           .update({'status': 'archived', 'updated_at': now.toIso8601String()})
           .eq('user_id', user.id)
@@ -1608,7 +1643,7 @@ class SupabaseService {
       totalArchived += completedAppointments.length;
 
       // Get expired but unattended appointments
-      final expiredAppointments = await _supabaseClient
+      final expiredAppointments = await client
           .from('appointments')
           .update({'status': 'archived', 'updated_at': now.toIso8601String()})
           .eq('user_id', user.id)
@@ -1619,7 +1654,7 @@ class SupabaseService {
       totalArchived += expiredAppointments.length;
 
       // Get old cancelled/denied appointments
-      final cancelledAppointments = await _supabaseClient
+      final cancelledAppointments = await client
           .from('appointments')
           .update({'status': 'archived', 'updated_at': now.toIso8601String()})
           .eq('user_id', user.id)

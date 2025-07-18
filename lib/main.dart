@@ -17,42 +17,111 @@ import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
+// Global flag to track initialization
+bool servicesInitialized = false;
+
 void main() async {
+  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  // Initialize Supabase
-  await SupabaseService().initialize();
+  // Create the theme provider first as it doesn't depend on other services
+  final themeProvider = ThemeProvider();
 
-  // Clear only old notifications on app startup, preserve recent severity alerts
-  await _clearNotificationsOnAppStartup();
-
-  // Initialize notification service
-  final notificationService = NotificationService();
-  await notificationService.initialize();
-
-  // Request notification permissions
-  final isAllowed = await notificationService.checkNotificationPermissions();
-  if (!isAllowed) {
-    await notificationService.requestNotificationPermissions();
-  }
-
-  // Initialize storage service
-  await StorageService().init();
-
+  // Run the app immediately with just the splash screen
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => NotificationProvider()),
-        ChangeNotifierProvider.value(value: notificationService),
-      ],
-      child: const MyApp(),
+    ChangeNotifierProvider.value(
+      value: themeProvider,
+      child: const InitialApp(),
     ),
   );
+
+  // Initialize required services in the background
+  _initializeServices();
+}
+
+// Simple app that just shows the splash screen
+class InitialApp extends StatelessWidget {
+  const InitialApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'AnxieEase',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      home: const SplashScreen(),
+    );
+  }
+}
+
+// Run initialization tasks in the background
+Future<void> _initializeServices() async {
+  try {
+    // Initialize Firebase first - this is required before creating NotificationService
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    // Initialize Supabase - this is required before creating AuthProvider
+    await SupabaseService().initialize();
+
+    // Create providers after required services are initialized
+    final authProvider = AuthProvider();
+    final notificationProvider = NotificationProvider();
+    final notificationService = NotificationService();
+    final themeProvider = ThemeProvider();
+
+    // Continue initializing remaining services in the background
+    await _initializeRemainingServices(notificationService);
+
+    // Mark initialization as complete
+    servicesInitialized = true;
+
+    // Now run the full app with all providers
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: themeProvider),
+          ChangeNotifierProvider.value(value: authProvider),
+          ChangeNotifierProvider.value(value: notificationProvider),
+          ChangeNotifierProvider.value(value: notificationService),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  } catch (e) {
+    debugPrint('❌ Error during service initialization: $e');
+    // Even if there's an error, we should still try to run the app
+    servicesInitialized = true;
+  }
+}
+
+// Run remaining initialization tasks in the background
+Future<void> _initializeRemainingServices(
+    NotificationService notificationService) async {
+  try {
+    // Clear only old notifications on app startup, preserve recent severity alerts
+    await _clearNotificationsOnAppStartup();
+
+    // Initialize notification service
+    await notificationService.initialize();
+
+    // Request notification permissions
+    final isAllowed = await notificationService.checkNotificationPermissions();
+    if (!isAllowed) {
+      await notificationService.requestNotificationPermissions();
+    }
+
+    // Initialize storage service
+    await StorageService().init();
+
+    debugPrint('✅ All services initialized successfully');
+  } catch (e) {
+    debugPrint('❌ Error during service initialization: $e');
+  }
 }
 
 // Clear only old notifications on app startup, preserve recent severity alerts
@@ -64,52 +133,65 @@ Future<void> _clearNotificationsOnAppStartup() async {
     // Set to false to keep all notifications permanently
     const bool enableAutoClear =
         false; // Disabled by default to preserve severity alerts
-    const int daysToKeep =
-        7; // Keep notifications for 7 days (when auto-clear is enabled)
 
+    // Skip if auto-clear is disabled
     if (!enableAutoClear) {
       debugPrint(
           '📱 Auto-clear disabled - preserving all notifications including severity alerts');
       return;
     }
 
-    // Get all notifications
-    final notifications = await supabaseService.getNotifications();
-
-    if (notifications.isEmpty) {
-      debugPrint('📱 No notifications to clear');
-      return;
-    }
-
-    // Calculate cutoff time (7 days ago by default)
-    final cutoffTime =
-        DateTime.now().subtract(const Duration(days: daysToKeep));
-
-    // Delete only notifications older than the cutoff time
-    int deletedCount = 0;
-    for (final notification in notifications) {
-      try {
-        final createdAt = DateTime.parse(notification['created_at']);
-        if (createdAt.isBefore(cutoffTime)) {
-          await supabaseService.deleteNotification(notification['id'],
-              hardDelete: true);
-          deletedCount++;
-        }
-      } catch (e) {
+    // Set a timeout for this operation
+    return await Future.any([
+      _doClearNotifications(supabaseService),
+      Future.delayed(const Duration(seconds: 3), () {
         debugPrint(
-            '⚠️ Error processing notification ${notification['id']}: $e');
-      }
-    }
-
-    if (deletedCount > 0) {
-      debugPrint(
-          '🗑️ Cleared $deletedCount old notifications (older than $daysToKeep days)');
-    }
-    debugPrint(
-        '📱 Preserved ${notifications.length - deletedCount} recent notifications');
+            '⚠️ Notification clearing timed out after 3 seconds, continuing startup');
+        // Don't throw exception, just continue
+      })
+    ]);
   } catch (e) {
     debugPrint('❌ Error clearing old notifications on startup: $e');
+    // Don't rethrow - allow the app to continue even if clearing fails
   }
+}
+
+Future<void> _doClearNotifications(SupabaseService supabaseService) async {
+  const int daysToKeep =
+      7; // Keep notifications for 7 days (when auto-clear is enabled)
+
+  // Get all notifications
+  final notifications = await supabaseService.getNotifications();
+
+  if (notifications.isEmpty) {
+    debugPrint('📱 No notifications to clear');
+    return;
+  }
+
+  // Calculate cutoff time (7 days ago by default)
+  final cutoffTime = DateTime.now().subtract(const Duration(days: daysToKeep));
+
+  // Delete only notifications older than the cutoff time
+  int deletedCount = 0;
+  for (final notification in notifications) {
+    try {
+      final createdAt = DateTime.parse(notification['created_at']);
+      if (createdAt.isBefore(cutoffTime)) {
+        await supabaseService.deleteNotification(notification['id'],
+            hardDelete: true);
+        deletedCount++;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error processing notification ${notification['id']}: $e');
+    }
+  }
+
+  if (deletedCount > 0) {
+    debugPrint(
+        '🗑️ Cleared $deletedCount old notifications (older than $daysToKeep days)');
+  }
+  debugPrint(
+      '📱 Preserved ${notifications.length - deletedCount} recent notifications');
 }
 
 class MyApp extends StatefulWidget {

@@ -18,6 +18,7 @@ import 'models/user_model.dart';
 
 import 'breathing_screen.dart';
 import 'calendar_screen.dart';
+import 'grounding_screen.dart';
 import 'login.dart';
 import 'metrics.dart';
 import 'profile.dart';
@@ -62,6 +63,9 @@ class StressLabel extends StatelessWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late double screenWidth;
   late double screenHeight;
+  int _currentTechniqueIndex = 0;
+  late PageController _techniquePageController;
+
   final List<String> moods = [
     'Happy',
     'Fearful',
@@ -94,6 +98,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize page controller
+    _techniquePageController = PageController(viewportFraction: 0.9);
 
     // Clear image cache on initialization
     PaintingBinding.instance.imageCache.clear();
@@ -149,6 +156,12 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('Error creating test notifications: $e');
     }
+  }
+
+  @override
+  void dispose() {
+    _techniquePageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -250,6 +263,13 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const BreathingScreen()),
+    );
+  }
+
+  void _showGroundingTechnique() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const GroundingScreen()),
     );
   }
 
@@ -1716,6 +1736,227 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildGroundingCard() {
+    return GestureDetector(
+      onTap: _showGroundingTechnique,
+      child: Container(
+        padding: EdgeInsets.all(screenWidth * 0.05),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.blue[500]!,
+              Colors.blue[400]!,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(screenWidth * 0.05),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blue.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenWidth * 0.03,
+                      vertical: screenHeight * 0.008,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(screenWidth * 0.05),
+                    ),
+                    child: Text(
+                      'New',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: screenWidth * 0.035,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: screenHeight * 0.015),
+                  Text(
+                    '5-4-3-2-1 Grounding',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.055,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: screenHeight * 0.01),
+                  Text(
+                    'Interrupt anxiety with sensory grounding',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.035,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: screenWidth * 0.2,
+              height: screenWidth * 0.2,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.touch_app,
+                color: Colors.white,
+                size: screenWidth * 0.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTechniqueCarousel() {
+    return StatefulBuilder(
+      builder: (BuildContext context, StateSetter setCarouselState) {
+        // Define the technique cards
+        final List<Widget> techniques = [
+          _buildBreathingCard(),
+          _buildGroundingCard(),
+        ];
+
+        return Column(
+          children: [
+            // Carousel indicator
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 3,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  SizedBox(width: screenWidth * 0.02),
+                  Text(
+                    'Coping Techniques',
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.045,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).textTheme.titleLarge?.color,
+                    ),
+                  ),
+                  Spacer(),
+                  // Swipe indicator
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.swipe,
+                        size: 16,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color
+                            ?.withOpacity(0.6),
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Swipe',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: screenHeight * 0.02),
+
+            // Carousel
+            SizedBox(
+              height: screenHeight * 0.22, // Fixed height for the carousel
+              child: PageView.builder(
+                controller: _techniquePageController,
+                onPageChanged: (index) {
+                  // Update local state within StatefulBuilder
+                  setCarouselState(() {
+                    _currentTechniqueIndex = index;
+                  });
+                  // Also update parent state
+                  setState(() {
+                    _currentTechniqueIndex = index;
+                  });
+                },
+                itemCount: techniques.length,
+                itemBuilder: (context, index) {
+                  // Apply scale effect to cards
+                  final isCurrentPage = index == _currentTechniqueIndex;
+                  return AnimatedScale(
+                    scale: isCurrentPage ? 1.0 : 0.9,
+                    duration: const Duration(milliseconds: 300),
+                    child: Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: screenWidth * 0.02),
+                      child: techniques[index],
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Page indicator dots
+            Padding(
+              padding: EdgeInsets.only(top: screenHeight * 0.015),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  techniques.length,
+                  (index) => GestureDetector(
+                    onTap: () {
+                      _techniquePageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: index == _currentTechniqueIndex ? 16 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: index == _currentTechniqueIndex
+                            ? Theme.of(context).primaryColor
+                            : Theme.of(context).primaryColor.withOpacity(0.3),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildQuickActionsGrid() {
     final List<Map<String, dynamic>> actions = [
       {
@@ -2165,8 +2406,8 @@ class _HomeContentState extends State<HomeContent> {
               slivers: [
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.all(screenWidth * 0.05),
-                    child: homeState?._buildBreathingCard(),
+                    padding: EdgeInsets.symmetric(vertical: screenWidth * 0.05),
+                    child: homeState?._buildTechniqueCarousel() ?? Container(),
                   ),
                 ),
 

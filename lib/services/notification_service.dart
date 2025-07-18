@@ -1,20 +1,19 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'supabase_service.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal() {
-    _currentSeverity = 'normal';
-    _currentHeartRate = 0;
-    _isFirstRead = true;
-    _lastNotificationTime = DateTime.now();
+    _initFirebaseRef();
   }
 
   static const String notificationPermissionKey =
@@ -24,238 +23,120 @@ class NotificationService extends ChangeNotifier {
   static const String reminderIntervalKey = 'anxiety_reminder_interval_hours';
 
   final SupabaseService _supabaseService = SupabaseService();
-  final DatabaseReference _firebaseRef =
-      FirebaseDatabase.instance.ref('devices/AnxieEase001/Metrics');
-
-  late String _currentSeverity;
-  late int _currentHeartRate;
-  late bool _isFirstRead;
-  late DateTime _lastNotificationTime;
+  DatabaseReference? _firebaseRef;
+  String _currentSeverity = 'unknown';
+  int _currentHeartRate = 0;
+  bool _isFirstRead = true;
   VoidCallback? _onNotificationAdded;
+  bool _isInitialized = false;
+  bool _isInitializing = false;
+  final Completer<void> _initCompleter = Completer<void>();
 
   String get currentSeverity => _currentSeverity;
   int get currentHeartRate => _currentHeartRate;
+  bool get isInitialized => _isInitialized;
+
+  // Initialize Firebase reference safely
+  void _initFirebaseRef() {
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        _firebaseRef =
+            FirebaseDatabase.instance.ref('devices/AnxieEase001/Metrics');
+        debugPrint('Firebase reference initialized successfully');
+      } else {
+        debugPrint(
+            'Firebase not yet initialized, will initialize reference later');
+      }
+    } catch (e) {
+      debugPrint('Error initializing Firebase reference: $e');
+    }
+  }
 
   // Set callback for when a notification is added
   void setOnNotificationAddedCallback(VoidCallback callback) {
     _onNotificationAdded = callback;
   }
 
-  // Initialize Firebase listener for heart rate
-  void initializeHeartRateListener() {
-    _firebaseRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map?;
-      if (data == null) return;
-
-      // Get heart rate from Firebase
-      if (data.containsKey('heartRate')) {
-        var hrValue = data['heartRate'];
-        int heartRate = (hrValue is num)
-            ? hrValue.toInt()
-            : int.tryParse(hrValue.toString()) ?? 0;
-
-        // Calculate severity based on heart rate
-        String severity;
-        if (heartRate > 120) {
-          severity = 'severe';
-        } else if (heartRate >= 111) {
-          severity = 'moderate';
-        } else if (heartRate >= 100) {
-          severity = 'mild';
-        } else {
-          severity = 'normal';
-        }
-
-        // Skip first read to prevent initial notification
-        if (_isFirstRead) {
-          debugPrint('Skipping initial notification on app start');
-          _isFirstRead = false;
-          _currentHeartRate = heartRate;
-          _currentSeverity = severity;
-          notifyListeners();
-          return;
-        }
-
-        // Check if severity has changed and it's not normal
-        if (severity != 'normal' && severity != _currentSeverity) {
-          // Check if enough time has passed since last notification (at least 2 seconds)
-          final now = DateTime.now();
-          if (now.difference(_lastNotificationTime).inSeconds >= 2) {
-            debugPrint(
-                'Sending notification for severity change: $_currentSeverity -> $severity');
-            _currentHeartRate = heartRate;
-            _currentSeverity = severity;
-            _lastNotificationTime = now;
-            notifyListeners();
-            _sendAlert(heartRate, severity);
-          }
-        } else {
-          // Just update the values without sending notification
-          _currentHeartRate = heartRate;
-          _currentSeverity = severity;
-          notifyListeners();
-        }
-      }
-    });
-  }
-
-  // Private method to send alerts
-  Future<void> _sendAlert(int heartRate, String severity) async {
-    String channelKey;
-    String title = '';
-    String body = '';
-    NotificationCategory category;
-
-    switch (severity) {
-      case 'mild':
-        channelKey = 'mild_heart_rate_alerts';
-        title = '🟢 Mild Heart Rate Alert';
-        body = 'Slight elevation in heart rate detected: $heartRate bpm';
-        category = NotificationCategory.Status;
-        break;
-      case 'moderate':
-        channelKey = 'moderate_heart_rate_alerts';
-        title = '🟠 Moderate Heart Rate Alert';
-        body = 'Elevated heart rate detected: $heartRate bpm';
-        category = NotificationCategory.Status;
-        break;
-      case 'severe':
-        channelKey = 'severe_heart_rate_alerts';
-        title = '🔴 Severe Heart Rate Alert';
-        body = 'URGENT: Very high heart rate detected: $heartRate bpm';
-        category = NotificationCategory.Alarm;
-        break;
-      default:
-        return;
-    }
-
-    try {
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: channelKey,
-          title: title,
-          body: body,
-          notificationLayout: NotificationLayout.Default,
-          category: category,
-          wakeUpScreen: severity == 'severe',
-          fullScreenIntent: severity == 'severe',
-          criticalAlert: severity == 'severe',
-          displayOnForeground: true,
-          displayOnBackground: true,
-        ),
-        actionButtons: severity == 'severe'
-            ? [
-                NotificationActionButton(
-                  key: 'DISMISS',
-                  label: 'Dismiss',
-                  actionType: ActionType.DismissAction,
-                ),
-                NotificationActionButton(
-                  key: 'VIEW_DETAILS',
-                  label: 'View Details',
-                  actionType: ActionType.Default,
-                ),
-              ]
-            : null,
-      );
-      debugPrint('Successfully created notification: $title');
-      await _saveNotificationToSupabase(title, body, 'alert', severity);
-      await _saveAnxietyLevelRecord(severity, false, heartRate);
-    } catch (e) {
-      debugPrint('Error creating notification: $e');
-    }
-  }
-
-  // Delete all existing notification channels
-  Future<void> _deleteExistingChannels() async {
-    try {
-      // Remove each of our known channel keys
-      await AwesomeNotifications().removeChannel('severe_heart_rate_alerts');
-      await AwesomeNotifications().removeChannel('moderate_heart_rate_alerts');
-      await AwesomeNotifications().removeChannel('mild_heart_rate_alerts');
-      await AwesomeNotifications().removeChannel('general_notifications');
-      await AwesomeNotifications().removeChannel('reminders');
-      // Remove any other old channels we find in the app
-      await AwesomeNotifications().removeChannel('heart_rate_alerts');
-      await AwesomeNotifications().removeChannel('alerts');
-      await AwesomeNotifications().removeChannel('anxiease_notifications');
-      await AwesomeNotifications().removeChannel('anxiety_alerts');
-      await AwesomeNotifications().removeChannel('basic_notifications');
-      await AwesomeNotifications().removeChannel('default_channel');
-      debugPrint('Successfully deleted all existing notification channels');
-    } catch (e) {
-      debugPrint('Error deleting notification channels: $e');
-    }
-  }
-
   Future<void> initialize() async {
-    // Delete existing channels first
-    await _deleteExistingChannels();
+    // If already initialized, return immediately
+    if (_isInitialized) {
+      debugPrint('NotificationService already initialized');
+      return;
+    }
 
+    // If initialization is in progress, wait for it to complete
+    if (_isInitializing) {
+      debugPrint('NotificationService initialization in progress, waiting...');
+      return _initCompleter.future;
+    }
+
+    _isInitializing = true;
+
+    try {
+      // Make sure Firebase reference is initialized
+      if (_firebaseRef == null && Firebase.apps.isNotEmpty) {
+        _initFirebaseRef();
+      }
+
+      // Set a timeout for initialization
+      await Future.any([
+        _initializeNotifications(),
+        Future.delayed(const Duration(seconds: 3), () {
+          debugPrint(
+              '⚠️ NotificationService initialization timed out, continuing anyway');
+          // Don't throw exception, just continue
+        })
+      ]);
+
+      _isInitialized = true;
+      _isInitializing = false;
+      _initCompleter.complete();
+      debugPrint('✅ NotificationService initialized successfully');
+    } catch (e) {
+      debugPrint('❌ Error initializing NotificationService: $e');
+      _isInitializing = false;
+      _initCompleter.completeError(e);
+      // Don't rethrow - allow the app to continue even if notifications fail
+    }
+  }
+
+  Future<void> _initializeNotifications() async {
     // Initialize awesome_notifications
     await AwesomeNotifications().initialize(
       null,
       [
-        // Severe heart rate alerts - highest priority with urgent sound
         NotificationChannel(
-          channelKey: 'severe_heart_rate_alerts',
-          channelName: 'Severe Heart Rate Alerts',
-          channelDescription: 'Critical alerts for dangerous heart rate levels',
+          channelKey: 'anxiease_channel',
+          channelName: 'AnxieEase Notifications',
+          channelDescription: 'Notifications from AnxieEase app',
+          defaultColor: Colors.blue,
+          importance: NotificationImportance.High,
+          enableVibration: true,
+        ),
+        NotificationChannel(
+          channelKey: 'alerts_channel',
+          channelName: 'Alerts',
+          channelDescription: 'Notification alerts for severity levels',
           defaultColor: Colors.red,
           importance: NotificationImportance.High,
-          enableVibration: true,
-          enableLights: true,
-          playSound: true,
-          defaultRingtoneType:
-              DefaultRingtoneType.Alarm, // Use alarm sound for severe
-          ledColor: Colors.red,
+          ledColor: Colors.white,
         ),
-        // Moderate heart rate alerts - medium priority with warning sound
         NotificationChannel(
-          channelKey: 'moderate_heart_rate_alerts',
-          channelName: 'Moderate Heart Rate Alerts',
-          channelDescription: 'Alerts for elevated heart rate levels',
-          defaultColor: Colors.orange,
-          importance: NotificationImportance.High,
-          enableVibration: true,
-          enableLights: true,
-          playSound: true,
-          defaultRingtoneType: DefaultRingtoneType.Notification,
-          ledColor: Colors.orange,
-        ),
-        // Mild heart rate alerts - lower priority with gentle sound
-        NotificationChannel(
-          channelKey: 'mild_heart_rate_alerts',
-          channelName: 'Mild Heart Rate Alerts',
-          channelDescription: 'Alerts for slightly elevated heart rate',
-          defaultColor: Colors.yellow,
-          importance: NotificationImportance.Default,
-          enableVibration: true,
-          enableLights: true,
-          playSound: true,
-          defaultRingtoneType: DefaultRingtoneType.Notification,
-          ledColor: Colors.yellow,
-        ),
-        // Keep the general notifications channel
-        NotificationChannel(
-          channelKey: 'general_notifications',
-          channelName: 'General Notifications',
-          channelDescription: 'General notifications from AnxieEase app',
-          defaultColor: Colors.blue,
-          importance: NotificationImportance.Default,
-          enableVibration: true,
-          playSound: true,
-        ),
-        // Keep the reminders channel
-        NotificationChannel(
-          channelKey: 'reminders',
-          channelName: 'Reminders',
-          channelDescription: 'Regular reminders to help prevent anxiety',
+          channelKey: 'reminders_channel',
+          channelName: 'Anxiety Reminders',
+          channelDescription:
+              'Regular reminders to help prevent anxiety attacks',
           defaultColor: Colors.green,
-          importance: NotificationImportance.Low,
-          enableVibration: false,
-          playSound: false,
+          importance: NotificationImportance.High,
+          ledColor: Colors.green,
+        ),
+        NotificationChannel(
+          channelKey: 'anxiety_alerts',
+          channelName: 'Anxiety Alerts',
+          channelDescription: 'Notifications for anxiety level alerts',
+          defaultColor: Colors.red,
+          importance: NotificationImportance.High,
+          ledColor: Colors.white,
         ),
       ],
     );
@@ -266,11 +147,12 @@ class NotificationService extends ChangeNotifier {
     // Check if reminders are enabled
     final bool isEnabled = await isAnxietyReminderEnabled();
     if (isEnabled) {
+      // Check if we already have active reminders before scheduling new ones
       final List<NotificationModel> activeReminders =
           await AwesomeNotifications().listScheduledNotifications();
 
-      if (!activeReminders.any(
-          (notification) => notification.content?.channelKey == 'reminders')) {
+      if (!activeReminders.any((notification) =>
+          notification.content?.channelKey == 'reminders_channel')) {
         final int intervalHours = await getAnxietyReminderInterval();
         await scheduleAnxietyReminders(intervalHours);
       } else {
@@ -278,50 +160,143 @@ class NotificationService extends ChangeNotifier {
             'Reminders already active. Skipping scheduling on initialize.');
       }
     }
+  }
 
-    // Start listening for heart rate changes
-    initializeHeartRateListener();
+  // Initialize Firebase listener for anxiety severity
+  void initializeListener() {
+    if (_firebaseRef == null) {
+      debugPrint('Cannot initialize listener: Firebase reference is null');
+      return;
+    }
+
+    _firebaseRef!.onValue.listen((event) {
+      final data = event.snapshot.value as Map?;
+      if (data == null) return;
+
+      // Get heart rate from the root level
+      final heartRate = data['heartRate'] as int?;
+      if (heartRate != null) {
+        _currentHeartRate = heartRate;
+      }
+
+      // Get anxiety detection data
+      final anxietyData = data['anxietyDetected'] as Map?;
+      if (anxietyData == null) return;
+
+      final severity = anxietyData['severity']?.toString().toLowerCase();
+      if (severity == null) return;
+
+      // Update current severity and notify listeners
+      _currentSeverity = severity;
+      notifyListeners();
+
+      // Skip notification on first read (app startup)
+      if (_isFirstRead) {
+        _isFirstRead = false;
+        debugPrint(
+            '🔇 Skipping initial Firebase notification for: $severity (HR: $heartRate)');
+        return;
+      }
+
+      // Only send notifications for actual data changes
+      debugPrint(
+          '🔔 Firebase data changed - sending notification for: $severity (HR: $heartRate)');
+
+      String title = '';
+      String body = '';
+      String channelKey = '';
+      String notificationType = '';
+
+      switch (severity) {
+        case 'mild':
+          title = '🟢 Mild Alert';
+          body = 'Slight elevation in readings. HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        case 'moderate':
+          title = '🟠 Moderate Alert';
+          body = 'Noticeable symptoms detected. HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        case 'severe':
+          title = '🔴 Severe Alert';
+          body = 'URGENT: High risk! HR: ${heartRate ?? "N/A"} bpm';
+          channelKey = 'anxiety_alerts';
+          notificationType = 'alert';
+          break;
+        default:
+          return;
+      }
+
+      _showSeverityNotification(title, body, channelKey, severity);
+      _saveNotificationToSupabase(title, body, notificationType, severity);
+      _saveAnxietyLevelRecord(severity, false, heartRate);
+    });
   }
 
   // Show a severity-based notification
   Future<void> _showSeverityNotification(
       String title, String body, String channelKey, String severity) async {
-    try {
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: channelKey,
-          title: title,
-          body: body,
-          notificationLayout: NotificationLayout.Default,
-          category: severity == 'severe'
-              ? NotificationCategory.Alarm
-              : NotificationCategory.Status,
-          wakeUpScreen: true,
-          fullScreenIntent: severity == 'severe',
-          criticalAlert: severity == 'severe',
-          displayOnForeground: true,
-          displayOnBackground: true,
-        ),
-        actionButtons: severity == 'severe'
-            ? [
-                NotificationActionButton(
-                  key: 'DISMISS',
-                  label: 'Dismiss',
-                  actionType: ActionType.DismissAction,
-                ),
-                NotificationActionButton(
-                  key: 'VIEW_DETAILS',
-                  label: 'View Details',
-                  actionType: ActionType.Default,
-                ),
-              ]
-            : null,
-      );
-      debugPrint('Successfully created notification: $title');
-    } catch (e) {
-      debugPrint('Error creating notification: $e');
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        channelKey: channelKey,
+        title: title,
+        body: body,
+        notificationLayout: NotificationLayout.Default,
+        category: severity == 'severe'
+            ? NotificationCategory.Alarm
+            : NotificationCategory.Reminder,
+        wakeUpScreen: severity == 'severe',
+        fullScreenIntent: severity == 'severe',
+        criticalAlert: severity == 'severe',
+      ),
+      actionButtons: severity == 'severe'
+          ? [
+              NotificationActionButton(
+                key: 'DISMISS',
+                label: 'Dismiss',
+                actionType: ActionType.DismissAction,
+              ),
+              NotificationActionButton(
+                key: 'VIEW_DETAILS',
+                label: 'View Details',
+                actionType: ActionType.Default,
+              ),
+            ]
+          : null,
+    );
+  }
+
+  // Method to manually trigger a notification based on current severity
+  Future<void> sendManualNotification() async {
+    String title = '';
+    String body = '';
+    String channelKey = 'anxiety_alerts';
+
+    switch (_currentSeverity) {
+      case 'mild':
+        title = '🟢 Mild Alert (Manual)';
+        body = 'Slight elevation in anxiety readings detected.';
+        break;
+      case 'moderate':
+        title = '🟠 Moderate Alert (Manual)';
+        body = 'Moderate anxiety symptoms detected.';
+        break;
+      case 'severe':
+        title = '🔴 Severe Alert (Manual)';
+        body = 'URGENT: High anxiety levels detected!';
+        break;
+      default:
+        title = 'Status Update';
+        body = 'Current status: $_currentSeverity';
     }
+
+    await _showSeverityNotification(title, body, channelKey, _currentSeverity);
+    await _saveNotificationToSupabase(title, body, 'alert', _currentSeverity);
+    await _saveAnxietyLevelRecord(_currentSeverity, true);
   }
 
   // Method to save anxiety level record to Supabase
@@ -496,8 +471,8 @@ class NotificationService extends ChangeNotifier {
           await AwesomeNotifications().listScheduledNotifications();
 
       // If we already have reminders scheduled, don't create new ones
-      if (activeReminders.any(
-          (notification) => notification.content?.channelKey == 'reminders')) {
+      if (activeReminders.any((notification) =>
+          notification.content?.channelKey == 'reminders_channel')) {
         debugPrint('Anxiety prevention reminders already scheduled. Skipping.');
         return;
       }
@@ -517,7 +492,8 @@ class NotificationService extends ChangeNotifier {
 
   // Cancel all scheduled anxiety prevention reminders
   Future<void> cancelAnxietyReminders() async {
-    await AwesomeNotifications().cancelNotificationsByChannelKey('reminders');
+    await AwesomeNotifications()
+        .cancelNotificationsByChannelKey('reminders_channel');
     debugPrint('Cancelled all anxiety prevention reminders');
   }
 
@@ -574,7 +550,7 @@ class NotificationService extends ChangeNotifier {
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: notificationId,
-        channelKey: 'reminders',
+        channelKey: 'reminders_channel',
         title: message['title'],
         body: message['body'],
         notificationLayout: NotificationLayout.Default,
