@@ -7,6 +7,7 @@ class ClinicInfoCard extends StatelessWidget {
   final String travelMode;
   final VoidCallback onGetDirections;
   final VoidCallback onChangeTravelMode;
+  final bool isSelected;
 
   const ClinicInfoCard({
     Key? key,
@@ -16,6 +17,7 @@ class ClinicInfoCard extends StatelessWidget {
     required this.travelMode,
     required this.onGetDirections,
     required this.onChangeTravelMode,
+    this.isSelected = false,
   }) : super(key: key);
 
   IconData _getTravelModeIcon() {

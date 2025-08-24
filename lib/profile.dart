@@ -6,7 +6,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:intl/intl.dart';
-import 'package:flutter/painting.dart';
 
 class ProfilePage extends StatefulWidget {
   final bool isEditable;
@@ -323,8 +322,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 10,
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 10,withValuesalpha: 0.1
                               spreadRadius: 5,
                             ),
                           ],
@@ -384,8 +383,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,withValuesalpha: 0.05
                         spreadRadius: 5,
                       ),
                     ],
@@ -570,8 +569,8 @@ class _ProfilePageState extends State<ProfilePage> {
             color: const Color(0xFFE8F5E9),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(Icons.person, color: const Color(0xFF3AA772)),
-        ),
+          child: const Icon(Icons.person, color: Color(0xFF3AA772)),
+        ),const 
         const SizedBox(width: 16),
         Expanded(
           child: DropdownButtonFormField<String>(
