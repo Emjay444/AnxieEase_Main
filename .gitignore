@@ -85,3 +85,10 @@ coverage/
 
 # Supabase config
 lib/config/supabase_config.dart 
+
+# Firebase service account keys (sensitive)
+service-account-key.json
+**/service-account-key.json
+
+# Node.js
+node_modules
