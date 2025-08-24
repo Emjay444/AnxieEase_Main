@@ -252,7 +252,7 @@ class _BreathingScreenState extends State<BreathingScreen>
               Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  child: Text(
+                  child: const Text(
                     ':',
                     style: TextStyle(
                       fontSize: 30,
@@ -310,7 +310,7 @@ class _BreathingScreenState extends State<BreathingScreen>
             if (_selectedMinutes == 0 && _selectedSeconds == 0) {
               // Show error if no time selected
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
+                const SnackBar(
                   content: Text('Please select a valid duration'),
                   backgroundColor: Colors.red,
                 ),

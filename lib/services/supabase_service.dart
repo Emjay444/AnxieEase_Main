@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:io';
@@ -91,8 +91,29 @@ class SupabaseService {
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+        // Automatically refresh tokens
+        autoRefreshToken: true,
+      ),
+      // Add debug mode for better logging in development
+      debug: kDebugMode,
     );
     _supabaseClient = Supabase.instance.client;
+    
+    // Wait a moment for session restoration to complete
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // Log the current session state for debugging
+    final currentSession = _supabaseClient?.auth.currentSession;
+    debugPrint('📱 Supabase initialized - Current session: ${currentSession != null ? 'Found' : 'None'}');
+    if (currentSession != null) {
+      debugPrint('📱 Session user: ${currentSession.user.email}');
+      debugPrint('📱 Session expires at: ${currentSession.expiresAt}');
+      debugPrint('📱 Session access token length: ${currentSession.accessToken.length}');
+    } else {
+      debugPrint('📱 No session found - user will need to log in');
+    }
   }
 
   // Authentication methods
@@ -194,15 +215,7 @@ class SupabaseService {
     bool skipEmailVerification = false,
   }) async {
     try {
-      // First verify this email exists in users table
-      final user =
-          await client.from('users').select().eq('email', email).maybeSingle();
-
-      if (user == null) {
-        throw Exception(
-            'This account is not registered. Please sign up first.');
-      }
-
+      // Try to authenticate with Supabase first
       final response = await client.auth.signInWithPassword(
         email: email,
         password: password,
@@ -218,15 +231,42 @@ class SupabaseService {
             'Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
-      // Update email verification status only
-      await client.from('users').update({
-        'updated_at': DateTime.now().toIso8601String(),
-        'is_email_verified': response.user?.emailConfirmedAt != null,
-      }).eq('id', response.user!.id);
+      // Try to check if user exists in users table, but don't fail if it doesn't
+      try {
+        final user = await client
+            .from('users')
+            .select()
+            .eq('email', email)
+            .maybeSingle();
+
+        if (user == null) {
+          // User doesn't exist in users table, create it
+          Logger.info('User not found in users table, creating user record');
+          await client.from('users').upsert({
+            'id': response.user!.id,
+            'email': email,
+            'role': 'patient',
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+            'is_email_verified': response.user?.emailConfirmedAt != null,
+          });
+          Logger.info('User record created successfully');
+        } else {
+          // Update email verification status if user exists
+          await client.from('users').update({
+            'updated_at': DateTime.now().toIso8601String(),
+            'is_email_verified': response.user?.emailConfirmedAt != null,
+          }).eq('id', response.user!.id);
+        }
+      } catch (e) {
+        Logger.error(
+            'Error managing user record, but authentication succeeded', e);
+        // Don't fail the login if user table operations fail
+      }
 
       Logger.info(
           'User email verification status: ${response.user?.emailConfirmedAt != null}');
-      Logger.info('Updated user record with verification status');
+      Logger.info('Login successful');
 
       return response;
     } catch (e) {

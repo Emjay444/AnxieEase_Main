@@ -51,7 +51,7 @@ class _GroundingScreenState extends State<GroundingScreen>
         'A window',
         'A piece of furniture'
       ],
-      color: Color(0xFF3AA772), // Calming green
+      color: const Color(0xFF3AA772), // Calming green
       icon: Icons.visibility,
       audioPrompt: 'assets/audio/Bilateral1.mp3',
       quickOptions: [
@@ -73,7 +73,7 @@ class _GroundingScreenState extends State<GroundingScreen>
         'The temperature of the air',
         'Your feet on the ground'
       ],
-      color: Color(0xFF5E8B7E), // Soft teal
+      color: const Color(0xFF5E8B7E), // Soft teal
       icon: Icons.touch_app,
       audioPrompt: 'assets/audio/Bilateral2.mp3',
       quickOptions: [
@@ -93,7 +93,7 @@ class _GroundingScreenState extends State<GroundingScreen>
         'The hum of appliances',
         'Your own breathing'
       ],
-      color: Color(0xFF7B9E89), // Muted sage
+      color: const Color(0xFF7B9E89), // Muted sage
       icon: Icons.hearing,
       audioPrompt: 'assets/audio/Bilateral3.mp3',
       quickOptions: [
@@ -109,7 +109,7 @@ class _GroundingScreenState extends State<GroundingScreen>
       count: 2,
       instruction: 'Identify 2 things you can smell.',
       examples: ['Fresh air', 'Coffee', 'Soap', 'Food'],
-      color: Color(0xFF6A8CAF), // Soft blue
+      color: const Color(0xFF6A8CAF), // Soft blue
       icon: Icons.air,
       audioPrompt: 'assets/audio/Bilateral1.mp3',
       quickOptions: [
@@ -130,7 +130,7 @@ class _GroundingScreenState extends State<GroundingScreen>
         'Mint gum',
         'Toothpaste'
       ],
-      color: Color(0xFF8E9AAF), // Soft lavender
+      color: const Color(0xFF8E9AAF), // Soft lavender
       icon: Icons.restaurant,
       audioPrompt: 'assets/audio/Bilateral2.mp3',
       quickOptions: [
@@ -427,10 +427,10 @@ class _GroundingScreenState extends State<GroundingScreen>
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: Color(0xFF3AA772).withOpacity(0.2),
+                    color: const Color(0xFF3AA772).withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.check_circle,
                     size: 70,
                     color: Color(0xFF3AA772),
@@ -493,7 +493,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF3AA772),
+                    backgroundColor: const Color(0xFF3AA772),
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
@@ -920,7 +920,8 @@ class _GroundingScreenState extends State<GroundingScreen>
                   width: 150 - (index * 20),
                   height: 150 - (index * 20),
                   decoration: BoxDecoration(
-                    color: Color(0xFF3AA772).withOpacity(0.1 - (index * 0.015)),
+                    color: const Color(0xFF3AA772)
+                        .withOpacity(0.1 - (index * 0.015)),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -936,13 +937,13 @@ class _GroundingScreenState extends State<GroundingScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Color(0xFF3AA772).withOpacity(0.3),
+                    color: const Color(0xFF3AA772).withOpacity(0.3),
                     blurRadius: 15,
                     spreadRadius: 5,
                   ),
                 ],
               ),
-              child: Column(
+              child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
@@ -950,7 +951,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                     size: 40,
                     color: Color(0xFF3AA772),
                   ),
-                  const SizedBox(height: 5),
+                  SizedBox(height: 5),
                   Text(
                     "Ground",
                     style: TextStyle(
@@ -968,7 +969,7 @@ class _GroundingScreenState extends State<GroundingScreen>
               (index) {
                 final angle = (index * (math.pi * 2 / 5)) +
                     (_pulseAnimationController.value * math.pi / 8);
-                final radius = 90.0;
+                const radius = 90.0;
                 final x = radius * math.cos(angle);
                 final y = radius * math.sin(angle);
 
@@ -997,7 +998,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                     child: Icon(
                       icons[index],
                       size: 20,
-                      color: Color(0xFF3AA772),
+                      color: const Color(0xFF3AA772),
                     ),
                   ),
                 );

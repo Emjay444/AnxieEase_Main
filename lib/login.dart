@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async'; // Import for Timer
-import 'homepage.dart';
 import 'forgotpass.dart';
 import 'providers/auth_provider.dart';
 import 'utils/logger.dart';
@@ -238,9 +237,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Navigate without using WidgetsBinding.addPostFrameCallback to prevent double-click issue
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomePage()),
+      // Navigate to root (AuthWrapper) which will route to HomePage automatically
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/', // This will go to AuthWrapper, which will show HomePage for authenticated users
         (route) => false, // Remove all previous routes
       );
     } catch (e) {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'profile.dart';
-import 'services/supabase_service.dart';
 import 'providers/notification_provider.dart';
+import 'providers/auth_provider.dart';
 import 'utils/settings_helper.dart';
 import 'auth.dart'; // Import for AuthScreen
 import 'services/notification_service.dart';
@@ -148,18 +148,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                   TextButton(
                                     onPressed: () async {
-                                      await SupabaseService().signOut();
-                                      if (mounted) {
-                                        Navigator.of(context)
-                                            .pushAndRemoveUntil(
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const AuthScreen(
-                                              showLogin: true,
+                                      Navigator.pop(
+                                          context); // Close dialog first
+                                      try {
+                                        // Use AuthProvider to properly sign out
+                                        final authProvider =
+                                            Provider.of<AuthProvider>(context,
+                                                listen: false);
+                                        await authProvider.signOut();
+
+                                        if (mounted) {
+                                          Navigator.of(context)
+                                              .pushAndRemoveUntil(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const AuthScreen(
+                                                showLogin: true,
+                                              ),
                                             ),
-                                          ),
-                                          (route) => false,
-                                        );
+                                            (route) => false,
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content:
+                                                  Text('Error logging out: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
                                       }
                                     },
                                     child: const Text('Logout',

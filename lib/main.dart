@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth.dart';
+import 'auth_wrapper.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/notification_provider.dart';
@@ -15,7 +16,12 @@ import 'splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+// import 'package:awesome_notifications/awesome_notifications.dart'; // Disabled to prevent duplicates
 import 'firebase_options.dart';
+import 'services/background_messaging.dart';
+import 'breathing_screen.dart';
+import 'grounding_screen.dart';
 
 // Global flag to track initialization
 bool servicesInitialized = false;
@@ -23,6 +29,10 @@ bool servicesInitialized = false;
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Register FCM background message handler early
+  // This must be a top-level function (defined in services/background_messaging.dart)
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Create the theme provider first as it doesn't depend on other services
   final themeProvider = ThemeProvider();
@@ -64,6 +74,9 @@ Future<void> _initializeServices() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Ensure FCM can initialize even though auto-init is disabled in AndroidManifest
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
 
     // Initialize Supabase - this is required before creating AuthProvider
     await SupabaseService().initialize();
@@ -109,6 +122,14 @@ Future<void> _initializeRemainingServices(
     // Initialize notification service
     await notificationService.initialize();
 
+    // DISABLED: Firebase listener to prevent duplicate notifications
+    // Since Cloud Functions are working, we don't need local listeners
+    // notificationService.initializeListener();
+
+    // DISABLED: Background polling service to prevent duplicates
+    // Cloud Functions handle real-time notifications now
+    // BackgroundPollingService.startPolling(intervalSeconds: 60);
+
     // Request notification permissions
     final isAllowed = await notificationService.checkNotificationPermissions();
     if (!isAllowed) {
@@ -117,6 +138,9 @@ Future<void> _initializeRemainingServices(
 
     // Initialize storage service
     await StorageService().init();
+
+    // Configure Firebase Cloud Messaging (foreground listeners, token log)
+    await _configureFCM();
 
     debugPrint('✅ All services initialized successfully');
   } catch (e) {
@@ -130,11 +154,9 @@ Future<void> _clearNotificationsOnAppStartup() async {
     final supabaseService = SupabaseService();
 
     // Configuration: Set to true to enable automatic clearing of old notifications
-    // Set to false to keep all notifications permanently
-    const bool enableAutoClear =
-        false; // Disabled by default to preserve severity alerts
+    // Set to false to keep all notifications permanently. Currently disabled.
+    final bool enableAutoClear = await _getAutoClearSetting();
 
-    // Skip if auto-clear is disabled
     if (!enableAutoClear) {
       debugPrint(
           '📱 Auto-clear disabled - preserving all notifications including severity alerts');
@@ -142,7 +164,7 @@ Future<void> _clearNotificationsOnAppStartup() async {
     }
 
     // Set a timeout for this operation
-    return await Future.any([
+    await Future.any([
       _doClearNotifications(supabaseService),
       Future.delayed(const Duration(seconds: 3), () {
         debugPrint(
@@ -154,6 +176,11 @@ Future<void> _clearNotificationsOnAppStartup() async {
     debugPrint('❌ Error clearing old notifications on startup: $e');
     // Don't rethrow - allow the app to continue even if clearing fails
   }
+}
+
+// In the future this can read a setting or Remote Config. For now, keep disabled.
+Future<bool> _getAutoClearSetting() async {
+  return false;
 }
 
 Future<void> _doClearNotifications(SupabaseService supabaseService) async {
@@ -421,9 +448,11 @@ class _MyAppState extends State<MyApp> {
       initialRoute: '/splash',
       routes: {
         '/splash': (context) => const SplashScreen(),
-        '/': (context) => const AuthScreen(),
+        '/': (context) => const AuthWrapper(),
         '/reset-password': (context) => const ResetPasswordScreen(),
         '/notifications': (context) => const NotificationsScreen(),
+        '/breathing': (context) => const BreathingScreen(),
+        '/grounding': (context) => const GroundingScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/verify-reset-code') {
@@ -435,5 +464,74 @@ class _MyAppState extends State<MyApp> {
         return null;
       },
     );
+  }
+}
+
+// Configure Firebase Cloud Messaging for foreground messages and token retrieval
+Future<void> _configureFCM() async {
+  try {
+    // iOS foreground presentation options (safe to call on all platforms)
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Get and log the FCM token (copy from logs to use in test_fcm.dart)
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      debugPrint('🔑 FCM registration token: $token');
+    } else {
+      debugPrint(
+          '⚠️ FCM token is null (auto-init or Google services not ready yet)');
+    }
+
+    // Foreground message handler: Log FCM messages but DON'T create local notifications
+    // to prevent duplicates since Cloud Functions already send FCM notifications
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      try {
+        final data = message.data;
+        final notification = message.notification;
+
+        debugPrint(
+            '📥 Foreground FCM received: ${notification?.title} - ${notification?.body}');
+        debugPrint('📊 FCM data: $data');
+
+        // DISABLED: Local notification creation to prevent duplicates
+        // The Cloud Functions already send FCM notifications that appear automatically
+        // Creating additional local notifications here causes duplicates
+
+        /* ORIGINAL CODE CAUSING DUPLICATES:
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+            channelKey: channelKey,
+            title: title,
+            body: body,
+            ...
+          ),
+        );
+        */
+      } catch (e) {
+        debugPrint('❌ Error handling foreground FCM: $e');
+      }
+    });
+
+    // When a notification is tapped and opens the app (foreground/background)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint('📬 Notification tap opened app. Data: ${message.data}');
+      // Optionally: navigate based on severity/type using a navigatorKey
+    });
+
+    // If app was launched from a terminated state by tapping a notification
+    final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMsg != null) {
+      debugPrint('🚀 App launched from notification. Data: ${initialMsg.data}');
+      // Optionally: navigate to a screen based on payload
+    }
+  } catch (e) {
+    debugPrint('❌ Error configuring FCM: $e');
   }
 }

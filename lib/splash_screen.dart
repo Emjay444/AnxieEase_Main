@@ -22,11 +22,16 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkInitialization() async {
+    debugPrint('🔄 SplashScreen - Starting initialization check...');
+
     // Check every 500ms if services are initialized
     while (!servicesInitialized) {
+      debugPrint('🔄 SplashScreen - Waiting for services to initialize...');
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
     }
+
+    debugPrint('✅ SplashScreen - Services initialized!');
 
     // Once services are initialized, check permissions
     setState(() {
@@ -37,9 +42,13 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(seconds: 1));
     if (!mounted) return;
 
+    debugPrint('🔄 SplashScreen - Checking notification permissions...');
+
     // Check if we've already asked for notification permissions
     final permissionStatus =
         await _notificationService.getSavedPermissionStatus();
+
+    debugPrint('🔄 SplashScreen - Permission status: $permissionStatus');
 
     setState(() {
       _permissionsChecked = true;
@@ -47,20 +56,29 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (permissionStatus == null) {
       // First time launch - show notification permission dialog
+      debugPrint(
+          '🔄 SplashScreen - First time launch, showing permission dialog');
       _showNotificationPermissionDialog();
     } else if (permissionStatus == false) {
       // Permission was previously denied - check if it's still denied
+      debugPrint(
+          '🔄 SplashScreen - Permission was denied, checking current status');
       final currentStatus =
           await _notificationService.checkNotificationPermissions();
       if (!currentStatus) {
         // Still denied - show settings redirect dialog
+        debugPrint('🔄 SplashScreen - Still denied, showing settings dialog');
         _showNotificationSettingsRedirectDialog();
       } else {
         // Permission is now granted - proceed to auth screen
+        debugPrint(
+            '✅ SplashScreen - Permission now granted, navigating to auth');
         _navigateToAuthScreen();
       }
     } else {
       // Permission was previously granted - proceed to auth screen
+      debugPrint(
+          '✅ SplashScreen - Permission already granted, navigating to auth');
       _navigateToAuthScreen();
     }
   }
@@ -75,8 +93,8 @@ class _SplashScreenState extends State<SplashScreen> {
           final granted =
               await _notificationService.requestNotificationPermissions();
           if (granted) {
-            // Send a test notification to confirm it works
-            await _notificationService.showTestNotification();
+            // Test notification disabled - Cloud Functions handle all notifications
+            // await _notificationService.showTestNotification();
           }
           _navigateToAuthScreen();
         },
@@ -107,6 +125,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _navigateToAuthScreen() {
+    debugPrint('🚀 SplashScreen - Navigating to AuthWrapper...');
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/');
     }

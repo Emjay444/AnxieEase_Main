@@ -510,12 +510,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     if (!_isSuccess)
                       TextButton(
                         onPressed: () {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (context) => LoginScreen(
-                                onSwitch: () {},
-                              ),
-                            ),
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            '/', // This will go to AuthWrapper, which will show login for unauthenticated users
                             (route) => false,
                           );
                         },

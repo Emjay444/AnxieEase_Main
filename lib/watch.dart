@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:provider/provider.dart';
 import 'services/notification_service.dart';
 
 class WatchScreen extends StatefulWidget {
@@ -16,6 +15,7 @@ class _WatchScreenState extends State<WatchScreen>
   late Animation<double> _animation;
   late DatabaseReference _metricsRef;
   bool isDeviceWorn = false;
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
@@ -49,19 +49,30 @@ class _WatchScreenState extends State<WatchScreen>
         }
       }
     });
+
+    // Listen to NotificationService changes for heart rate updates
+    _notificationService.addListener(_updateUI);
+  }
+
+  void _updateUI() {
+    if (mounted) {
+      setState(() {
+        // This will trigger a rebuild when heart rate changes
+      });
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _notificationService.removeListener(_updateUI);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     // Get heart rate from NotificationService
-    double heartRate =
-        Provider.of<NotificationService>(context).currentHeartRate.toDouble();
+    double heartRate = _notificationService.currentHeartRate.toDouble();
 
     return Scaffold(
       backgroundColor: const Color(0xFF2C3E50),
