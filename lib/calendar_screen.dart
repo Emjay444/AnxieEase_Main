@@ -539,7 +539,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             stressLevel,
             selectedSymptomsList,
             existingLog,
-            existingLog?.journal, // Preserve existing journal if updating
+            existingLog.journal, // Preserve existing journal if updating
           ).then((_) {
             // Close loading indicator
             Navigator.pop(context);

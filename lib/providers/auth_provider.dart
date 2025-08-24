@@ -292,18 +292,18 @@ class AuthProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       debugPrint('🔄 Starting sign out process...');
-      
+
       // Clear stored credentials
       await _storageService.clearCredentials();
-      
+
       // Sign out from Supabase
       await _supabaseService.signOut();
-      
+
       // The auth state listener will handle clearing the user data
       debugPrint('✅ Sign out initiated, auth listener will handle cleanup');
     } catch (e) {
       debugPrint('❌ Error during sign out: $e');
-      throw e;
+      rethrow;
     } finally {
       _setLoading(false);
     }

@@ -1,13 +1,9 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'calendar_screen.dart';
 import 'utils/logger.dart';
 import 'services/supabase_service.dart';
-import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
 class DailyLog {

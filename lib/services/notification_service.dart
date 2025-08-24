@@ -173,66 +173,83 @@ class NotificationService extends ChangeNotifier {
       final data = event.snapshot.value as Map?;
       if (data == null) return;
 
+      bool shouldNotifyListeners = false;
+
       // Get heart rate from the root level
       final heartRate = data['heartRate'] as int?;
-      if (heartRate != null) {
+      if (heartRate != null && heartRate != _currentHeartRate) {
         _currentHeartRate = heartRate;
+        shouldNotifyListeners = true;
+        debugPrint('💓 Heart rate updated: $heartRate bpm');
       }
 
       // Get anxiety detection data
       final anxietyData = data['anxietyDetected'] as Map?;
-      if (anxietyData == null) return;
-
-      final severity = anxietyData['severity']?.toString().toLowerCase();
-      if (severity == null) return;
-
-      // Update current severity and notify listeners
-      _currentSeverity = severity;
-      notifyListeners();
-
-      // Skip notification on first read (app startup)
-      if (_isFirstRead) {
-        _isFirstRead = false;
-        debugPrint(
-            '🔇 Skipping initial Firebase notification for: $severity (HR: $heartRate)');
-        return;
+      if (anxietyData != null) {
+        final severity = anxietyData['severity']?.toString().toLowerCase();
+        if (severity != null && severity != _currentSeverity) {
+          _currentSeverity = severity;
+          shouldNotifyListeners = true;
+          debugPrint('😰 Severity updated: $severity');
+        }
       }
 
-      // Only send notifications for actual data changes
-      debugPrint(
-          '🔔 Firebase data changed - sending notification for: $severity (HR: $heartRate)');
+      // Notify listeners if any data changed
+      if (shouldNotifyListeners) {
+        notifyListeners();
+      }
 
-      String title = '';
-      String body = '';
-      String channelKey = '';
-      String notificationType = '';
+      // Handle notifications only for severity changes
+      if (anxietyData != null) {
+        final severity = anxietyData['severity']?.toString().toLowerCase();
+        if (severity == null) return;
 
-      switch (severity) {
-        case 'mild':
-          title = '🟢 Mild Alert';
-          body = 'Slight elevation in readings. HR: ${heartRate ?? "N/A"} bpm';
-          channelKey = 'anxiety_alerts';
-          notificationType = 'alert';
-          break;
-        case 'moderate':
-          title = '🟠 Moderate Alert';
-          body = 'Noticeable symptoms detected. HR: ${heartRate ?? "N/A"} bpm';
-          channelKey = 'anxiety_alerts';
-          notificationType = 'alert';
-          break;
-        case 'severe':
-          title = '🔴 Severe Alert';
-          body = 'URGENT: High risk! HR: ${heartRate ?? "N/A"} bpm';
-          channelKey = 'anxiety_alerts';
-          notificationType = 'alert';
-          break;
-        default:
+        // Skip notification on first read (app startup)
+        if (_isFirstRead) {
+          _isFirstRead = false;
+          debugPrint(
+              '🔇 Skipping initial Firebase notification for: $severity (HR: $heartRate)');
           return;
-      }
+        }
 
-      _showSeverityNotification(title, body, channelKey, severity);
-      _saveNotificationToSupabase(title, body, notificationType, severity);
-      _saveAnxietyLevelRecord(severity, false, heartRate);
+        // Only send notifications for actual data changes
+        debugPrint(
+            '🔔 Firebase data changed - sending notification for: $severity (HR: $heartRate)');
+
+        String title = '';
+        String body = '';
+        String channelKey = '';
+        String notificationType = '';
+
+        switch (severity) {
+          case 'mild':
+            title = '🟢 Mild Alert';
+            body =
+                'Slight elevation in readings. HR: ${heartRate ?? "N/A"} bpm';
+            channelKey = 'anxiety_alerts';
+            notificationType = 'alert';
+            break;
+          case 'moderate':
+            title = '🟠 Moderate Alert';
+            body =
+                'Noticeable symptoms detected. HR: ${heartRate ?? "N/A"} bpm';
+            channelKey = 'anxiety_alerts';
+            notificationType = 'alert';
+            break;
+          case 'severe':
+            title = '🔴 Severe Alert';
+            body = 'URGENT: High risk! HR: ${heartRate ?? "N/A"} bpm';
+            channelKey = 'anxiety_alerts';
+            notificationType = 'alert';
+            break;
+          default:
+            return;
+        }
+
+        _showSeverityNotification(title, body, channelKey, severity);
+        _saveNotificationToSupabase(title, body, notificationType, severity);
+        _saveAnxietyLevelRecord(severity, false, heartRate);
+      }
     });
   }
 

@@ -17,7 +17,7 @@ import 'theme/app_theme.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-// import 'package:awesome_notifications/awesome_notifications.dart'; // Disabled to prevent duplicates
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
@@ -122,9 +122,9 @@ Future<void> _initializeRemainingServices(
     // Initialize notification service
     await notificationService.initialize();
 
-    // DISABLED: Firebase listener to prevent duplicate notifications
-    // Since Cloud Functions are working, we don't need local listeners
-    // notificationService.initializeListener();
+    // Enable Firebase listener for foreground notifications when app is open
+    // This handles direct Firebase data changes (like manual severity updates)
+    notificationService.initializeListener();
 
     // DISABLED: Background polling service to prevent duplicates
     // Cloud Functions handle real-time notifications now
@@ -483,13 +483,20 @@ Future<void> _configureFCM() async {
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
       debugPrint('🔑 FCM registration token: $token');
+
+      // Subscribe to anxiety alerts topic for push notifications
+      try {
+        await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
+        debugPrint('✅ Subscribed to anxiety_alerts topic');
+      } catch (e) {
+        debugPrint('❌ Failed to subscribe to anxiety_alerts topic: $e');
+      }
     } else {
       debugPrint(
           '⚠️ FCM token is null (auto-init or Google services not ready yet)');
     }
 
-    // Foreground message handler: Log FCM messages but DON'T create local notifications
-    // to prevent duplicates since Cloud Functions already send FCM notifications
+    // Foreground message handler: Handle FCM messages when app is open
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       try {
         final data = message.data;
@@ -499,21 +506,26 @@ Future<void> _configureFCM() async {
             '📥 Foreground FCM received: ${notification?.title} - ${notification?.body}');
         debugPrint('📊 FCM data: $data');
 
-        // DISABLED: Local notification creation to prevent duplicates
-        // The Cloud Functions already send FCM notifications that appear automatically
-        // Creating additional local notifications here causes duplicates
-
-        /* ORIGINAL CODE CAUSING DUPLICATES:
-        await AwesomeNotifications().createNotification(
-          content: NotificationContent(
-            id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-            channelKey: channelKey,
-            title: title,
-            body: body,
-            ...
-          ),
-        );
-        */
+        // Show notifications when app is in foreground (FCM doesn't show them automatically)
+        if (notification != null) {
+          await AwesomeNotifications().createNotification(
+            content: NotificationContent(
+              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              channelKey: 'anxiety_alerts',
+              title: notification.title ?? 'AnxieEase Alert',
+              body: notification.body ?? 'Check your anxiety levels',
+              notificationLayout: NotificationLayout.Default,
+              category: data['severity'] == 'severe'
+                  ? NotificationCategory.Alarm
+                  : NotificationCategory.Reminder,
+              wakeUpScreen: data['severity'] == 'severe',
+              criticalAlert: data['severity'] == 'severe',
+              payload:
+                  data.map((key, value) => MapEntry(key, value.toString())),
+            ),
+          );
+          debugPrint('✅ Foreground notification displayed');
+        }
       } catch (e) {
         debugPrint('❌ Error handling foreground FCM: $e');
       }

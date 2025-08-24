@@ -349,7 +349,7 @@ class _ClinicListViewState extends State<ClinicListView> {
                         if (clinic['rating'] != null)
                           Row(
                             children: [
-                              Icon(Icons.star,
+                              const Icon(Icons.star,
                                   color: Colors.amber,
                                   size: 16,
                                   semanticLabel: 'Rating'),

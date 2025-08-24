@@ -32,10 +32,8 @@ class SupabaseService {
 
     // If client is null but Supabase is initialized, try to get the instance
     try {
-      if (Supabase.instance != null) {
-        _supabaseClient = Supabase.instance.client;
-        return _supabaseClient!;
-      }
+      _supabaseClient = Supabase.instance.client;
+      return _supabaseClient!;
     } catch (e) {
       debugPrint('Error getting Supabase instance: $e');
     }
@@ -100,17 +98,19 @@ class SupabaseService {
       debug: kDebugMode,
     );
     _supabaseClient = Supabase.instance.client;
-    
+
     // Wait a moment for session restoration to complete
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     // Log the current session state for debugging
     final currentSession = _supabaseClient?.auth.currentSession;
-    debugPrint('📱 Supabase initialized - Current session: ${currentSession != null ? 'Found' : 'None'}');
+    debugPrint(
+        '📱 Supabase initialized - Current session: ${currentSession != null ? 'Found' : 'None'}');
     if (currentSession != null) {
       debugPrint('📱 Session user: ${currentSession.user.email}');
       debugPrint('📱 Session expires at: ${currentSession.expiresAt}');
-      debugPrint('📱 Session access token length: ${currentSession.accessToken.length}');
+      debugPrint(
+          '📱 Session access token length: ${currentSession.accessToken.length}');
     } else {
       debugPrint('📱 No session found - user will need to log in');
     }

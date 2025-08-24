@@ -1993,7 +1993,7 @@ class SearchScreenState extends State<SearchScreen>
                 ),
               ),
               // Spacer to balance the back button
-              SizedBox(width: 36),
+              const SizedBox(width: 36),
             ],
           ),
         ),
@@ -2106,9 +2106,9 @@ class SearchScreenState extends State<SearchScreen>
                   padding: const EdgeInsets.only(top: 12, bottom: 8),
                   width: double.infinity,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     color: Colors.white,
-                    borderRadius: const BorderRadius.only(
+                    borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(24),
                       topRight: Radius.circular(24),
                     ),
@@ -2302,9 +2302,9 @@ class SearchScreenState extends State<SearchScreen>
                                         CircleAvatar(
                                           backgroundColor:
                                               typeColor.withOpacity(0.12),
+                                          radius: 28,
                                           child: Icon(typeIcon,
                                               color: typeColor, size: 28),
-                                          radius: 28,
                                         ),
                                         Positioned(
                                           right: 0,
@@ -2383,7 +2383,7 @@ class SearchScreenState extends State<SearchScreen>
                                           Row(
                                             children: [
                                               // Rating
-                                              Icon(Icons.star,
+                                              const Icon(Icons.star,
                                                   color: Colors.amber,
                                                   size: 16),
                                               Text(rating.toString(),
@@ -2394,7 +2394,7 @@ class SearchScreenState extends State<SearchScreen>
                                               const SizedBox(width: 12),
 
                                               // Distance with icon
-                                              Icon(Icons.location_on,
+                                              const Icon(Icons.location_on,
                                                   color: Colors.blue, size: 16),
                                               Text(distance,
                                                   style: const TextStyle(

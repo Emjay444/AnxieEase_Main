@@ -319,7 +319,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF4A90E2).withOpacity(0.1),
+                                color: const Color(0xFF4A90E2)
+                                    .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -370,7 +371,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Container(
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFF4A90E2).withOpacity(0.1)
+                                  ? const Color(0xFF4A90E2)
+                                      .withValues(alpha: 0.1)
                                   : Colors.grey[100],
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
@@ -534,7 +536,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: getStressColor(stressLevel).withOpacity(0.2),
+                          color: getStressColor(stressLevel)
+                              .withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -568,10 +571,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: getStressColor(stressLevel),
                       inactiveTrackColor:
-                          getStressColor(stressLevel).withOpacity(0.2),
+                          getStressColor(stressLevel).withValues(alpha: 0.2),
                       thumbColor: getStressColor(stressLevel),
                       overlayColor:
-                          getStressColor(stressLevel).withOpacity(0.2),
+                          getStressColor(stressLevel).withValues(alpha: 0.2),
                       trackHeight: 8,
                       thumbShape: const RoundSliderThumbShape(
                         enabledThumbRadius: 12,
@@ -683,7 +686,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF50E3C2).withOpacity(0.1),
+                                color: const Color(0xFF50E3C2)
+                                    .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -716,7 +720,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                             color: symptoms[symptom]!
-                                ? const Color(0xFF50E3C2).withOpacity(0.1)
+                                ? const Color(0xFF50E3C2).withValues(alpha: 0.1)
                                 : Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
@@ -736,7 +740,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: symptoms[symptom]!
-                                    ? const Color(0xFF50E3C2).withOpacity(0.1)
+                                    ? const Color(0xFF50E3C2)
+                                        .withValues(alpha: 0.1)
                                     : Colors.grey[100],
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -919,7 +924,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF9013FE).withOpacity(0.1),
+                                color: const Color(0xFF9013FE)
+                                    .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -952,7 +958,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
                             color: activity['completed']
-                                ? const Color(0xFF9013FE).withOpacity(0.1)
+                                ? const Color(0xFF9013FE).withValues(alpha: 0.1)
                                 : Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
@@ -972,7 +978,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: activity['completed']
-                                    ? const Color(0xFF9013FE).withOpacity(0.1)
+                                    ? const Color(0xFF9013FE)
+                                        .withValues(alpha: 0.1)
                                     : Colors.grey[100],
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -1272,7 +1279,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: getTypeColor().withOpacity(0.1),
+              color: getTypeColor().withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -1456,7 +1463,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: getTypeColor().withOpacity(0.1),
+                        color: getTypeColor().withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -1685,7 +1692,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       vertical: screenHeight * 0.008,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(screenWidth * 0.05),
                     ),
                     child: Text(
@@ -1721,7 +1728,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: screenWidth * 0.2,
               height: screenWidth * 0.2,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -1771,7 +1778,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       vertical: screenHeight * 0.008,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(screenWidth * 0.05),
                     ),
                     child: Text(
@@ -1807,7 +1814,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: screenWidth * 0.2,
               height: screenWidth * 0.2,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -1856,7 +1863,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Theme.of(context).textTheme.titleLarge?.color,
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   // Swipe indicator
                   Row(
                     children: [
@@ -1867,9 +1874,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             .textTheme
                             .bodyMedium
                             ?.color
-                            ?.withOpacity(0.6),
+                            ?.withValues(alpha: 0.6),
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Text(
                         'Swipe',
                         style: TextStyle(
@@ -1878,7 +1885,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               .textTheme
                               .bodyMedium
                               ?.color
-                              ?.withOpacity(0.6),
+                              ?.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -1944,7 +1951,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(4),
                         color: index == _currentTechniqueIndex
                             ? Theme.of(context).primaryColor
-                            : Theme.of(context).primaryColor.withOpacity(0.3),
+                            : Theme.of(context)
+                                .primaryColor
+                                .withValues(alpha: 0.3),
                       ),
                     ),
                   ),
@@ -2036,7 +2045,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -2074,7 +2083,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   : Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
+                        color: color.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -2345,7 +2354,7 @@ class _HomeContentState extends State<HomeContent> {
                             return CircleAvatar(
                               radius: screenWidth * 0.06,
                               backgroundColor:
-                                  theme.primaryColor.withOpacity(0.1),
+                                  theme.primaryColor.withValues(alpha: 0.1),
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: theme.primaryColor,

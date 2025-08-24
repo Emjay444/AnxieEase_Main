@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:provider/provider.dart';
 import 'services/notification_service.dart';
 
 class WatchScreen extends StatefulWidget {
@@ -15,11 +16,16 @@ class _WatchScreenState extends State<WatchScreen>
   late Animation<double> _animation;
   late DatabaseReference _metricsRef;
   bool isDeviceWorn = false;
-  final NotificationService _notificationService = NotificationService();
+  late NotificationService _notificationService;
 
   @override
   void initState() {
     super.initState();
+
+    // Get the NotificationService from Provider
+    _notificationService =
+        Provider.of<NotificationService>(context, listen: false);
+
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,

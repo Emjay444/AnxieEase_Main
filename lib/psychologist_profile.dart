@@ -437,11 +437,11 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
                     // If no psychologist, show message and button
                     if (_psychologist == null) ...[
-                      Padding(
-                        padding: const EdgeInsets.all(24.0),
+                      const Padding(
+                        padding: EdgeInsets.all(24.0),
                         child: Column(
                           children: [
-                            const Text(
+                            Text(
                               'No psychologist is currently assigned to you.',
                               style: TextStyle(
                                 fontSize: 16,
