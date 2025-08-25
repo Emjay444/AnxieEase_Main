@@ -78,7 +78,7 @@
         <!-- Default notification channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="anxiety_alerts" />
+            android:value="default_channel" />
 
         <!-- Auto-init FCM -->
         <meta-data

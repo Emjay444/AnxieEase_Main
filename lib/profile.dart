@@ -323,7 +323,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,withValuesalpha: 0.1
+                              blurRadius: 10,
                               spreadRadius: 5,
                             ),
                           ],
@@ -384,7 +384,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,withValuesalpha: 0.05
+                        blurRadius: 10,
                         spreadRadius: 5,
                       ),
                     ],
@@ -570,7 +570,7 @@ class _ProfilePageState extends State<ProfilePage> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(Icons.person, color: Color(0xFF3AA772)),
-        ),const 
+        ),
         const SizedBox(width: 16),
         Expanded(
           child: DropdownButtonFormField<String>(

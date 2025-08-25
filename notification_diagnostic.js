@@ -4,7 +4,8 @@ const admin = require("firebase-admin");
 const serviceAccount = require("./service-account-key.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL:
+    "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
 });
 
 async function comprehensiveNotificationDiagnostic() {
@@ -16,45 +17,44 @@ async function comprehensiveNotificationDiagnostic() {
     try {
       const db = admin.database();
       const testRef = db.ref("devices/AnxieEase001/Metrics");
-      
+
       // First, clear any existing data
       await testRef.set(null);
       console.log("✅ Cleared existing data");
-      
+
       // Wait a moment
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // Set initial data
       const initialData = {
         heartRate: 75,
         anxietyDetected: {
           severity: "mild",
           timestamp: Date.now(),
-          confidence: 0.8
+          confidence: 0.8,
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
-      
+
       await testRef.set(initialData);
       console.log("✅ Set initial mild severity");
-      
+
       // Wait, then trigger a change
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
       const changeData = {
         heartRate: 115,
         anxietyDetected: {
           severity: "severe",
           timestamp: Date.now(),
-          confidence: 0.9
+          confidence: 0.9,
         },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
-      
+
       await testRef.set(changeData);
       console.log("✅ Triggered severity change: mild -> severe");
       console.log("   📱 Check your device for notification!");
-      
     } catch (error) {
       console.log("❌ Cloud Function test failed:", error.message);
     }
@@ -65,23 +65,22 @@ async function comprehensiveNotificationDiagnostic() {
       const testMessage = {
         notification: {
           title: "🔔 Direct FCM Test",
-          body: "Testing background notification delivery"
+          body: "Testing background notification delivery",
         },
         android: {
           priority: "high",
           notification: {
             channelId: "anxiety_alerts",
             priority: "high",
-            sound: "default"
-          }
+            sound: "default",
+          },
         },
-        topic: "anxiety_alerts"
+        topic: "anxiety_alerts",
       };
-      
+
       const response = await admin.messaging().send(testMessage);
       console.log("✅ Direct FCM sent to topic:", response);
       console.log("   📱 Check your device for notification!");
-      
     } catch (error) {
       console.log("❌ FCM topic test failed:", error.message);
     }
@@ -89,7 +88,10 @@ async function comprehensiveNotificationDiagnostic() {
     // 3. Check Firebase connection
     console.log("\n🔗 3. Testing Firebase connection...");
     try {
-      const snapshot = await admin.database().ref("devices/AnxieEase001/Metrics").once('value');
+      const snapshot = await admin
+        .database()
+        .ref("devices/AnxieEase001/Metrics")
+        .once("value");
       const data = snapshot.val();
       console.log("✅ Firebase connection successful");
       console.log("📊 Current data:", JSON.stringify(data, null, 2));
@@ -106,7 +108,6 @@ async function comprehensiveNotificationDiagnostic() {
     console.log("   - Battery optimization (disable for AnxieEase)");
     console.log("   - Background app restrictions");
     console.log("   - Do Not Disturb mode");
-
   } catch (error) {
     console.error("❌ Diagnostic failed:", error);
   } finally {
