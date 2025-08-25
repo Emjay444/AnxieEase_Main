@@ -138,6 +138,15 @@ class NotificationService extends ChangeNotifier {
           importance: NotificationImportance.High,
           ledColor: Colors.white,
         ),
+        NotificationChannel(
+          channelKey: 'wellness_reminders',
+          channelName: 'Wellness Reminders',
+          channelDescription: 'Daily wellness and mindfulness reminders',
+          defaultColor: Colors.green,
+          importance: NotificationImportance.Default,
+          ledColor: Colors.green,
+          enableVibration: true,
+        ),
       ],
     );
 
@@ -212,9 +221,10 @@ class NotificationService extends ChangeNotifier {
           return;
         }
 
-        // Only send notifications for actual data changes
+        // Only send LOCAL notifications when app is open (since FCM won't show device notifications when app is foreground)
+        // When app is closed, Cloud Function FCM will handle notifications
         debugPrint(
-            '🔔 Firebase data changed - sending notification for: $severity (HR: $heartRate)');
+            '� Firebase data changed - sending LOCAL notification for: $severity (HR: $heartRate)');
 
         String title = '';
         String body = '';

@@ -17,7 +17,6 @@ import 'theme/app_theme.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
 import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
@@ -491,6 +490,14 @@ Future<void> _configureFCM() async {
       } catch (e) {
         debugPrint('❌ Failed to subscribe to anxiety_alerts topic: $e');
       }
+
+      // Subscribe to wellness reminders topic for wellness notifications
+      try {
+        await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
+        debugPrint('✅ Subscribed to wellness_reminders topic');
+      } catch (e) {
+        debugPrint('❌ Failed to subscribe to wellness_reminders topic: $e');
+      }
     } else {
       debugPrint(
           '⚠️ FCM token is null (auto-init or Google services not ready yet)');
@@ -506,26 +513,11 @@ Future<void> _configureFCM() async {
             '📥 Foreground FCM received: ${notification?.title} - ${notification?.body}');
         debugPrint('📊 FCM data: $data');
 
-        // Show notifications when app is in foreground (FCM doesn't show them automatically)
-        if (notification != null) {
-          await AwesomeNotifications().createNotification(
-            content: NotificationContent(
-              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              channelKey: 'anxiety_alerts',
-              title: notification.title ?? 'AnxieEase Alert',
-              body: notification.body ?? 'Check your anxiety levels',
-              notificationLayout: NotificationLayout.Default,
-              category: data['severity'] == 'severe'
-                  ? NotificationCategory.Alarm
-                  : NotificationCategory.Reminder,
-              wakeUpScreen: data['severity'] == 'severe',
-              criticalAlert: data['severity'] == 'severe',
-              payload:
-                  data.map((key, value) => MapEntry(key, value.toString())),
-            ),
-          );
-          debugPrint('✅ Foreground notification displayed');
-        }
+        // DON'T show device notifications when app is open
+        // The local Firebase listener (NotificationService) will handle notifications when app is open
+        // This prevents duplicate notifications
+        debugPrint('🔇 App is open - skipping FCM device notification (local listener will handle it)');
+        
       } catch (e) {
         debugPrint('❌ Error handling foreground FCM: $e');
       }

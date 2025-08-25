@@ -1,8 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
 import '../firebase_options.dart';
 
 /// This function handles background messages when the app is terminated or in background.
@@ -20,44 +18,33 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     debugPrint('🔔 Background FCM received: ${message.notification?.title}');
     debugPrint('📊 Background FCM data: ${message.data}');
 
-    // Initialize AwesomeNotifications for background notifications
-    await AwesomeNotifications().initialize(
-      null,
-      [
-        NotificationChannel(
-          channelKey: 'anxiety_alerts',
-          channelName: 'Anxiety Alerts',
-          channelDescription: 'Notifications for anxiety level alerts',
-          defaultColor: const Color(0xFF9D50DD),
-          importance: NotificationImportance.High,
-          ledColor: Colors.white,
-          enableVibration: true,
-        ),
-      ],
-    );
+    // Handle different message types
+    final messageType = message.data['type'];
+    debugPrint('📱 Message type: $messageType');
 
-    // Create a local notification from the FCM message
+    if (messageType == 'wellness_reminder') {
+      debugPrint('🧘 Wellness reminder received in background');
+      debugPrint('   Category: ${message.data['category']}');
+      debugPrint('   Message Type: ${message.data['messageType']}');
+    } else if (messageType == 'anxiety_alert') {
+      debugPrint('🚨 Anxiety alert received in background');
+      debugPrint('   Severity: ${message.data['severity']}');
+    }
+
+    // DON'T create additional local notifications in background handler
+    // The Cloud Function FCM message already contains the notification
+    // Android will automatically display FCM notifications when app is closed
+    debugPrint('📥 Background FCM message received - Android will display the notification automatically');
+    
+    // Only log the data for debugging
     if (message.notification != null) {
       final notification = message.notification!;
       final data = message.data;
-
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-          channelKey: 'anxiety_alerts',
-          title: notification.title ?? 'AnxieEase Alert',
-          body: notification.body ?? 'Check your anxiety levels',
-          notificationLayout: NotificationLayout.Default,
-          category: data['severity'] == 'severe'
-              ? NotificationCategory.Alarm
-              : NotificationCategory.Reminder,
-          wakeUpScreen: data['severity'] == 'severe',
-          criticalAlert: data['severity'] == 'severe',
-          payload: data.map((key, value) => MapEntry(key, value.toString())),
-        ),
-      );
-
-      debugPrint('✅ Background notification created successfully');
+      
+      debugPrint('📊 Background notification data:');
+      debugPrint('   Title: ${notification.title}');
+      debugPrint('   Body: ${notification.body}');
+      debugPrint('   Severity: ${data['severity']}');
     }
 
     // Save critical data for when app reopens
