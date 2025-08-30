@@ -4,7 +4,6 @@ import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
 import 'services/supabase_service.dart';
 import 'utils/logger.dart';
-import 'psychologist_list_screen.dart';
 
 class PsychologistProfilePage extends StatefulWidget {
   const PsychologistProfilePage({super.key});

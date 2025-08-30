@@ -32,6 +32,10 @@ class NotificationService extends ChangeNotifier {
   bool _isInitializing = false;
   final Completer<void> _initCompleter = Completer<void>();
 
+  // Local de-duplication for app-side detection
+  String? _lastLocalSeverity;
+  int _lastLocalSeverityTimeMs = 0;
+
   String get currentSeverity => _currentSeverity;
   int get currentHeartRate => _currentHeartRate;
   bool get isInitialized => _isInitialized;
@@ -50,9 +54,8 @@ class NotificationService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error initializing Firebase reference: $e');
     }
-  }
+  } // Set callback for when a notification is added
 
-  // Set callback for when a notification is added
   void setOnNotificationAddedCallback(VoidCallback callback) {
     _onNotificationAdded = callback;
   }
@@ -123,9 +126,9 @@ class NotificationService extends ChangeNotifier {
         ),
         NotificationChannel(
           channelKey: 'reminders_channel',
-          channelName: 'Anxiety Reminders',
+          channelName: 'Local Anxiety Reminders',
           channelDescription:
-              'Regular reminders to help prevent anxiety attacks',
+              'Local scheduled reminders to help prevent anxiety attacks',
           defaultColor: Colors.green,
           importance: NotificationImportance.High,
           ledColor: Colors.green,
@@ -141,11 +144,13 @@ class NotificationService extends ChangeNotifier {
         NotificationChannel(
           channelKey: 'wellness_reminders',
           channelName: 'Wellness Reminders',
-          channelDescription: 'Daily wellness and mindfulness reminders',
-          defaultColor: Colors.green,
+          channelDescription:
+              'FCM-based wellness reminders that work when app is closed',
+          defaultColor: const Color(0xFF2D9254),
           importance: NotificationImportance.Default,
-          ledColor: Colors.green,
+          ledColor: const Color(0xFF2D9254),
           enableVibration: true,
+          playSound: true,
         ),
       ],
     );
@@ -186,6 +191,15 @@ class NotificationService extends ChangeNotifier {
 
       // Get heart rate from the root level
       final heartRate = data['heartRate'] as int?;
+      final isDeviceWorn = (data['isDeviceWorn'] as bool?) ??
+          (() {
+                final worn = data['worn'];
+                if (worn is int) return worn != 0;
+                if (worn is String)
+                  return worn == '1' || worn.toLowerCase() == 'true';
+                return null;
+              }() ??
+              false);
       if (heartRate != null && heartRate != _currentHeartRate) {
         _currentHeartRate = heartRate;
         shouldNotifyListeners = true;
@@ -208,10 +222,26 @@ class NotificationService extends ChangeNotifier {
         notifyListeners();
       }
 
-      // Handle notifications only for severity changes
+      // Handle notifications:
+      // 1) If Firebase provides severity, use it
+      // 2) Otherwise, compute client-side from heartRate as fallback
+      String? severityForNotify;
       if (anxietyData != null) {
-        final severity = anxietyData['severity']?.toString().toLowerCase();
-        if (severity == null) return;
+        severityForNotify = anxietyData['severity']?.toString().toLowerCase();
+      } else if (heartRate != null && isDeviceWorn) {
+        if (heartRate >= 120) {
+          severityForNotify = 'severe';
+        } else if (heartRate >= 100) {
+          severityForNotify = 'moderate';
+        } else if (heartRate >= 85) {
+          severityForNotify = 'mild';
+        } else {
+          severityForNotify = 'normal';
+        }
+      }
+
+      if (severityForNotify != null) {
+        final severity = severityForNotify;
 
         // Skip notification on first read (app startup)
         if (_isFirstRead) {
@@ -224,7 +254,7 @@ class NotificationService extends ChangeNotifier {
         // Only send LOCAL notifications when app is open (since FCM won't show device notifications when app is foreground)
         // When app is closed, Cloud Function FCM will handle notifications
         debugPrint(
-            '� Firebase data changed - sending LOCAL notification for: $severity (HR: $heartRate)');
+            '📥 Firebase data processed - sending LOCAL notification for: $severity (HR: $heartRate)');
 
         String title = '';
         String body = '';
@@ -256,9 +286,19 @@ class NotificationService extends ChangeNotifier {
             return;
         }
 
-        _showSeverityNotification(title, body, channelKey, severity);
-        _saveNotificationToSupabase(title, body, notificationType, severity);
-        _saveAnxietyLevelRecord(severity, false, heartRate);
+        // De-dupe locally: don't spam the same severity within ~20s
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (!(_lastLocalSeverity == severity &&
+            (nowMs - _lastLocalSeverityTimeMs) < 20000)) {
+          _lastLocalSeverity = severity;
+          _lastLocalSeverityTimeMs = nowMs;
+          _showSeverityNotification(title, body, channelKey, severity);
+          _saveNotificationToSupabase(title, body, notificationType, severity);
+          _saveAnxietyLevelRecord(severity, false, heartRate);
+        } else {
+          debugPrint(
+              '🛑 Skipping duplicate $severity within 20s (client-side)');
+        }
       }
     });
   }

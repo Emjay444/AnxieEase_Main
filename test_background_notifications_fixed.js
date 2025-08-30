@@ -161,3 +161,4 @@ if (severityArg) {
   // Test all severities
   testBackgroundNotifications();
 }
+

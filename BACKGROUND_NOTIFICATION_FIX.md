@@ -175,3 +175,4 @@ If notifications still don't work:
 
 Your FCM notifications should now work properly when the app is closed. The key was to let FCM handle the notification display instead of creating duplicate local notifications. Make sure to test after rebuilding the app with these changes!
 
+

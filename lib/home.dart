@@ -4,23 +4,16 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/painting.dart';
 
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/notification_provider.dart';
-import 'providers/theme_provider.dart';
-
-import 'models/user_model.dart';
 
 import 'breathing_screen.dart';
 import 'calendar_screen.dart';
 import 'grounding_screen.dart';
-import 'login.dart';
-import 'metrics.dart';
 import 'profile.dart';
 import 'psychologist_profile.dart';
 import 'screens/notifications_screen.dart';

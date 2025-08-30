@@ -1,0 +1,23 @@
+{
+  "rules": {
+    "devices": {
+      "$deviceId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "metadata": {
+          ".indexOn": ["status", "gatewayStarted"]
+        },
+        "current": {
+          ".indexOn": ["timestamp", "isoTimestamp"]
+        },
+        "readings": {
+          ".indexOn": ["timestamp", "isoTimestamp"]
+        },
+        "alerts": {
+          ".indexOn": ["timestamp", "type", "anxietyLevel"]
+        }
+      }
+    }
+  }
+}
+

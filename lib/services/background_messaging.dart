@@ -18,29 +18,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     debugPrint('🔔 Background FCM received: ${message.notification?.title}');
     debugPrint('📊 Background FCM data: ${message.data}');
 
-    // Handle different message types
-    final messageType = message.data['type'];
-    debugPrint('📱 Message type: $messageType');
-
-    if (messageType == 'wellness_reminder') {
-      debugPrint('🧘 Wellness reminder received in background');
-      debugPrint('   Category: ${message.data['category']}');
-      debugPrint('   Message Type: ${message.data['messageType']}');
-    } else if (messageType == 'anxiety_alert') {
-      debugPrint('🚨 Anxiety alert received in background');
-      debugPrint('   Severity: ${message.data['severity']}');
-    }
-
     // DON'T create additional local notifications in background handler
     // The Cloud Function FCM message already contains the notification
     // Android will automatically display FCM notifications when app is closed
-    debugPrint('📥 Background FCM message received - Android will display the notification automatically');
-    
+    debugPrint(
+        '📥 Background FCM message received - Android will display the notification automatically');
+
     // Only log the data for debugging
     if (message.notification != null) {
       final notification = message.notification!;
       final data = message.data;
-      
+
       debugPrint('📊 Background notification data:');
       debugPrint('   Title: ${notification.title}');
       debugPrint('   Body: ${notification.body}');

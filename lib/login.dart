@@ -237,11 +237,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Navigate to root (AuthWrapper) which will route to HomePage automatically
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/', // This will go to AuthWrapper, which will show HomePage for authenticated users
-        (route) => false, // Remove all previous routes
-      );
+      // The AuthWrapper will automatically handle navigation based on authentication state
+      // No need to manually navigate to HomePage here
     } catch (e) {
       if (!mounted) return;
 

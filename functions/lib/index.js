@@ -1,122 +1,80 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onAnxietySeverityChangeV2 = void 0;
+exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
 admin.initializeApp();
-// Wellness message categories with varied content
-const WELLNESS_MESSAGES = {
-    morning: [
-        {
-            title: "Good Morning! 🌅",
-            body: "Start your day with 5 deep breaths. Inhale positivity, exhale tension.",
-            type: "breathing"
-        },
-        {
-            title: "Rise & Shine ✨",
-            body: "Try the 5-4-3-2-1 grounding: 5 things you see, 4 you feel, 3 you hear, 2 you smell, 1 you taste.",
-            type: "grounding"
-        },
-        {
-            title: "Morning Mindfulness 🧘",
-            body: "Today is a fresh start. Set a positive intention for the hours ahead.",
-            type: "affirmation"
-        },
-        {
-            title: "Breathe & Begin 💚",
-            body: "Box breathing: Inhale 4 counts, hold 4, exhale 4, hold 4. Repeat 3 times.",
-            type: "breathing"
-        },
-        {
-            title: "New Day Energy ⚡",
-            body: "Gentle reminder: You have the strength to handle whatever today brings.",
-            type: "affirmation"
-        }
-    ],
-    afternoon: [
-        {
-            title: "Midday Reset 🔄",
-            body: "Feeling overwhelmed? Try progressive muscle relaxation - tense and release each muscle group.",
-            type: "relaxation"
-        },
-        {
-            title: "Afternoon Check-in 💭",
-            body: "Pause and breathe. How are you feeling right now? Acknowledge without judgment.",
-            type: "mindfulness"
-        },
-        {
-            title: "Energy Boost 🚀",
-            body: "4-7-8 breathing: Inhale for 4, hold for 7, exhale for 8. Perfect for afternoon stress.",
-            type: "breathing"
-        },
-        {
-            title: "Grounding Moment 🌱",
-            body: "Notice your feet on the ground. Feel your connection to the earth beneath you.",
-            type: "grounding"
-        },
-        {
-            title: "Stress Relief 🌸",
-            body: "Quick tip: Drink some water and stretch your shoulders. Your body will thank you.",
-            type: "wellness"
-        }
-    ],
-    evening: [
-        {
-            title: "Evening Reflection 🌙",
-            body: "What went well today? Celebrate one small victory before bed.",
-            type: "reflection"
-        },
-        {
-            title: "Wind Down Time 🕯️",
-            body: "Belly breathing: Place one hand on chest, one on belly. Breathe so only the belly hand moves.",
-            type: "breathing"
-        },
-        {
-            title: "Night Gratitude ⭐",
-            body: "Name three things you're grateful for today, no matter how small.",
-            type: "gratitude"
-        },
-        {
-            title: "Sleep Preparation 😴",
-            body: "Release today's tension. Tomorrow is a new opportunity to thrive.",
-            type: "affirmation"
-        },
-        {
-            title: "Peaceful Evening 🌺",
-            body: "Try the 'body scan' - mentally check each part of your body and consciously relax it.",
-            type: "relaxation"
-        }
-    ]
-};
 // Global variable to track last notification to prevent duplicates
-let lastNotification = { severity: "", timestamp: 0 };
-// Track sent wellness messages to prevent repetition
-let sentWellnessMessages = {
-    morning: [],
-    afternoon: [],
-    evening: []
-};
+let lastNotification = { severity: "", timestamp: 0, heartRate: 0 };
 // Cloud Function to send FCM notifications when anxiety severity changes
 exports.onAnxietySeverityChangeV2 = functions.database
     .ref("/devices/AnxieEase001/Metrics")
     .onWrite(async (change, context) => {
-    var _a, _b, _c;
     try {
         const beforeData = change.before.val();
         const afterData = change.after.val();
         // Skip if no new data or data was deleted
-        if (!afterData || !afterData.anxietyDetected) {
-            console.log("No anxiety data found, skipping notification");
+        if (!afterData || !afterData.heartRate) {
+            console.log("No heart rate data found, skipping notification");
             return null;
         }
-        const newSeverity = (_a = afterData.anxietyDetected.severity) === null || _a === void 0 ? void 0 : _a.toLowerCase();
         const heartRate = afterData.heartRate;
         const currentTime = Date.now();
-        // Skip if severity is unchanged
-        const oldSeverity = (_c = (_b = beforeData === null || beforeData === void 0 ? void 0 : beforeData.anxietyDetected) === null || _b === void 0 ? void 0 : _b.severity) === null || _c === void 0 ? void 0 : _c.toLowerCase();
+        // Compute severity from heart rate (same logic as native service)
+        let newSeverity;
+        if (heartRate >= 120) {
+            newSeverity = "severe";
+        }
+        else if (heartRate >= 100) {
+            newSeverity = "moderate";
+        }
+        else if (heartRate >= 85) {
+            newSeverity = "mild";
+        }
+        else {
+            newSeverity = "normal";
+        }
+        // Skip if severity is normal
+        if (newSeverity === "normal") {
+            console.log("Heart rate normal, skipping notification");
+            return null;
+        }
+        // Compute old severity for comparison
+        const oldHeartRate = (beforeData === null || beforeData === void 0 ? void 0 : beforeData.heartRate) || 0;
+        let oldSeverity = "normal";
+        if (oldHeartRate >= 120) {
+            oldSeverity = "severe";
+        }
+        else if (oldHeartRate >= 100) {
+            oldSeverity = "moderate";
+        }
+        else if (oldHeartRate >= 85) {
+            oldSeverity = "mild";
+        }
+        // ENHANCED DEDUPLICATION - Multiple checks to prevent flooding:
+        // 1. Skip if severity is unchanged
         if (newSeverity === oldSeverity) {
             console.log(`Severity unchanged (${newSeverity}), skipping notification`);
+            return null;
+        }
+        // 2. Skip if same severity notification was sent within last 2 MINUTES (was 5 minutes)
+        if (lastNotification.severity === newSeverity &&
+            currentTime - lastNotification.timestamp < 120000 // 2 minutes
+        ) {
+            console.log(`Duplicate ${newSeverity} notification within 2 minutes, skipping`);
+            return null;
+        }
+        // 3. Skip if heart rate change is too small (< 5 bpm difference, was 10)
+        // This prevents notifications from minor fluctuations like 89→91→88
+        if (Math.abs(heartRate - lastNotification.heartRate) < 5 &&
+            newSeverity === lastNotification.severity) {
+            console.log(`Heart rate fluctuation too small (${lastNotification.heartRate}→${heartRate}), skipping`);
+            return null;
+        }
+        // 4. Rate limiting: Maximum 1 notification per 1 minute regardless of severity (was 2 minutes)
+        if (currentTime - lastNotification.timestamp < 60000) { // 1 minute
+            console.log(`Rate limit: Last notification was ${(currentTime - lastNotification.timestamp) / 1000}s ago, skipping`);
             return null;
         }
         // DEDUPLICATION: Skip if same severity notification was sent within last 30 seconds
@@ -135,6 +93,7 @@ exports.onAnxietySeverityChangeV2 = functions.database
         lastNotification = {
             severity: newSeverity,
             timestamp: currentTime,
+            heartRate: heartRate,
         };
         // Get notification content based on severity
         const notificationData = getNotificationContent(newSeverity, heartRate);
@@ -170,6 +129,55 @@ exports.onAnxietySeverityChangeV2 = functions.database
     }
     catch (error) {
         console.error("❌ Error sending FCM notification:", error);
+        throw error;
+    }
+});
+// NEW: Send FCM when a native alert is created under devices/<deviceId>/alerts
+exports.onNativeAlertCreate = functions.database
+    .ref("/devices/{deviceId}/alerts/{alertId}")
+    .onCreate(async (snapshot, context) => {
+    try {
+        const alert = snapshot.val();
+        if (!alert)
+            return null;
+        const severity = (alert.severity || "").toLowerCase();
+        const heartRate = alert.heartRate;
+        const ts = alert.timestamp || Date.now();
+        if (!["mild", "moderate", "severe"].includes(severity)) {
+            console.log(`Skipping alert with invalid severity: ${severity}`);
+            return null;
+        }
+        const { title, body } = getNotificationContent(severity, heartRate);
+        const message = {
+            data: {
+                type: "anxiety_alert",
+                severity,
+                heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
+                timestamp: ts.toString(),
+                notificationId: `${severity}_${ts}`,
+            },
+            notification: {
+                title,
+                body,
+            },
+            android: {
+                priority: severity === "severe" ? "high" : "normal",
+                notification: {
+                    channelId: "anxiety_alerts",
+                    priority: severity === "severe" ? "max" : "default",
+                    defaultSound: true,
+                    defaultVibrateTimings: true,
+                    tag: `anxiety_${severity}_${ts}`,
+                },
+            },
+            topic: "anxiety_alerts",
+        };
+        const response = await admin.messaging().send(message);
+        console.log("✅ FCM sent from onNativeAlertCreate:", response);
+        return response;
+    }
+    catch (error) {
+        console.error("❌ Error in onNativeAlertCreate:", error);
         throw error;
     }
 });
@@ -253,6 +261,96 @@ exports.sendTestNotificationV2 = functions.https.onCall(async (data, context) =>
         throw new functions.https.HttpsError("internal", "Failed to send test notification");
     }
 });
+// Wellness message categories with varied content for different times of day
+const WELLNESS_MESSAGES = {
+    morning: [
+        {
+            title: "Good Morning! 🌅",
+            body: "Start your day with 5 deep breaths. Inhale positivity, exhale tension.",
+            type: "breathing",
+        },
+        {
+            title: "Rise & Shine ✨",
+            body: "Try the 5-4-3-2-1 grounding: 5 things you see, 4 you feel, 3 you hear, 2 you smell, 1 you taste.",
+            type: "grounding",
+        },
+        {
+            title: "Morning Mindfulness 🧘",
+            body: "Today is a fresh start. Set a positive intention for the hours ahead.",
+            type: "affirmation",
+        },
+        {
+            title: "Breathe & Begin 💚",
+            body: "Box breathing: Inhale 4 counts, hold 4, exhale 4, hold 4. Repeat 3 times.",
+            type: "breathing",
+        },
+        {
+            title: "New Day Energy ⚡",
+            body: "Gentle reminder: You have the strength to handle whatever today brings.",
+            type: "affirmation",
+        },
+    ],
+    afternoon: [
+        {
+            title: "Midday Reset 🔄",
+            body: "Feeling overwhelmed? Try progressive muscle relaxation - tense and release each muscle group.",
+            type: "relaxation",
+        },
+        {
+            title: "Afternoon Check-in 💭",
+            body: "Pause and breathe. How are you feeling right now? Acknowledge without judgment.",
+            type: "mindfulness",
+        },
+        {
+            title: "Energy Boost 🚀",
+            body: "4-7-8 breathing: Inhale for 4, hold for 7, exhale for 8. Perfect for afternoon stress.",
+            type: "breathing",
+        },
+        {
+            title: "Grounding Moment 🌱",
+            body: "Notice your feet on the ground. Feel your connection to the earth beneath you.",
+            type: "grounding",
+        },
+        {
+            title: "Stress Relief 🌸",
+            body: "Quick tip: Drink some water and stretch your shoulders. Your body will thank you.",
+            type: "wellness",
+        },
+    ],
+    evening: [
+        {
+            title: "Evening Reflection 🌙",
+            body: "What went well today? Celebrate one small victory before bed.",
+            type: "reflection",
+        },
+        {
+            title: "Wind Down Time 🕯️",
+            body: "Belly breathing: Place one hand on chest, one on belly. Breathe so only the belly hand moves.",
+            type: "breathing",
+        },
+        {
+            title: "Night Gratitude ⭐",
+            body: "Name three things you're grateful for today, no matter how small.",
+            type: "gratitude",
+        },
+        {
+            title: "Sleep Preparation 😴",
+            body: "Release today's tension. Tomorrow is a new opportunity to thrive.",
+            type: "affirmation",
+        },
+        {
+            title: "Peaceful Evening 🌺",
+            body: "Try the 'body scan' - mentally check each part of your body and consciously relax it.",
+            type: "relaxation",
+        },
+    ],
+};
+// Track sent wellness messages to prevent repetition
+let sentWellnessMessages = {
+    morning: [],
+    afternoon: [],
+    evening: [],
+};
 // Scheduled wellness reminders - runs multiple times daily
 exports.sendWellnessReminders = functions.pubsub
     .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
@@ -295,6 +393,7 @@ exports.sendWellnessReminders = functions.pubsub
                     channelId: "wellness_reminders",
                     priority: "default",
                     defaultSound: true,
+                    tag: `wellness_${timeCategory}_${Date.now()}`,
                 },
             },
             topic: "wellness_reminders",
@@ -308,7 +407,7 @@ exports.sendWellnessReminders = functions.pubsub
         throw error;
     }
 });
-// Manual wellness reminder trigger (for testing)
+// Manual wellness reminder trigger (for testing and immediate sending)
 exports.sendManualWellnessReminder = functions.https.onCall(async (data, context) => {
     try {
         const { timeCategory } = data;
@@ -336,6 +435,7 @@ exports.sendManualWellnessReminder = functions.https.onCall(async (data, context
                     channelId: "wellness_reminders",
                     priority: "default",
                     defaultSound: true,
+                    tag: `manual_wellness_${timeCategory}_${Date.now()}`,
                 },
             },
             topic: "wellness_reminders",
@@ -360,7 +460,7 @@ function getRandomWellnessMessage(timeCategory) {
     // Get available message indices
     const availableIndices = messages
         .map((_, index) => index)
-        .filter(index => !sentIndices.includes(index));
+        .filter((index) => !sentIndices.includes(index));
     if (availableIndices.length === 0) {
         return null;
     }
