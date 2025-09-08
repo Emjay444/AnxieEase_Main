@@ -110,7 +110,24 @@ class AuthProvider extends ChangeNotifier {
         _setLoading(true);
         final userProfile = await _supabaseService.getUserProfile();
         if (userProfile != null) {
-          _currentUser = UserModel.fromJson(userProfile);
+          // Ensure required fields exist (email may not be in user_profiles)
+          final enriched = Map<String, dynamic>.from(userProfile);
+          enriched['email'] ??=
+              _supabaseService.client.auth.currentUser?.email ?? '';
+          // If first_name is missing but full_name exists, derive first_name
+          if ((enriched['first_name'] == null ||
+                  (enriched['first_name'] is String &&
+                      (enriched['first_name'] as String).trim().isEmpty)) &&
+              enriched['full_name'] is String &&
+              (enriched['full_name'] as String).trim().isNotEmpty) {
+            final parts = (enriched['full_name'] as String).trim().split(' ');
+            if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+          }
+          // created_at/updated_at should exist but set sane defaults if missing
+          enriched['created_at'] ??= DateTime.now().toIso8601String();
+          enriched['updated_at'] ??= DateTime.now().toIso8601String();
+
+          _currentUser = UserModel.fromJson(enriched);
           debugPrint(
               '✅ User profile loaded after sign in: ${_currentUser?.firstName}');
         }
@@ -137,7 +154,22 @@ class AuthProvider extends ChangeNotifier {
       try {
         final userProfile = await _supabaseService.getUserProfile();
         if (userProfile != null) {
-          _currentUser = UserModel.fromJson(userProfile);
+          final enriched = Map<String, dynamic>.from(userProfile);
+          enriched['email'] ??=
+              _supabaseService.client.auth.currentUser?.email ?? '';
+          // If first_name is missing but full_name exists, derive first_name
+          if ((enriched['first_name'] == null ||
+                  (enriched['first_name'] is String &&
+                      (enriched['first_name'] as String).trim().isEmpty)) &&
+              enriched['full_name'] is String &&
+              (enriched['full_name'] as String).trim().isNotEmpty) {
+            final parts = (enriched['full_name'] as String).trim().split(' ');
+            if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+          }
+          enriched['created_at'] ??= DateTime.now().toIso8601String();
+          enriched['updated_at'] ??= DateTime.now().toIso8601String();
+
+          _currentUser = UserModel.fromJson(enriched);
           debugPrint('✅ User profile updated: ${_currentUser?.firstName}');
           notifyListeners();
         }
@@ -174,7 +206,22 @@ class AuthProvider extends ChangeNotifier {
               '🔍 AuthProvider - getUserProfile result: ${userProfile != null ? 'Found' : 'null'}');
 
           if (userProfile != null) {
-            _currentUser = UserModel.fromJson(userProfile);
+            final enriched = Map<String, dynamic>.from(userProfile);
+            enriched['email'] ??=
+                _supabaseService.client.auth.currentUser?.email ?? '';
+            // If first_name is missing but full_name exists, derive first_name
+            if ((enriched['first_name'] == null ||
+                    (enriched['first_name'] is String &&
+                        (enriched['first_name'] as String).trim().isEmpty)) &&
+                enriched['full_name'] is String &&
+                (enriched['full_name'] as String).trim().isNotEmpty) {
+              final parts = (enriched['full_name'] as String).trim().split(' ');
+              if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+            }
+            enriched['created_at'] ??= DateTime.now().toIso8601String();
+            enriched['updated_at'] ??= DateTime.now().toIso8601String();
+
+            _currentUser = UserModel.fromJson(enriched);
             debugPrint(
                 '✅ AuthProvider - User loaded: ${_currentUser?.firstName}');
           } else {
@@ -345,7 +392,22 @@ class AuthProvider extends ChangeNotifier {
 
       final userProfile = await _supabaseService.getUserProfile();
       if (userProfile != null) {
-        _currentUser = UserModel.fromJson(userProfile);
+        final enriched = Map<String, dynamic>.from(userProfile);
+        enriched['email'] ??=
+            _supabaseService.client.auth.currentUser?.email ?? '';
+        // If first_name is missing but full_name exists, derive first_name
+        if ((enriched['first_name'] == null ||
+                (enriched['first_name'] is String &&
+                    (enriched['first_name'] as String).trim().isEmpty)) &&
+            enriched['full_name'] is String &&
+            (enriched['full_name'] as String).trim().isNotEmpty) {
+          final parts = (enriched['full_name'] as String).trim().split(' ');
+          if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+        }
+        enriched['created_at'] ??= DateTime.now().toIso8601String();
+        enriched['updated_at'] ??= DateTime.now().toIso8601String();
+
+        _currentUser = UserModel.fromJson(enriched);
         notifyListeners();
       }
     } catch (e) {
@@ -369,7 +431,22 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(true);
       final userProfile = await _supabaseService.getUserProfile();
       if (userProfile != null) {
-        _currentUser = UserModel.fromJson(userProfile);
+        final enriched = Map<String, dynamic>.from(userProfile);
+        enriched['email'] ??=
+            _supabaseService.client.auth.currentUser?.email ?? '';
+        // If first_name is missing but full_name exists, derive first_name
+        if ((enriched['first_name'] == null ||
+                (enriched['first_name'] is String &&
+                    (enriched['first_name'] as String).trim().isEmpty)) &&
+            enriched['full_name'] is String &&
+            (enriched['full_name'] as String).trim().isNotEmpty) {
+          final parts = (enriched['full_name'] as String).trim().split(' ');
+          if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+        }
+        enriched['created_at'] ??= DateTime.now().toIso8601String();
+        enriched['updated_at'] ??= DateTime.now().toIso8601String();
+
+        _currentUser = UserModel.fromJson(enriched);
         notifyListeners();
       }
     } finally {

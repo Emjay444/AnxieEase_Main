@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "devices": {
+      "$deviceId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "metadata": {
+          ".indexOn": ["status", "deviceType", "isSimulated"]
+        },
+        "current": {
+          ".indexOn": ["timestamp", "severityLevel", "connectionStatus"]
+        },
+        "history": {
+          ".indexOn": ["timestamp", "sessionId"]
+        },
+        "alerts": {
+          ".indexOn": ["timestamp", "type", "severity"]
+        }
+      }
+    },
+    "users": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        ".indexOn": ["lastActivity", "deviceId"]
+      }
+    }
+  }
+}

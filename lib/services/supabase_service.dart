@@ -157,13 +157,12 @@ class SupabaseService {
       print('Auth user created successfully with ID: ${response.user!.id}');
 
       try {
-        // Create user record in users table
+        // Create user record in user_profiles table
         final timestamp = DateTime.now().toIso8601String();
-        print('Inserting user record into users table...');
-        await client.from('users').upsert({
+        print('Inserting user record into user_profiles table...');
+        await client.from('user_profiles').upsert({
           'id': response.user!.id,
           'email': email,
-          'password_hash': 'MANAGED_BY_SUPABASE_AUTH',
           'first_name': userData['first_name'],
           'middle_name': userData['middle_name'],
           'last_name': userData['last_name'],
@@ -231,18 +230,19 @@ class SupabaseService {
             'Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
-      // Try to check if user exists in users table, but don't fail if it doesn't
+      // Try to check if user exists in user_profiles table, but don't fail if it doesn't
       try {
         final user = await client
-            .from('users')
+            .from('user_profiles')
             .select()
-            .eq('email', email)
+            .eq('id', response.user!.id)
             .maybeSingle();
 
         if (user == null) {
-          // User doesn't exist in users table, create it
-          Logger.info('User not found in users table, creating user record');
-          await client.from('users').upsert({
+          // User doesn't exist in user_profiles table, create it
+          Logger.info(
+              'User not found in user_profiles table, creating user record');
+          await client.from('user_profiles').upsert({
             'id': response.user!.id,
             'email': email,
             'role': 'patient',
@@ -253,7 +253,7 @@ class SupabaseService {
           Logger.info('User record created successfully');
         } else {
           // Update email verification status if user exists
-          await client.from('users').update({
+          await client.from('user_profiles').update({
             'updated_at': DateTime.now().toIso8601String(),
             'is_email_verified': response.user?.emailConfirmedAt != null,
           }).eq('id', response.user!.id);
@@ -325,8 +325,11 @@ class SupabaseService {
     print('Fetching user profile for ID: $user');
 
     try {
-      final response =
-          await client.from('users').select().eq('id', user).maybeSingle();
+      final response = await client
+          .from('user_profiles')
+          .select()
+          .eq('id', user)
+          .maybeSingle();
       return response;
     } catch (e) {
       print('Error fetching user profile: $e');
@@ -497,7 +500,7 @@ class SupabaseService {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await client.from('users').update(updatedData).eq('id', user.id);
+      await client.from('user_profiles').update(updatedData).eq('id', user.id);
       print(
           'Successfully updated user profile: ${updatedData.keys.join(', ')}');
     } catch (e) {
@@ -508,7 +511,7 @@ class SupabaseService {
 
         // Always update the timestamp
         try {
-          await client.from('users').update({
+          await client.from('user_profiles').update({
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', user.id);
         } catch (_) {
@@ -518,7 +521,7 @@ class SupabaseService {
         // Try each field individually
         for (var entry in data.entries) {
           try {
-            await client.from('users').update({
+            await client.from('user_profiles').update({
               entry.key: entry.value,
             }).eq('id', user.id);
             print('Successfully updated field: ${entry.key}');
@@ -543,7 +546,7 @@ class SupabaseService {
     try {
       // Ensure record has a timestamp
       if (!record.containsKey('timestamp')) {
-        record['timestamp'] = DateTime.now().toIso8601String();
+        record['timestamp'] = DateTime.now().toUtc().toIso8601String();
       }
 
       // Add additional fields for analytics
@@ -551,7 +554,7 @@ class SupabaseService {
         'user_id': user.id,
         'severity_level': record['severity_level'] ?? 'unknown',
         'timestamp': record['timestamp'],
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
         'is_manual': record['is_manual'] ?? false,
         'source': record['source'] ?? 'app',
         'details': record['details'] ?? '',
@@ -958,7 +961,7 @@ class SupabaseService {
     // Original implementation (commented out)
     /*
     final response = await client
-        .from('users')
+        .from('user_profiles')
         .select()
         .eq('assigned_psychologist_id', user.id)
         .eq('role', 'patient');
@@ -1065,9 +1068,9 @@ class SupabaseService {
     try {
       print('Updating email verification status for: $email');
 
-      await client.from('users').update({
+      await client.from('user_profiles').update({
         'is_email_verified': true,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('email', email);
 
       print('Email verification status updated successfully');
@@ -1119,7 +1122,7 @@ class SupabaseService {
         // If a psychologist is found, assign it to the user
         if (psychologist != null) {
           await client
-              .from('users')
+              .from('user_profiles')
               .update({'assigned_psychologist_id': psychologist['id']}).eq(
                   'id', user.id);
 
@@ -1273,8 +1276,8 @@ class SupabaseService {
       // First try to create the table if it doesn't exist
       await createAppointmentsTableIfNotExists();
 
-      // Get the current timestamp for created_at
-      final timestamp = DateTime.now().toIso8601String();
+      // Get the current timestamp for created_at in UTC (database storage)
+      final timestamp = DateTime.now().toUtc().toIso8601String();
 
       // Try to insert the appointment record
       final response = await client.from('appointments').insert({
@@ -1500,7 +1503,7 @@ class SupabaseService {
 
     try {
       // Update the user's assigned psychologist
-      await client.from('users').update(
+      await client.from('user_profiles').update(
           {'assigned_psychologist_id': psychologistId}).eq('id', user.id);
 
       Logger.info(
@@ -1648,7 +1651,7 @@ class SupabaseService {
       // Update the status in the database
       await client.from('appointments').update({
         'status': newStatus,
-        'updated_at': DateTime.now().toIso8601String()
+        'updated_at': DateTime.now().toUtc().toIso8601String()
       }).eq('id', appointmentId);
 
       Logger.info(
@@ -1666,7 +1669,7 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      final now = DateTime.now();
+      final now = DateTime.now().toUtc();
       final cutoffDate =
           now.subtract(const Duration(days: 30)).toIso8601String();
       int totalArchived = 0;

@@ -1,0 +1,19 @@
+{
+  "name": "anxieease_main",
+  "version": "1.0.0",
+  "description": "A mental health care Flutter application designed to help users manage anxiety and mental wellness.",
+  "main": "add_severity_level.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  }
+}

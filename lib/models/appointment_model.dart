@@ -41,6 +41,7 @@ class AppointmentModel {
         case 'approved':
           return AppointmentStatus.approved;
         case 'denied':
+        case 'declined':  // Handle both "denied" and "declined" statuses
           return AppointmentStatus.denied;
         case 'confirmed':
           return AppointmentStatus.confirmed;
@@ -59,11 +60,11 @@ class AppointmentModel {
       id: json['id'] ?? 'unknown',
       psychologistId: json['psychologist_id'] ?? 'unknown',
       userId: json['user_id'] ?? 'unknown',
-      appointmentDate: DateTime.parse(json['appointment_date']),
+      appointmentDate: DateTime.parse(json['appointment_date']).toUtc(),
       reason: json['reason'] ?? 'No reason provided',
       status: parseStatus(json['status'] ?? 'pending'),
       responseMessage: json['response_message'],
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: DateTime.parse(json['created_at']).toUtc(),
     );
   }
 

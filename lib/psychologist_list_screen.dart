@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models/psychologist_model.dart';
 import 'services/supabase_service.dart';
-import 'psychologist_profile.dart';
 import 'utils/logger.dart';
 
 class PsychologistListScreen extends StatefulWidget {
@@ -63,13 +62,8 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
             backgroundColor: Colors.green,
           ),
         );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const PsychologistProfilePage(),
-          ),
-        );
+        // Return to previous screen and signal that a change occurred
+        Navigator.pop(context, true);
       }
     } catch (e) {
       Logger.error('Error assigning psychologist', e);

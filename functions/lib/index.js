@@ -9,7 +9,7 @@ admin.initializeApp();
 let lastNotification = { severity: "", timestamp: 0, heartRate: 0 };
 // Cloud Function to send FCM notifications when anxiety severity changes
 exports.onAnxietySeverityChangeV2 = functions.database
-    .ref("/devices/AnxieEase001/Metrics")
+    .ref("/devices/AnxieEase001/current")
     .onWrite(async (change, context) => {
     try {
         const beforeData = change.before.val();
@@ -73,7 +73,8 @@ exports.onAnxietySeverityChangeV2 = functions.database
             return null;
         }
         // 4. Rate limiting: Maximum 1 notification per 1 minute regardless of severity (was 2 minutes)
-        if (currentTime - lastNotification.timestamp < 60000) { // 1 minute
+        if (currentTime - lastNotification.timestamp < 60000) {
+            // 1 minute
             console.log(`Rate limit: Last notification was ${(currentTime - lastNotification.timestamp) / 1000}s ago, skipping`);
             return null;
         }
@@ -354,7 +355,7 @@ let sentWellnessMessages = {
 // Scheduled wellness reminders - runs multiple times daily
 exports.sendWellnessReminders = functions.pubsub
     .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
-    .timeZone("America/New_York") // Adjust timezone as needed
+    .timeZone("Asia/Manila") // Philippines timezone (UTC+8)
     .onRun(async (context) => {
     try {
         const currentHour = new Date().getHours();

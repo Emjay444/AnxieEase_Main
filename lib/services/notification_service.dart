@@ -1,6 +1,7 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:io' show Platform; // Guarded with kIsWeb before use
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'supabase_service.dart';
+import '../utils/timezone_utils.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
@@ -31,6 +33,8 @@ class NotificationService extends ChangeNotifier {
   bool _isInitialized = false;
   bool _isInitializing = false;
   final Completer<void> _initCompleter = Completer<void>();
+  StreamSubscription<DatabaseEvent>?
+      _dbSubscription; // Guard against multiple listeners
 
   // Local de-duplication for app-side detection
   String? _lastLocalSeverity;
@@ -44,8 +48,9 @@ class NotificationService extends ChangeNotifier {
   void _initFirebaseRef() {
     try {
       if (Firebase.apps.isNotEmpty) {
+        // Listen to the new IoT "current" node instead of legacy "Metrics"
         _firebaseRef =
-            FirebaseDatabase.instance.ref('devices/AnxieEase001/Metrics');
+            FirebaseDatabase.instance.ref('devices/AnxieEase001/current');
         debugPrint('Firebase reference initialized successfully');
       } else {
         debugPrint(
@@ -82,14 +87,14 @@ class NotificationService extends ChangeNotifier {
       }
 
       // Set a timeout for initialization
-      await Future.any([
-        _initializeNotifications(),
-        Future.delayed(const Duration(seconds: 3), () {
+      await _initializeNotifications().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
           debugPrint(
               '⚠️ NotificationService initialization timed out, continuing anyway');
           // Don't throw exception, just continue
-        })
-      ]);
+        },
+      );
 
       _isInitialized = true;
       _isInitializing = false;
@@ -183,7 +188,13 @@ class NotificationService extends ChangeNotifier {
       return;
     }
 
-    _firebaseRef!.onValue.listen((event) {
+    // Prevent duplicate subscriptions
+    if (_dbSubscription != null) {
+      debugPrint('NotificationService listener already attached; skipping');
+      return;
+    }
+
+    _dbSubscription = _firebaseRef!.onValue.listen((event) {
       final data = event.snapshot.value as Map?;
       if (data == null) return;
 
@@ -194,9 +205,15 @@ class NotificationService extends ChangeNotifier {
       final isDeviceWorn = (data['isDeviceWorn'] as bool?) ??
           (() {
                 final worn = data['worn'];
-                if (worn is int) return worn != 0;
-                if (worn is String)
+                if (worn is bool) {
+                  return worn;
+                }
+                if (worn is int) {
+                  return worn != 0;
+                }
+                if (worn is String) {
                   return worn == '1' || worn.toLowerCase() == 'true';
+                }
                 return null;
               }() ??
               false);
@@ -243,6 +260,13 @@ class NotificationService extends ChangeNotifier {
       if (severityForNotify != null) {
         final severity = severityForNotify;
 
+        // Explicitly suppress any 'normal' state notifications/logging
+        if (severity == 'normal') {
+          debugPrint('🔇 Normal state received; suppressing notification');
+          _isFirstRead = false; // still mark first read consumed
+          return;
+        }
+
         // Skip notification on first read (app startup)
         if (_isFirstRead) {
           _isFirstRead = false;
@@ -286,10 +310,26 @@ class NotificationService extends ChangeNotifier {
             return;
         }
 
-        // De-dupe locally: don't spam the same severity within ~20s
+        // De-dupe locally with per-severity cooldowns
+        // mild: 60s, moderate: 30s, severe: 0s (always alert)
         final nowMs = DateTime.now().millisecondsSinceEpoch;
+        int cooldownMs = 0;
+        switch (severity) {
+          case 'mild':
+            cooldownMs = 60000;
+            break;
+          case 'moderate':
+            cooldownMs = 30000;
+            break;
+          case 'severe':
+            cooldownMs = 0;
+            break;
+          default:
+            cooldownMs = 20000;
+        }
+
         if (!(_lastLocalSeverity == severity &&
-            (nowMs - _lastLocalSeverityTimeMs) < 20000)) {
+            (nowMs - _lastLocalSeverityTimeMs) < cooldownMs)) {
           _lastLocalSeverity = severity;
           _lastLocalSeverityTimeMs = nowMs;
           _showSeverityNotification(title, body, channelKey, severity);
@@ -297,7 +337,7 @@ class NotificationService extends ChangeNotifier {
           _saveAnxietyLevelRecord(severity, false, heartRate);
         } else {
           debugPrint(
-              '🛑 Skipping duplicate $severity within 20s (client-side)');
+              '🛑 Skipping duplicate $severity within ${cooldownMs ~/ 1000}s (client-side)');
         }
       }
     });
@@ -374,7 +414,7 @@ class NotificationService extends ChangeNotifier {
 
       final anxietyRecord = {
         'severity_level': severity,
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': TimezoneUtils.toIso8601String(TimezoneUtils.now()),
         'is_manual': isManual,
         'source': 'app',
         'details': isManual
@@ -457,7 +497,7 @@ class NotificationService extends ChangeNotifier {
       await prefs.setInt(badgeCountKey, count);
 
       // Update app icon badge number
-      if (Platform.isIOS) {
+      if (!kIsWeb && Platform.isIOS) {
         await AwesomeNotifications().setGlobalBadgeCounter(count);
       }
 
@@ -598,9 +638,8 @@ class NotificationService extends ChangeNotifier {
     final message =
         reminderMessages[DateTime.now().millisecond % reminderMessages.length];
 
-    // Calculate the next reminder time
-    final DateTime scheduledTime =
-        DateTime.now().add(Duration(hours: intervalHours));
+    // Calculate the next reminder time using Philippines timezone
+    final DateTime scheduledTime = TimezoneUtils.now().add(Duration(hours: intervalHours));
 
     // Check if a notification with this ID is already scheduled
     final List<NotificationModel> activeNotifications =
@@ -651,5 +690,12 @@ class NotificationService extends ChangeNotifier {
 
     debugPrint(
         'Scheduled anxiety prevention reminder for ${scheduledTime.toString()} with ID $notificationId');
+  }
+
+  @override
+  void dispose() {
+    _dbSubscription?.cancel();
+    _dbSubscription = null;
+    super.dispose();
   }
 }

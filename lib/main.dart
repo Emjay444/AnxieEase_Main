@@ -8,7 +8,7 @@ import 'providers/notification_provider.dart';
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
-import 'services/device_manager.dart';
+import 'services/iot_sensor_service.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -86,10 +86,10 @@ Future<void> _initializeServices() async {
     final notificationProvider = NotificationProvider();
     final notificationService = NotificationService();
     final themeProvider = ThemeProvider();
-    final deviceManager = DeviceManager();
+    final iotSensorService = IoTSensorService();
 
     // Continue initializing remaining services in the background
-    await _initializeRemainingServices(notificationService, deviceManager);
+    await _initializeRemainingServices(notificationService, iotSensorService);
 
     // Mark initialization as complete
     servicesInitialized = true;
@@ -102,7 +102,7 @@ Future<void> _initializeServices() async {
           ChangeNotifierProvider.value(value: authProvider),
           ChangeNotifierProvider.value(value: notificationProvider),
           ChangeNotifierProvider.value(value: notificationService),
-          ChangeNotifierProvider.value(value: deviceManager),
+          ChangeNotifierProvider.value(value: iotSensorService),
         ],
         child: const MyApp(),
       ),
@@ -117,7 +117,7 @@ Future<void> _initializeServices() async {
 // Run remaining initialization tasks in the background
 Future<void> _initializeRemainingServices(
     NotificationService notificationService,
-    DeviceManager deviceManager) async {
+    IoTSensorService iotSensorService) async {
   try {
     // Clear only old notifications on app startup, preserve recent severity alerts
     await _clearNotificationsOnAppStartup();
@@ -143,7 +143,7 @@ Future<void> _initializeRemainingServices(
     await StorageService().init();
 
     // Initialize device manager
-    await deviceManager.initialize();
+    await iotSensorService.initialize();
 
     // Configure Firebase Cloud Messaging (foreground listeners, token log)
     await _configureFCM();

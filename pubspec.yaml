@@ -60,9 +60,6 @@ dependencies:
   firebase_messaging: ^15.1.4
   awesome_notifications: ^0.10.1
   timezone: ^0.9.4
-
-  # Bluetooth Classic SPP support
-  flutter_bluetooth_serial: ^0.4.0
   cloud_firestore: ^5.4.4
 
 # The following adds the Cupertino Icons font to your application.

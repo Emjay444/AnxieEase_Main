@@ -26,7 +26,7 @@ let lastNotification: {
 
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database
-  .ref("/devices/AnxieEase001/Metrics")
+  .ref("/devices/AnxieEase001/current")
   .onWrite(async (change, context) => {
     try {
       const beforeData = change.before.val() as MetricsData | null;
@@ -442,7 +442,7 @@ let sentWellnessMessages: {
 // Scheduled wellness reminders - runs multiple times daily
 export const sendWellnessReminders = functions.pubsub
   .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
-  .timeZone("America/New_York") // Adjust timezone as needed
+  .timeZone("Asia/Manila") // Philippines timezone (UTC+8)
   .onRun(async (context) => {
     try {
       const currentHour = new Date().getHours();
