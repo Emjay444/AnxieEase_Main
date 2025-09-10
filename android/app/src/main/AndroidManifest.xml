@@ -65,19 +65,7 @@
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
 
-        <!-- Native Bluetooth Monitor Service -->
-        <service
-            android:name=".BluetoothMonitorService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
-
-        <!-- Enhanced Native IoT Gateway Service -->
-        <service
-            android:name=".BluetoothIoTGatewayService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+    <!-- Removed legacy native Bluetooth services (no implementation present) -->
 
         <!-- Default notification icon -->
         <meta-data

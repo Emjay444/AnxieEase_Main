@@ -8,10 +8,12 @@ import 'services/storage_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onSwitch;
+  final String? message;
 
   const LoginScreen({
     super.key,
     required this.onSwitch,
+    this.message,
   });
 
   @override
@@ -48,6 +50,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Initialize storage service and load saved credentials
     _initStorageAndLoadCredentials();
+
+    // Show incoming message (e.g., after logout) once the Scaffold exists
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && (widget.message?.isNotEmpty ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.message!),
+            backgroundColor: const Color(0xFF2D9254),
+          ),
+        );
+      }
+    });
 
     // Add listener for email validation with debounce
     emailController.addListener(() {
@@ -633,8 +647,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text(
-                                'Log In',
+              : const Text(
+                'Sign In',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,

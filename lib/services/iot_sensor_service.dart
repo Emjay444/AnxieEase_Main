@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../firebase_options.dart';
+import '../utils/logger.dart';
 
 /// Pure IoT Sensor Service
 ///
@@ -24,8 +25,14 @@ class IoTSensorService extends ChangeNotifier {
   late DatabaseReference _currentRef;
 
   Timer? _sensorTimer;
+  Timer? _firestoreFlushTimer; // flush buffered readings periodically
   bool _isActive = false;
   bool _initialized = false;
+  int _updateIntervalSeconds = 3; // adaptive interval
+  static const int _minInterval = 2;
+  static const int _maxInterval = 12;
+  final List<Map<String, dynamic>> _firestoreBuffer = [];
+  static const int _firestoreFlushThreshold = 12;
   final String _deviceId = 'AnxieEase001';
   final String _userId = 'user_001';
 
@@ -60,7 +67,7 @@ class IoTSensorService extends ChangeNotifier {
 
   /// Initialize the IoT sensor service
   Future<void> initialize() async {
-    debugPrint('🌐 IoTSensorService: Initializing...');
+  AppLogger.d('IoTSensorService: Initializing');
 
     // Ensure Firebase is initialized (especially important for tests)
     if (Firebase.apps.isEmpty) {
@@ -69,7 +76,7 @@ class IoTSensorService extends ChangeNotifier {
           options: DefaultFirebaseOptions.currentPlatform,
         );
       } catch (e) {
-        debugPrint('❌ IoTSensorService: Firebase init failed: $e');
+  AppLogger.e('IoTSensorService: Firebase init failed', e as Object?);
       }
     }
 
@@ -77,8 +84,7 @@ class IoTSensorService extends ChangeNotifier {
     _currentRef = _realtimeDb.ref('devices/$_deviceId/current');
 
     // Skip legacy cleanup to avoid permission errors - all new writes use current structure
-    debugPrint(
-        '✅ IoTSensorService: Using clean IoT structure (no legacy cleanup needed)');
+  AppLogger.d('IoTSensorService: Using clean structure');
 
     // Set initial device metadata with IoT structure
     await _deviceRef.child('metadata').set({
@@ -108,14 +114,14 @@ class IoTSensorService extends ChangeNotifier {
       'connectionStatus': 'initialized',
     });
 
-    debugPrint('✅ IoTSensorService: Initialized with clean IoT structure');
+  AppLogger.d('IoTSensorService: Initialized');
     _initialized = true;
   }
 
   /// Start IoT sensor simulation
   Future<void> startSensors() async {
     if (_isActive) {
-      debugPrint('⚠️ IoTSensorService: Sensors already active');
+      AppLogger.d('IoTSensorService: Already active');
       return;
     }
 
@@ -123,7 +129,7 @@ class IoTSensorService extends ChangeNotifier {
       await initialize();
     }
 
-    debugPrint('🚀 IoTSensorService: Starting sensor simulation...');
+  AppLogger.d('IoTSensorService: Starting simulation');
 
     _isActive = true;
     _isConnected = true;
@@ -133,24 +139,27 @@ class IoTSensorService extends ChangeNotifier {
     await _currentRef.child('connectionStatus').set('connected');
 
     // Start sensor data generation
-    _sensorTimer =
-        Timer.periodic(const Duration(seconds: 2), _generateSensorData);
+  _startSensorTimer();
+  _firestoreFlushTimer ??=
+    Timer.periodic(const Duration(seconds: 10), (_) => _flushFirestoreBuffer());
 
     notifyListeners();
-    debugPrint('✅ IoTSensorService: Sensors started successfully');
+  AppLogger.d('IoTSensorService: Started');
   }
 
   /// Stop IoT sensor simulation
   Future<void> stopSensors() async {
     if (!_isActive) {
-      debugPrint('⚠️ IoTSensorService: Sensors already stopped');
+      AppLogger.d('IoTSensorService: Already stopped');
       return;
     }
 
-    debugPrint('🛑 IoTSensorService: Stopping sensor simulation...');
+  AppLogger.d('IoTSensorService: Stopping');
 
-    _sensorTimer?.cancel();
+  _sensorTimer?.cancel();
     _sensorTimer = null;
+  _firestoreFlushTimer?.cancel();
+  _firestoreFlushTimer = null;
 
     _isActive = false;
     _isConnected = false;
@@ -160,7 +169,44 @@ class IoTSensorService extends ChangeNotifier {
     await _currentRef.child('connectionStatus').set('disconnected');
 
     notifyListeners();
-    debugPrint('✅ IoTSensorService: Sensors stopped successfully');
+    AppLogger.d('IoTSensorService: Stopped');
+  }
+
+  void _startSensorTimer() {
+    _sensorTimer?.cancel();
+    _sensorTimer = Timer.periodic(
+        Duration(seconds: _updateIntervalSeconds), _generateSensorData);
+  }
+
+  void setUpdateInterval(int seconds) {
+    final clamped = seconds.clamp(_minInterval, _maxInterval);
+    if (clamped == _updateIntervalSeconds) return;
+    _updateIntervalSeconds = clamped;
+    if (_isActive) {
+      AppLogger.d('IoTSensorService: Interval -> ${_updateIntervalSeconds}s');
+      _startSensorTimer();
+    }
+  }
+
+  void setLowPowerMode(bool enabled) {
+    setUpdateInterval(enabled ? 8 : 3);
+  }
+
+  Future<void> _flushFirestoreBuffer() async {
+    if (_firestoreBuffer.isEmpty) return;
+    try {
+      final batch = _firestore.batch();
+      for (final data in _firestoreBuffer) {
+        final doc = _firestore.collection('sensor_readings').doc();
+        batch.set(doc, data);
+      }
+      await batch.commit();
+      AppLogger.d('IoTSensorService: Flushed ${_firestoreBuffer.length} readings');
+    } catch (e, st) {
+      AppLogger.e('IoTSensorService: Flush error', e as Object?, st);
+    } finally {
+      _firestoreBuffer.clear();
+    }
   }
 
   /// Generate realistic sensor data
@@ -227,7 +273,7 @@ class IoTSensorService extends ChangeNotifier {
         if (duration.inMinutes > 5) {
           // Stress events last 5 minutes
           _isStressMode = false;
-          debugPrint('🧘 IoTSensorService: Stress event ended');
+          AppLogger.d('IoTSensorService: Stress event ended');
         }
       }
 
@@ -253,12 +299,14 @@ class IoTSensorService extends ChangeNotifier {
       await _currentRef.set(sensorData);
 
       // Also store in Firestore for historical data (throttled)
-      if (_random.nextDouble() < 0.3) {
-        // Only 30% of readings go to Firestore
-        await _firestore.collection('sensor_readings').add({
+      if (_random.nextDouble() < 0.25) {
+        _firestoreBuffer.add({
           ...sensorData,
           'timestamp': FieldValue.serverTimestamp(),
         });
+        if (_firestoreBuffer.length >= _firestoreFlushThreshold) {
+          _flushFirestoreBuffer();
+        }
       }
 
       // Trigger anxiety detection if stress is detected
@@ -269,14 +317,11 @@ class IoTSensorService extends ChangeNotifier {
       notifyListeners();
 
       // Occasional debug log
-      if (_random.nextDouble() < 0.1) {
-        debugPrint(
-            '📊 IoTSensorService: HR: ${_heartRate.round()}, SpO2: ${_spo2.round()}%, '
-            'Temp: ${_bodyTemperature.toStringAsFixed(1)}°C, Battery: ${_batteryLevel.round()}%, '
-            'Worn: $_isDeviceWorn, Severity: $_currentSeverityLevel');
+      if (_random.nextDouble() < 0.05) {
+        AppLogger.d('IoT HR ${_heartRate.round()} SpO2 ${_spo2.round()} Sev $_currentSeverityLevel');
       }
     } catch (e) {
-      debugPrint('❌ IoTSensorService: Error generating sensor data: $e');
+      AppLogger.e('IoTSensorService: Generation error', e as Object?);
     }
   }
 
@@ -297,7 +342,7 @@ class IoTSensorService extends ChangeNotifier {
     if (!_isStressMode) {
       _isStressMode = true;
       _lastStressEvent = DateTime.now();
-      debugPrint('⚠️ IoTSensorService: Stress event triggered');
+  AppLogger.d('IoTSensorService: Stress event triggered');
     }
   }
 
@@ -325,10 +370,9 @@ class IoTSensorService extends ChangeNotifier {
         'isSimulated': true,
       });
 
-      debugPrint(
-          '🚨 IoTSensorService: Anxiety alert triggered (HR: ${_heartRate.round()}, Severity: $_currentSeverityLevel)');
+  AppLogger.i('IoTSensorService: Anxiety alert (HR ${_heartRate.round()} Sev $_currentSeverityLevel)');
     } catch (e) {
-      debugPrint('❌ IoTSensorService: Error triggering anxiety alert: $e');
+  AppLogger.e('IoTSensorService: Anxiety alert error', e as Object?);
     }
   }
 
@@ -371,6 +415,10 @@ class IoTSensorService extends ChangeNotifier {
   @override
   void dispose() {
     _sensorTimer?.cancel();
+    _firestoreFlushTimer?.cancel();
+    if (_firestoreBuffer.isNotEmpty) {
+      _flushFirestoreBuffer();
+    }
     super.dispose();
   }
 }

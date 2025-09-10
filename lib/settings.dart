@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+// package_info_plus removed from About to avoid runtime plugin issues
 import 'profile.dart';
 import 'providers/notification_provider.dart';
 import 'providers/auth_provider.dart';
@@ -71,17 +72,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Custom App Bar
             SliverToBoxAdapter(
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFEFF6F2), Color(0xFFF7FBF9)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: const BorderRadius.vertical(
                     bottom: Radius.circular(30),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -91,14 +96,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'Settings',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
                           ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       'Customize your experience',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 16,
+                            fontSize: 15,
+                            color: Colors.black.withOpacity(0.55),
                           ),
                     ),
                   ],
@@ -119,13 +127,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _buildSettingsTile(
                           icon: Icons.person_outline,
                           title: 'Profile',
-                          subtitle: 'Manage your personal information',
+                          subtitle: 'View and edit your personal information',
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2D9254),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Edit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const ProfilePage(isEditable: false),
+                                    const ProfilePage(isEditable: true),
                               ),
                             );
                           },
@@ -164,6 +187,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               builder: (context) =>
                                                   const AuthScreen(
                                                 showLogin: true,
+                                                message:
+                                                    'You have been logged out',
                                               ),
                                             ),
                                             (route) => false,
@@ -317,12 +342,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFF2D9254).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               Icons.watch_later_outlined,
-              color: Theme.of(context).primaryColor,
+              color: const Color(0xFF2D9254),
               size: 24,
             ),
           ),
@@ -339,6 +364,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : 'Reminders are disabled',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontSize: 14,
+                  color: Colors.black.withOpacity(0.6),
                 ),
           ),
           trailing: Switch(
@@ -435,16 +461,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(20),
+            border: Border(
+              left: BorderSide(
+                color: const Color(0xFF2D9254).withOpacity(0.6),
+                width: 3,
+              ),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
           child: Column(
-            children: items,
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                items[i],
+                if (i != items.length - 1)
+                  Divider(
+                    height: 1,
+                    indent: 72, // align under text, past the leading icon
+                    color: Colors.grey.withOpacity(0.15),
+                  ),
+              ]
+            ],
           ),
         ),
       ],
@@ -458,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
-    return ListTile(
+  return ListTile(
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 20,
         vertical: 8,
@@ -466,13 +508,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
+      color: const Color(0xFF2D9254).withOpacity(0.08),
+      borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
-          icon,
-          color: Theme.of(context).primaryColor,
-          size: 24,
+      icon,
+      color: const Color(0xFF2D9254),
+      size: 24,
         ),
       ),
       title: Text(
@@ -499,25 +541,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showAboutDialog(BuildContext context) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('About'),
-        content: const Column(
+      showDragHandle: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).padding.bottom + 20,
+          top: 8,
+        ),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('AnxieEase'),
-            SizedBox(height: 8),
-            Text('Version: 1.0.0'),
-            SizedBox(height: 8),
-            Text('A breathing exercise app to help reduce anxiety.'),
+          children: const [
+            _AboutHeader(),
+            SizedBox(height: 16),
+            Text(
+              'AnxieEase helps you practice grounding and breathing techniques, log moods, and manage reminders to support anxiety prevention.',
+            ),
+            SizedBox(height: 10),
+            Text('What you can do:', style: TextStyle(fontWeight: FontWeight.w700)),
+            SizedBox(height: 6),
+            _AboutBullet(text: 'Guided grounding (5-4-3-2-1) and breathing exercises'),
+            _AboutBullet(text: 'Track moods and view patterns over time'),
+            _AboutBullet(text: 'Set gentle reminders to practice techniques'),
+            _AboutBullet(text: 'Keep your profile up to date'),
+            SizedBox(height: 6),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+      ),
+    );
+  }
+
+}
+
+class _AboutHeader extends StatelessWidget {
+  const _AboutHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2D9254).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.info_outline, color: Color(0xFF2D9254), size: 28),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('AnxieEase', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              SizedBox(height: 2),
+              Text('Version 1.0.0 (1)', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AboutBullet extends StatelessWidget {
+  final String text;
+  const _AboutBullet({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('•  ', style: TextStyle(fontSize: 16)),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       ),

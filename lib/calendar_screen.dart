@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'dart:async'; // For Timer debounce
 import 'services/supabase_service.dart';
 import 'providers/notification_provider.dart';
 
@@ -96,6 +97,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _selectedDay;
   static const String LOGS_KEY = 'daily_logs';
   final SupabaseService _supabaseService = SupabaseService();
+  Timer? _saveLogsTimer; // debounce timer
+  static const Duration _saveLogsDebounce = Duration(milliseconds: 500);
 
   final Map<String, bool> symptoms = {
     'None': false,
@@ -206,7 +209,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       // Save updated logs to local storage
       if (logsAdded > 0) {
-        await _saveLogs();
+  _saveLogsDebounced();
         setState(() {}); // Refresh UI
       }
     } catch (e) {
@@ -258,6 +261,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     await prefs.setString(LOGS_KEY, jsonEncode(encoded));
   }
 
+  void _saveLogsDebounced() {
+    _saveLogsTimer?.cancel();
+    _saveLogsTimer = Timer(_saveLogsDebounce, _saveLogs);
+  }
+
   DateTime _normalizeDate(DateTime date) {
     return DateTime.utc(date.year, date.month, date.day);
   }
@@ -305,7 +313,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 }
               });
 
-              await _saveLogs();
+              _saveLogsDebounced();
 
               // Also delete from Supabase if the user is authenticated
               if (logToDelete != null) {
@@ -385,7 +393,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     });
 
-    await _saveLogs();
+  _saveLogsDebounced();
 
     // Sync with Supabase
     try {
@@ -606,14 +614,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Container(
-                height: MediaQuery.of(context).size.height * 0.7,
+                height: MediaQuery.of(context).size.height * 0.72,
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
                 ),
                 child: Column(
                   children: [
-                    _buildModalHeader('Select Your Symptoms'),
+                    const SizedBox(height: 10),
+                    _buildDragHandle(),
+                    const SizedBox(height: 12),
+                    _buildStepIndicator(current: 3),
+                    const SizedBox(height: 12),
+                    Text('Select Your Symptoms',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey[900],
+                        )),
                     if (showWarning)
                       Container(
                         margin: const EdgeInsets.symmetric(
@@ -638,9 +656,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ],
                         ),
                       ),
+                    const SizedBox(height: 8),
                     Expanded(
                       child: ListView(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                         children: selectedSymptoms.entries.map((entry) {
                           // Special handling for None option
                           if (entry.key == 'None') {
@@ -809,14 +828,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Container(
-                height: MediaQuery.of(context).size.height * 0.5,
+                height: MediaQuery.of(context).size.height * 0.55,
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
                 ),
                 child: Column(
                   children: [
-                    _buildModalHeader('Rate Your Stress Level'),
+                    const SizedBox(height: 10),
+                    _buildDragHandle(),
+                    const SizedBox(height: 12),
+                    _buildStepIndicator(current: 2),
+                    const SizedBox(height: 12),
+                    Text('Rate Your Stress Level',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey[900],
+                        )),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -890,14 +919,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
           return StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
               return Container(
-                height: MediaQuery.of(context).size.height * 0.7,
+                height: MediaQuery.of(context).size.height * 0.72,
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
                 ),
                 child: Column(
                   children: [
-                    _buildModalHeader('Select Your Moods'),
+                    const SizedBox(height: 10),
+                    _buildDragHandle(),
+                    const SizedBox(height: 12),
+                    _buildStepIndicator(current: 1),
+                    const SizedBox(height: 12),
+                    Text('Select Your Moods',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey[900],
+                        )),
                     if (showWarning)
                       Container(
                         margin: const EdgeInsets.symmetric(
@@ -925,125 +964,139 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                     // Custom mood input button
                     Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  showCustomMoodInput = !showCustomMoodInput;
-                                });
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: showCustomMoodInput
-                                    ? const Color(0xFF3AA772)
-                                    : Colors.grey[200],
-                                foregroundColor: showCustomMoodInput
-                                    ? Colors.white
-                                    : Colors.grey[600],
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() => showCustomMoodInput = !showCustomMoodInput);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: showCustomMoodInput ? const Color(0xFF3AA772) : Colors.grey[200],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(showCustomMoodInput ? Icons.close : Icons.add, color: showCustomMoodInput ? Colors.white : Colors.grey[700]),
+                              const SizedBox(width: 8),
+                              Text(
+                                showCustomMoodInput ? 'Hide Custom Input' : "Can't find how you feel? Click here",
+                                style: TextStyle(
+                                  color: showCustomMoodInput ? Colors.white : Colors.grey[700],
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              child: Text(showCustomMoodInput
-                                  ? "Hide Custom Input"
-                                  : "Can't find how you feel? Click here"),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
 
                     // Show text input if custom mood is selected
                     if (showCustomMoodInput)
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 10),
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
                         child: TextField(
                           controller: customMoodController,
                           decoration: InputDecoration(
-                            hintText: "Describe how you feel...",
-                            fillColor: Colors.grey[100],
+                            hintText: 'Describe how you feel...',
                             filled: true,
+                            fillColor: Colors.grey[50],
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            prefixIcon: const Icon(Icons.edit,
-                                color: Color(0xFF3AA772)),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 16),
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide(color: Colors.grey[300]!)),
+                            prefixIcon: const Icon(Icons.edit, color: Color(0xFF3AA772)),
                           ),
-                          maxLines: 2,
+                          minLines: 2,
+                          maxLines: 3,
                         ),
                       ),
 
                     const SizedBox(height: 10),
                     Expanded(
-                      child: GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                        ),
-                        itemCount: moods.length,
-                        itemBuilder: (context, index) {
-                          final mood = moods[index];
-                          final isSelected = selectedMoods.contains(mood);
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                if (isSelected) {
-                                  selectedMoods.remove(mood);
-                                } else {
-                                  selectedMoods.add(mood);
-                                }
-                                // Clear warning when a mood is selected
-                                if (selectedMoods.isNotEmpty) {
-                                  showWarning = false;
-                                }
-                              });
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF3AA772)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? const Color(0xFF3AA772)
-                                      : Colors.grey.shade300,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: GridView.builder(
+                          physics: const BouncingScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: moods.length,
+                          itemBuilder: (context, index) {
+                            final mood = moods[index];
+                            final isSelected = selectedMoods.contains(mood);
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  if (isSelected) {
+                                    selectedMoods.remove(mood);
+                                  } else {
+                                    selectedMoods.add(mood);
+                                  }
+                                  if (selectedMoods.isNotEmpty) showWarning = false;
+                                });
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                                decoration: BoxDecoration(
+                                  gradient: isSelected
+                                      ? const LinearGradient(
+                                          colors: [Color(0xFF3AA772), Color(0xFF2F8E6A)],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        )
+                                      : null,
+                                  color: isSelected ? null : Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: isSelected ? const Color(0xFF3AA772) : Colors.grey.shade300,
+                                    width: 1.2,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(0xFF3AA772).withOpacity(0.25),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          )
+                                        ]
+                                      : [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.04),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          )
+                                        ],
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      _getMoodIcon(mood),
+                                      color: isSelected ? Colors.white : Colors.grey.shade600,
+                                      size: 28,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      mood,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : Colors.grey.shade700,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _getMoodIcon(mood),
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.grey.shade600,
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    mood,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.grey.shade600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                     ),
                     _buildModalFooter(
@@ -1081,6 +1134,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     // Start with the mood selector
     showMoodSelector();
+  }
+
+  // New reusable UI helpers
+  Widget _buildDragHandle() => Container(
+        width: 50,
+        height: 5,
+        decoration: BoxDecoration(
+          color: Colors.grey[300],
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
+
+  Widget _buildStepIndicator({required int current}) {
+    final steps = [1, 2, 3];
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: steps.map((s) {
+        final active = s == current;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.symmetric(horizontal: 6),
+            height: 8,
+            width: active ? 34 : 8,
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF3AA772) : Colors.grey[300],
+              borderRadius: BorderRadius.circular(20),
+            ));
+      }).toList(),
+    );
   }
 
   Widget _buildModalHeader(String title) {
@@ -1225,6 +1307,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF2F2F7),
         elevation: 0,
+  iconTheme: const IconThemeData(color: Color(0xFF3AA772)),
         title: const Text(
           'Calendar Logs',
           style: TextStyle(
@@ -1280,100 +1363,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: TableCalendar(
-              firstDay: DateTime.utc(2021, 1, 1),
-              lastDay: DateTime.utc(2030, 12, 31),
-              focusedDay: _focusedDay,
-              calendarFormat: _calendarFormat,
-              selectedDayPredicate: (day) {
-                return isSameDay(_selectedDay, day);
-              },
-              onDaySelected: (selectedDay, focusedDay) {
-                setState(() {
-                  _selectedDay = selectedDay;
-                  _focusedDay = focusedDay;
-                });
-              },
-              onFormatChanged: (format) {
-                setState(() {
-                  _calendarFormat = format;
-                });
-              },
-              onPageChanged: (focusedDay) {
-                _focusedDay = focusedDay;
-              },
-              eventLoader: _getEventsForDay,
-              calendarStyle: CalendarStyle(
-                markerDecoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
-                  shape: BoxShape.circle,
-                ),
-                markerSize: 8,
-                markersMaxCount: 2,
-                markerMargin: const EdgeInsets.symmetric(horizontal: 1),
-              ),
-              calendarBuilders: CalendarBuilders(
-                markerBuilder: (context, date, events) {
-                  if (events.isEmpty) return null;
-
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: events.map((event) {
-                      if (event == 'log') {
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 1),
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                        );
-                      } else if (event == 'journal') {
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 1),
-                          child: Icon(
-                            Icons.edit,
-                            size: 12,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                        );
-                      }
-                      return Container();
-                    }).toList(),
-                  );
-                },
-              ),
-              headerStyle: const HeaderStyle(
-                formatButtonVisible: false,
-                titleCentered: true,
-                titleTextStyle: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF000000),
-                  letterSpacing: -0.5,
-                ),
-                leftChevronIcon: Icon(Icons.chevron_left_rounded,
-                    color: Color(0xFF007AFF), size: 28),
-                rightChevronIcon: Icon(Icons.chevron_right_rounded,
-                    color: Color(0xFF007AFF), size: 28),
-                headerPadding: EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
+          _buildEnhancedCalendar(context),
+          _buildCalendarLegend(),
           if (_selectedDay != null) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -1443,6 +1434,266 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
+
+  // --- Enhanced Calendar Section ---
+  Widget _buildEnhancedCalendar(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.withOpacity(0.05), width: 1),
+      ),
+      child: TableCalendar(
+        firstDay: DateTime.utc(2021, 1, 1),
+        lastDay: DateTime.utc(2030, 12, 31),
+        focusedDay: _focusedDay,
+        calendarFormat: _calendarFormat,
+        availableGestures: AvailableGestures.all,
+        selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+        onDaySelected: (selectedDay, focusedDay) {
+          setState(() {
+            _selectedDay = selectedDay;
+            _focusedDay = focusedDay;
+          });
+        },
+        onFormatChanged: (format) => setState(() => _calendarFormat = format),
+        onPageChanged: (focusedDay) => _focusedDay = focusedDay,
+        eventLoader: _getEventsForDay,
+        headerStyle: const HeaderStyle(
+          formatButtonVisible: false,
+          titleCentered: true,
+          titleTextStyle: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1C1C1E),
+            letterSpacing: -0.5,
+          ),
+          leftChevronIcon: Icon(Icons.chevron_left_rounded,
+              color: Color(0xFF3AA772), size: 30),
+          rightChevronIcon: Icon(Icons.chevron_right_rounded,
+              color: Color(0xFF3AA772), size: 30),
+          headerPadding: EdgeInsets.symmetric(vertical: 14),
+        ),
+        daysOfWeekStyle: DaysOfWeekStyle(
+          weekdayStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
+            letterSpacing: -0.2,
+          ),
+          weekendStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
+            letterSpacing: -0.2,
+          ),
+        ),
+        calendarStyle: CalendarStyle(
+          outsideDaysVisible: false,
+          isTodayHighlighted: true,
+          todayDecoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFF3AA772), width: 1.6),
+            shape: BoxShape.circle,
+          ),
+          selectedDecoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF3AA772), Color(0xFF2F8E6A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            shape: BoxShape.circle,
+          ),
+          selectedTextStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+          defaultTextStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+          ),
+          weekendTextStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+          ),
+          cellMargin: const EdgeInsets.all(6),
+          cellPadding: EdgeInsets.zero,
+          markersAutoAligned: false,
+        ),
+        calendarBuilders: CalendarBuilders(
+          defaultBuilder: (context, day, focusedDay) => _dayCell(context, day),
+          todayBuilder: (context, day, focusedDay) => _dayCell(context, day,
+              isToday: true),
+          selectedBuilder: (context, day, focusedDay) => _dayCell(context, day,
+              isSelected: true),
+          markerBuilder: (context, date, events) => _eventMarkers(context, date, events),
+        ),
+      ),
+    );
+  }
+
+  Widget _dayCell(BuildContext context, DateTime day,
+      {bool isToday = false, bool isSelected = false}) {
+    final events = _getEventsForDay(day);
+    final avgStress = _averageStressForDay(day);
+    Color? stressColor;
+    if (avgStress != null) {
+      if (avgStress <= 3) {
+        stressColor = const Color(0xFF34C759);
+      } else if (avgStress <= 7) {
+        stressColor = const Color(0xFFFF9500);
+      } else {
+        stressColor = const Color(0xFFFF3B30);
+      }
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: isSelected
+            ? const LinearGradient(
+                colors: [Color(0xFF3AA772), Color(0xFF2F8E6A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Stress ring
+          if (stressColor != null && !isSelected)
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: stressColor, width: 1.6),
+              ),
+            ),
+          Center(
+            child: Text(
+              '${day.day}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? Colors.white
+                    : isToday
+                        ? const Color(0xFF3AA772)
+                        : const Color(0xFF1C1C1E),
+              ),
+            ),
+          ),
+          if (events.isNotEmpty)
+            Positioned(
+              bottom: 4,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (events.contains('log'))
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF3AA772),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  if (events.contains('journal'))
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: const BoxDecoration(
+                        color: Colors.purple,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _eventMarkers(BuildContext context, DateTime date, List events) {
+    // We draw markers inside _dayCell now; return sized box to avoid default
+    return const SizedBox.shrink();
+  }
+
+  double? _averageStressForDay(DateTime day) {
+    final logs = _dailyLogs[_normalizeDate(day)];
+    if (logs == null || logs.isEmpty) return null;
+    final stressLogs = logs.where((l) => l.stressLevel > 0).toList();
+    if (stressLogs.isEmpty) return null;
+    final total = stressLogs.fold<double>(0, (sum, l) => sum + l.stressLevel);
+    return total / stressLogs.length;
+  }
+
+  Widget _buildCalendarLegend() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _legendItem(color: const Color(0xFF3AA772), label: 'Mood / Symptoms'),
+          _legendItem(color: Colors.purple, label: 'Journal'),
+          Row(
+            children: [
+              _stressDot(const Color(0xFF34C759)),
+              _stressDot(const Color(0xFFFF9500)),
+              _stressDot(const Color(0xFFFF3B30)),
+              const SizedBox(width: 6),
+              const Text(
+                'Stress ring',
+                style: TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendItem({required Color color, required String label}) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+
+  Widget _stressDot(Color color) => Container(
+        width: 10,
+        height: 10,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: 2),
+        ),
+      );
 
   String _getMonthName(int month) {
     const months = [
@@ -2021,7 +2272,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _dailyLogs[normalizedDate]![index] = updatedLog;
       });
 
-      _saveLogs();
+  _saveLogsDebounced();
 
       // Also sync with Supabase
       try {
@@ -2058,6 +2309,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_selectedDay == null) return;
 
     TextEditingController journalController = TextEditingController();
+  int charCount = 0;
 
     showModalBottomSheet(
       context: context,
@@ -2074,11 +2326,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 height: MediaQuery.of(context).size.height * 0.8,
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
                 ),
                 child: Column(
                   children: [
-                    _buildModalHeader('Write in Your Journal'),
+                    const SizedBox(height: 12),
+                    _buildDragHandle(),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 26),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
+                          )
+                        ],
+                      ),
+                      child: const Text(
+                        'Write in Your Journal',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -2087,64 +2363,82 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           children: [
                             Row(
                               children: [
-                                Icon(
-                                  Icons.calendar_today_rounded,
-                                  size: 18,
-                                  color: Colors.purple.shade700,
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Icon(Icons.calendar_today_rounded,
+                                      size: 18, color: Colors.purple.shade700),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 12),
                                 Text(
-                                  '${_selectedDay!.day} ${_getMonthName(_selectedDay!.month)} ${_selectedDay!.year}',
+                                  DateFormat('d MMMM yyyy').format(_selectedDay!),
                                   style: TextStyle(
                                     fontSize: 16,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w600,
                                     color: Colors.purple.shade700,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'What\'s on your mind today?',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 18),
+                            const SizedBox(height: 10),
                             Expanded(
-                              child: TextField(
-                                controller: journalController,
-                                maxLines: null,
-                                expands: true,
-                                textAlignVertical: TextAlignVertical.top,
-                                decoration: InputDecoration(
-                                  hintText: 'Write your thoughts here...',
-                                  hintStyle: TextStyle(color: Colors.grey[400]),
-                                  filled: true,
-                                  fillColor: Colors.grey[50],
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide:
-                                        BorderSide(color: Colors.grey[200]!),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: Colors.purple.withOpacity(0.4),
+                                    width: 1.2,
                                   ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide:
-                                        BorderSide(color: Colors.grey[200]!),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(
-                                        color: Colors.purple.shade700),
-                                  ),
-                                  contentPadding: const EdgeInsets.all(16),
                                 ),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black87,
-                                  height: 1.5,
+                                clipBehavior: Clip.antiAlias,
+                                child: Stack(
+                                  children: [
+                                    TextField(
+                                      controller: journalController,
+                                      maxLines: null,
+                                      expands: true,
+                                      onChanged: (val) => setState(() => charCount = val.length),
+                                      textAlignVertical: TextAlignVertical.top,
+                                      decoration: InputDecoration(
+                                        hintText: 'Write your thoughts here...',
+                                        hintStyle: TextStyle(color: Colors.purple.shade200),
+                                        border: InputBorder.none,
+                                        contentPadding: const EdgeInsets.fromLTRB(18, 18, 18, 34),
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.black87,
+                                        height: 1.55,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 14,
+                                      bottom: 8,
+                                      child: AnimatedOpacity(
+                                        duration: const Duration(milliseconds: 200),
+                                        opacity: 1,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.withOpacity(0.08),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            '$charCount chars',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.purple.shade600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -2173,11 +2467,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 Navigator.pop(context);
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.purple.shade700,
+                                backgroundColor: const Color(0xFF7E57C2),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(18),
                                 ),
                               ),
                               child: const Text(
@@ -2226,7 +2520,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _dailyLogs[normalizedDate]!.add(logToSync!);
     });
 
-    await _saveLogs();
+  _saveLogsDebounced();
 
     // Sync with Supabase
     try {
@@ -2290,7 +2584,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       setState(() {
         _dailyLogs.clear();
       });
-      await _saveLogs();
+  await _saveLogs(); // immediate flush on destructive clear
 
       // 2. Clear data from Supabase (if user is authenticated)
       if (_supabaseService.isAuthenticated) {

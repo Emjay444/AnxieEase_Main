@@ -7,6 +7,7 @@ import 'utils/logger.dart';
 import 'utils/timezone_utils.dart';
 import 'psychologist_list_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart'; // For Clipboard copy
 
 class PsychologistProfilePage extends StatefulWidget {
   const PsychologistProfilePage({super.key});
@@ -663,23 +664,16 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                             label: Text(_psychologist!.contactPhone,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
-                              final uri = Uri(
-                                  scheme: 'tel',
-                                  path: _psychologist!.contactPhone);
-                              try {
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri);
-                                } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Cannot launch dialer on this device')),
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                Logger.error('Failed to launch dialer', e);
+                              final value = _psychologist!.contactPhone.trim();
+                              if (value.isEmpty || value == 'N/A') return;
+                              await Clipboard.setData(ClipboardData(text: value));
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Phone copied: $value'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               }
                             },
                           ),
@@ -701,23 +695,16 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                             label: Text(_psychologist!.contactEmail,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
-                              final uri = Uri(
-                                  scheme: 'mailto',
-                                  path: _psychologist!.contactEmail);
-                              try {
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri);
-                                } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Cannot open email app on this device')),
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                Logger.error('Failed to launch email', e);
+                              final value = _psychologist!.contactEmail.trim();
+                              if (value.isEmpty || value == 'N/A') return;
+                              await Clipboard.setData(ClipboardData(text: value));
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Email copied: $value'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               }
                             },
                           ),

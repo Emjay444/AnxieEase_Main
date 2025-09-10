@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -296,6 +297,8 @@ class _GroundingScreenState extends State<GroundingScreen>
           _userResponses[_currentStep] = nonEmptyResponses.join('\n');
           _showingInput = false;
         });
+  // Haptic feedback for confirmation
+  HapticFeedback.mediumImpact();
 
         // Cancel any existing timer
         _autoNavigationTimer?.cancel();
@@ -318,6 +321,7 @@ class _GroundingScreenState extends State<GroundingScreen>
         _inputController.clear();
         _showingInput = false;
       });
+  HapticFeedback.mediumImpact();
 
       // Cancel any existing timer
       _autoNavigationTimer?.cancel();
@@ -1070,6 +1074,26 @@ class _GroundingScreenState extends State<GroundingScreen>
               ),
               const SizedBox(height: 24),
 
+              // Sense pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                ),
+                child: Text(
+                  currentStep.sense,
+                  style: const TextStyle(
+                    letterSpacing: 1.2,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
               // Step title with animation
               TweenAnimationBuilder(
                 tween: Tween<double>(begin: 0.8, end: 1.0),
@@ -1103,6 +1127,71 @@ class _GroundingScreenState extends State<GroundingScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
+
+              // Quick option chips
+              if (currentStep.quickOptions.isNotEmpty && _userResponses[_currentStep].isEmpty)
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: 1,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: currentStep.quickOptions.map((q) {
+                      final isSelected = _userResponses[_currentStep] == q.text;
+                      return InkWell(
+                        onTap: () => _selectQuickOption(q.text),
+                        borderRadius: BorderRadius.circular(28),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: isSelected
+                                ? LinearGradient(colors: [currentStep.color, currentStep.color.withOpacity(0.6)])
+                                : LinearGradient(colors: [Colors.white.withOpacity(0.85), Colors.white.withOpacity(0.6)]),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isSelected
+                                    ? currentStep.color.withOpacity(0.4)
+                                    : Colors.black.withOpacity(0.05),
+                                blurRadius: isSelected ? 16 : 6,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.white.withOpacity(0.7)
+                                  : currentStep.color.withOpacity(0.3),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                q.icon,
+                                size: 18,
+                                color: isSelected ? Colors.white : currentStep.color,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                q.text,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isSelected ? Colors.white : currentStep.color,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              if (currentStep.quickOptions.isNotEmpty && _userResponses[_currentStep].isEmpty)
+                const SizedBox(height: 20),
 
               // Removed white box container completely
 
@@ -1307,6 +1396,46 @@ class _GroundingScreenState extends State<GroundingScreen>
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
+
+            // Quick options replicated inside input screen for convenience
+            if (currentStep.quickOptions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: currentStep.quickOptions.map((q) {
+                    return GestureDetector(
+                      onTap: () => _selectQuickOption(q.text),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(q.icon, size: 16, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text(
+                              q.text,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
 
             // Properly styled text field
             Container(

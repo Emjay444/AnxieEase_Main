@@ -22,7 +22,10 @@ class PsychologistModel {
       id: json['id'] ?? 'unknown-id',
       name: json['name'] ?? 'Unknown Psychologist',
       specialization: json['specialization'] ?? 'General Psychology',
-      contactEmail: json['contact_email'] ?? 'contact@anxiease.com',
+    // Prefer explicit contact_email; fall back to generic email or last resort placeholder
+    contactEmail: (json['contact_email'] ?? json['email'] ?? '').isNotEmpty
+      ? (json['contact_email'] ?? json['email'])
+      : 'contact@anxiease.com',
       contactPhone: json['contact_phone'] ?? 'N/A',
       biography: json['biography'] ?? 'No biography available',
       imageUrl: json['image_url'],

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:intl/intl.dart';
 
 class ProfilePage extends StatefulWidget {
+  // If false (default), page is strictly view-only.
   final bool isEditable;
   const ProfilePage({super.key, this.isEditable = false});
 
@@ -30,19 +31,15 @@ class _ProfilePageState extends State<ProfilePage> {
   File? _profileImage;
   DateTime? _selectedBirthDate;
   String? _selectedGender;
+  int _editSectionIndex = 0; // 0 = Personal, 1 = Contact
 
-  // List of gender options for dropdown
-  final List<String> _genderOptions = [
-    'Male',
-    'Female',
-    'Other',
-    'Prefer not to say'
-  ];
+  // Dropdown options removed; page is view-only by default.
 
   @override
   void initState() {
     super.initState();
-    _isEditing = widget.isEditable;
+  // Start in editing mode only if explicitly allowed.
+  _isEditing = widget.isEditable;
     _loadUserData();
     _loadProfileImage();
   }
@@ -198,48 +195,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // Show date picker to select birth date
-  Future<void> _selectBirthDate(BuildContext context) async {
-    if (!_isEditing) return;
-
-    final DateTime now = DateTime.now();
-    final DateTime initialDate =
-        _selectedBirthDate ?? DateTime(now.year - 20, now.month, now.day);
-    final DateTime firstDate =
-        DateTime(now.year - 120); // 120 years ago maximum
-    final DateTime lastDate =
-        DateTime(now.year - 13, now.month, now.day); // At least 13 years old
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate.isAfter(lastDate) ? lastDate : initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF3AA772), // Header background color
-              onPrimary: Colors.white, // Header text color
-              onSurface: Colors.black, // Calendar text color
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF3AA772), // Button text color
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null && picked != _selectedBirthDate) {
-      setState(() {
-        _selectedBirthDate = picked;
-        _birthDateController.text = DateFormat('MMM dd, yyyy').format(picked);
-      });
-    }
-  }
+  // Date picker removed; birthdate is fixed after registration.
 
   @override
   void dispose() {
@@ -256,358 +212,700 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF5F7F8),
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(color: Colors.white)),
+        title: Row(
+          children: [
+            const Text('Profile', style: TextStyle(color: Colors.white)),
+            const SizedBox(width: 8),
+            if (_isEditing)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Editing',
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
+        ),
         backgroundColor: const Color(0xFF3AA772),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon:
-                Icon(_isEditing ? Icons.save : Icons.edit, color: Colors.white),
-            onPressed: () async {
-              if (_isEditing) {
-                // Only validate form fields if we're trying to save profile data
-                // Profile picture is handled separately in _pickImage method
-                if (_formKey.currentState!.validate()) {
-                  try {
-                    await context.read<AuthProvider>().updateProfile(
-                          firstName: _firstNameController.text,
-                          middleName: _middleNameController.text,
-                          lastName: _lastNameController.text,
-                          birthDate: _selectedBirthDate,
-                          contactNumber: _contactNumberController.text,
-                          emergencyContact: _emergencyContactController.text,
-                          gender: _selectedGender,
-                        );
-
-                    if (mounted) {
-                      setState(() => _isEditing = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Profile updated successfully')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text(
-                                'Error updating profile: ${e.toString()}')),
-                      );
-                    }
-                  }
-                }
-              } else {
-                setState(() => _isEditing = true);
-              }
-            },
-          ),
-        ],
+  actions: const [],
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                              spreadRadius: 5,
-                            ),
-                          ],
-                        ),
-                        child: _profileImage != null
-                            ? CircleAvatar(
-                                radius: 60,
-                                backgroundImage: FileImage(
-                                  _profileImage!,
-                                  // Add a unique key to force refresh when image changes
-                                  scale: 1.0,
+      body: Form(
+        key: _formKey,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  // Header with gradient + avatar
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.only(
+                        top: MediaQuery.of(context).padding.top + 24,
+                        left: 24,
+                        right: 24,
+                        bottom: 32),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF3AA772), Color(0xFF2F8E6A)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(32),
+                        bottomRight: Radius.circular(32),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.25),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF3AA772),
+                                      Color(0xFF55B789)
+                                    ],
+                                  ),
                                 ),
-                                // Add a key with timestamp to force widget rebuild
-                                key: ValueKey(_profileImage!.path),
-                              )
-                            : CircleAvatar(
-                                radius: 60,
-                                backgroundColor: const Color(0xFF3AA772),
-                                child: Text(
-                                  _firstNameController.text.isNotEmpty
-                                      ? _firstNameController.text[0]
-                                          .toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                child: CircleAvatar(
+                                  radius: 58,
+                                  backgroundColor: Colors.white,
+                                  child: CircleAvatar(
+                                    radius: 54,
+                                    backgroundColor: const Color(0xFF3AA772),
+                                    backgroundImage: _profileImage != null
+                                        ? FileImage(_profileImage!)
+                                        : null,
+                                    child: _profileImage == null
+                                        ? Text(
+                                            _firstNameController.text
+                                                    .isNotEmpty
+                                                ? _firstNameController.text[0]
+                                                    .toUpperCase()
+                                                : '?',
+                                            style: const TextStyle(
+                                              fontSize: 42,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : null,
                                   ),
                                 ),
                               ),
-                      ),
-                      if (_isEditing)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF3AA772),
-                              shape: BoxShape.circle,
-                            ),
-                            padding: const EdgeInsets.all(8),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                              if (_isEditing)
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  padding: const EdgeInsets.all(6),
+                                  child: const Icon(Icons.camera_alt,
+                                      size: 18, color: Color(0xFF3AA772)),
+                                ),
+                            ],
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          _firstNameController.text.isNotEmpty
+                              ? '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+                              : 'Your Name',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.email_outlined,
+                                size: 14, color: Colors.white70),
+                            const SizedBox(width: 6),
+                            Text(
+                              _emailController.text,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 32),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      _buildProfileField(
-                        icon: Icons.person_outline,
-                        label: 'First Name',
-                        controller: _firstNameController,
-                        enabled: _isEditing,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your first name';
-                          }
-                          return null;
+                  const SizedBox(height: 20),
+          if (_isEditing) _editTabs(),
+          if (_isEditing) const SizedBox(height: 8),
+                  // Personal Info Section
+          !_isEditing
+            ? _sectionCard(
+                          title: 'Personal Information',
+                          children: [
+                            _infoTile(
+                              icon: Icons.person_outline,
+                              label: 'First Name',
+                              value: _firstNameController.text.trim().isEmpty
+                                  ? '-'
+                                  : _firstNameController.text.trim(),
+                            ),
+                            _infoTile(
+                              icon: Icons.person_outline,
+                              label: 'Middle Name',
+                              value: _middleNameController.text.trim().isEmpty
+                                  ? '-'
+                                  : _middleNameController.text.trim(),
+                            ),
+                            _infoTile(
+                              icon: Icons.person_outline,
+                              label: 'Last Name',
+                              value: _lastNameController.text.trim().isEmpty
+                                  ? '-'
+                                  : _lastNameController.text.trim(),
+                            ),
+                            _infoTile(
+                              icon: Icons.cake_outlined,
+                              label: 'Birth Date',
+                              value: _birthDateController.text.isEmpty
+                                  ? 'Not set'
+                                  : _birthDateController.text,
+                            ),
+                            _infoTile(
+                              icon: Icons.wc_outlined,
+                              label: 'Gender',
+                              value: _selectedGender ?? 'Not specified',
+                            ),
+                          ],
+                        )
+                      : (_editSectionIndex == 0
+                          ? _editSectionCard(
+                              icon: Icons.badge_outlined,
+                              title: 'Personal Information',
+                              children: [
+                                _field(
+                                  label: 'First Name',
+                                  icon: Icons.person_outline,
+                                  controller: _firstNameController,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                                _field(
+                                  label: 'Middle Name',
+                                  icon: Icons.person_outline,
+                                  controller: _middleNameController,
+                                ),
+                                _field(
+                                  label: 'Last Name',
+                                  icon: Icons.person_outline,
+                                  controller: _lastNameController,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                                _fixedInfoRow(
+                                  label: 'Birth Date',
+                                  icon: Icons.cake_outlined,
+                                  value: _birthDateController.text.isEmpty
+                                      ? 'Not set'
+                                      : _birthDateController.text,
+                                ),
+                                _fixedInfoRow(
+                                  label: 'Gender',
+                                  icon: Icons.wc_outlined,
+                                  value: _selectedGender ?? 'Not specified',
+                                ),
+                              ],
+                            )
+                          : _editSectionCard(
+                              icon: Icons.contact_phone_outlined,
+                              title: 'Contact Details',
+                              children: [
+                                _field(
+                                  label: 'Contact Number',
+                                  icon: Icons.phone_outlined,
+                                  controller: _contactNumberController,
+                                  keyboardType: TextInputType.phone,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                                _field(
+                                  label: 'Emergency Contact',
+                                  icon: Icons.contact_phone_outlined,
+                                  controller: _emergencyContactController,
+                                  keyboardType: TextInputType.phone,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                                _fixedInfoRow(
+                                  label: 'Email',
+                                  icon: Icons.email_outlined,
+                                  value: _emailController.text,
+                                ),
+                              ],
+                            )),
+                  const SizedBox(height: 16),
+                  if (!_isEditing)
+                    _sectionCard(
+                          title: 'Contact Details',
+                          children: [
+                            _infoTile(
+                              icon: Icons.phone_outlined,
+                              label: 'Contact Number',
+                              value: _contactNumberController.text.trim().isEmpty
+                                  ? '-'
+                                  : _contactNumberController.text.trim(),
+                            ),
+                            _infoTile(
+                              icon: Icons.contact_phone_outlined,
+                              label: 'Emergency Contact',
+                              value:
+                                  _emergencyContactController.text.trim().isEmpty
+                                      ? '-'
+                                      : _emergencyContactController.text
+                                          .trim(),
+                            ),
+                            _infoTile(
+                              icon: Icons.email_outlined,
+                              label: 'Email',
+                              value: _emailController.text,
+                            ),
+                          ],
+                        ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _isEditing
+          ? SafeArea(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _isEditing = false;
+                            _loadUserData(); // revert changes
+                          });
                         },
+                        icon: const Icon(Icons.close),
+                        label: const Text('Cancel'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
                       ),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.person_outline,
-                        label: 'Middle Name',
-                        controller: _middleNameController,
-                        enabled: _isEditing,
-                      ),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.person_outline,
-                        label: 'Last Name',
-                        controller: _lastNameController,
-                        enabled: _isEditing,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your last name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.cake_outlined,
-                        label: 'Birth Date',
-                        controller: _birthDateController,
-                        enabled: _isEditing,
-                        keyboardType: TextInputType.datetime,
-                        validator: (value) {
-                          if (value != null && value.isNotEmpty) {
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          if (_formKey.currentState!.validate()) {
                             try {
-                              // Instead of using DateTime.tryParse, use DateFormat to parse the formatted date
-                              // This is because our date is in the format 'MMM dd, yyyy' which DateTime.tryParse doesn't handle
-                              DateFormat('MMM dd, yyyy').parse(value);
-                              return null; // Valid date
+                              await context.read<AuthProvider>().updateProfile(
+                                    firstName:
+                                        _firstNameController.text.trim(),
+                                    middleName:
+                                        _middleNameController.text.trim(),
+                                    lastName:
+                                        _lastNameController.text.trim(),
+                                    birthDate: _selectedBirthDate,
+                                    contactNumber: _contactNumberController.text
+                                        .trim(),
+                                    emergencyContact:
+                                        _emergencyContactController.text
+                                            .trim(),
+                                    gender: _selectedGender,
+                                  );
+                              if (mounted) {
+                                setState(() => _isEditing = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content:
+                                        Text('Profile updated successfully'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
                             } catch (e) {
-                              return 'Please enter a valid birth date';
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
                             }
                           }
-                          return null; // Empty is OK
                         },
+                        icon: const Icon(Icons.save_rounded),
+                        label: const Text('Save Changes'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: const Color(0xFF3AA772),
+                          foregroundColor: Colors.white,
+                        ),
                       ),
-                      const Divider(height: 32),
-                      _buildGenderDropdownField(),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.phone_outlined,
-                        label: 'Contact Number',
-                        controller: _contactNumberController,
-                        enabled: _isEditing,
-                        keyboardType: TextInputType.phone,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your contact number';
-                          }
-                          return null;
-                        },
-                      ),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.contact_phone_outlined,
-                        label: 'Emergency Contact Number',
-                        controller: _emergencyContactController,
-                        enabled: _isEditing,
-                        keyboardType: TextInputType.phone,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter an emergency contact number';
-                          }
-                          return null;
-                        },
-                      ),
-                      const Divider(height: 32),
-                      _buildProfileField(
-                        icon: Icons.email_outlined,
-                        label: 'Email',
-                        controller: _emailController,
-                        enabled: false,
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  // New styled reusable widgets
+  Widget _sectionCard({required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3AA772),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ..._withDividers(children),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _withDividers(List<Widget> items) {
+    final List<Widget> out = [];
+    for (var i = 0; i < items.length; i++) {
+      out.add(items[i]);
+      if (i != items.length - 1) {
+        out.add(const SizedBox(height: 14));
+      }
+    }
+    return out;
+  }
+
+  InputDecoration _decoration(String label, IconData icon) {
+    final base = InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: const Color(0xFF3AA772)),
+      filled: !_isEditing,
+      fillColor: _isEditing ? null : const Color(0xFFF8FAF9),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      // No suffix icons in view-only mode
+      suffixIcon: null,
+      border: _isEditing
+          ? const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFB0BEC5), width: 1),
+            )
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+      enabledBorder: _isEditing
+          ? const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFB0BEC5), width: 1),
+            )
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+      disabledBorder: _isEditing
+          ? const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE0E0E0), width: 1),
+            )
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
+            ),
+      focusedBorder: _isEditing
+          ? const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF2D9254), width: 2),
+            )
+          : OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Color(0xFF2D9254), width: 2),
+            ),
+    );
+    return base;
+  }
+
+  Widget _field({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    String? Function(String?)? validator,
+    TextInputType? keyboardType,
+    bool enabled = true,
+  }) {
+    return TextFormField(
+      controller: controller,
+      validator: validator,
+      keyboardType: keyboardType,
+      enabled: enabled && _isEditing && label != 'Email',
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+      decoration: _decoration(label, icon),
+    );
+  }
+
+  // Removed old read-only field widgets; replaced with _fixedInfoRow.
+
+  // Edit mode section card with distinct styling
+  Widget _editSectionCard({required IconData icon, required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2D9254).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: const Color(0xFF2D9254), size: 20),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.withOpacity(0.15)),
+            ),
+            child: Column(
+              children: [
+                for (int i = 0; i < children.length; i++) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: children[i],
+                  ),
+                  if (i != children.length - 1)
+                    Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fixed info row used in edit mode for non-editable fields (e.g., Birth Date, Gender, Email)
+  Widget _fixedInfoRow({required String label, required IconData icon, required String value}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2D9254).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: const Color(0xFF2D9254), size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Segmented tabs for edit sections
+  Widget _editTabs() {
+    Widget tab(String text, int index) {
+      final bool active = _editSectionIndex == index;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _editSectionIndex = index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF2D9254) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? const Color(0xFF2D9254) : Colors.grey.shade300,
+              ),
+              boxShadow: active
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF2D9254).withOpacity(0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ]
+                  : [],
+            ),
+            child: Center(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: active ? Colors.white : const Color(0xFF1E2432),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          tab('Personal', 0),
+          const SizedBox(width: 8),
+          tab('Contact', 1),
+        ],
+      ),
+    );
+  }
+
+  // View-only info tile for cleaner presentation
+  Widget _infoTile({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAF9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF3AA772).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: const Color(0xFF3AA772), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value.isEmpty ? '-' : value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E2432),
                   ),
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildProfileField({
-    required IconData icon,
-    required String label,
-    required TextEditingController controller,
-    bool enabled = true,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-    bool isDatePicker = false,
-  }) {
-    // Automatically set the birth date field as a date picker
-    if (label == 'Birth Date') {
-      isDatePicker = true;
-    }
-
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: const Color(0xFF3AA772)),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: TextFormField(
-            controller: controller,
-            enabled: enabled,
-            validator: validator,
-            keyboardType: keyboardType,
-            readOnly:
-                isDatePicker, // Make field read-only if it's a date picker
-            onTap: isDatePicker && enabled
-                ? () => _selectBirthDate(context)
-                : null,
-            style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 16.0,
-            ),
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 14.0,
-              ),
-              border: enabled ? const UnderlineInputBorder() : InputBorder.none,
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[400]!),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF3AA772), width: 2.0),
-              ),
-              disabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              // Add calendar icon for date picker
-              suffixIcon: isDatePicker && enabled
-                  ? const Icon(Icons.calendar_today, color: Color(0xFF3AA772))
-                  : null,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGenderDropdownField() {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.person, color: Color(0xFF3AA772)),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: DropdownButtonFormField<String>(
-            value: _selectedGender,
-            items: _genderOptions.map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            }).toList(),
-            onChanged: _isEditing
-                ? (String? newValue) {
-                    setState(() {
-                      _selectedGender = newValue;
-                    });
-                  }
-                : null,
-            decoration: InputDecoration(
-              labelText: 'Gender',
-              labelStyle: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 14.0,
-              ),
-              border: const UnderlineInputBorder(),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[400]!),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF3AA772), width: 2.0),
-              ),
-              disabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

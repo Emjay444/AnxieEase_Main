@@ -23,18 +23,6 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     isLogin = widget.showLogin;
-
-    // Show message if provided
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.message != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.message!),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    });
   }
 
   @override
@@ -54,12 +42,13 @@ class _AuthScreenState extends State<AuthScreen> {
         return true;
       },
       child: isLogin
-          ? LoginScreen(
+      ? LoginScreen(
               onSwitch: () {
                 setState(() {
                   isLogin = false;
                 });
-              },
+        },
+        message: widget.message,
             )
           : RegisterScreen(
               onSwitch: () {

@@ -13,6 +13,7 @@ import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'utils/logger.dart';
 import 'splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/notifications_screen.dart';
@@ -22,13 +23,18 @@ import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
 import 'grounding_screen.dart';
+import 'dart:async';
 
-// Global flag to track initialization
-bool servicesInitialized = false;
+// Global completer to signal when services finish initialization (replaces polling bool)
+final Completer<void> servicesInitializedCompleter = Completer<void>();
+// Toggle this to enable/disable verbose logging app‑wide
+const bool kVerboseLogging = true;
 
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  AppLogger.verbose = kVerboseLogging;
 
   // Register FCM background message handler early
   // This must be a top-level function (defined in services/background_messaging.dart)
@@ -70,31 +76,26 @@ class InitialApp extends StatelessWidget {
 // Run initialization tasks in the background
 Future<void> _initializeServices() async {
   try {
-    // Initialize Firebase first - this is required before creating NotificationService
+    // --- CORE (block only what is strictly necessary for first frame) --- //
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-
-    // Ensure FCM can initialize even though auto-init is disabled in AndroidManifest
     await FirebaseMessaging.instance.setAutoInitEnabled(true);
+    await SupabaseService().initialize(); // needed for AuthProvider
 
-    // Initialize Supabase - this is required before creating AuthProvider
-    await SupabaseService().initialize();
-
-    // Create providers after required services are initialized
+    // Create lightweight provider instances (heavy work deferred)
     final authProvider = AuthProvider();
     final notificationProvider = NotificationProvider();
     final notificationService = NotificationService();
     final themeProvider = ThemeProvider();
     final iotSensorService = IoTSensorService();
 
-    // Continue initializing remaining services in the background
-    await _initializeRemainingServices(notificationService, iotSensorService);
+    // Mark core ready BEFORE kicking off heavy secondary init
+    if (!servicesInitializedCompleter.isCompleted) {
+      servicesInitializedCompleter.complete();
+    }
 
-    // Mark initialization as complete
-    servicesInitialized = true;
-
-    // Now run the full app with all providers
+    // Mount full app
     runApp(
       MultiProvider(
         providers: [
@@ -107,10 +108,19 @@ Future<void> _initializeServices() async {
         child: const MyApp(),
       ),
     );
+
+    // Defer non-critical service work to next event loop / after first frame
+    // (notification channels, storage init, IoT simulation writes, topic subscriptions)
+    Future.microtask(() => _initializeRemainingServices(
+          notificationService,
+          iotSensorService,
+        ));
   } catch (e) {
-    debugPrint('❌ Error during service initialization: $e');
+    AppLogger.e('Error during service initialization', e as Object?);
     // Even if there's an error, we should still try to run the app
-    servicesInitialized = true;
+    if (!servicesInitializedCompleter.isCompleted) {
+      servicesInitializedCompleter.complete();
+    }
   }
 }
 
@@ -150,7 +160,7 @@ Future<void> _initializeRemainingServices(
 
     debugPrint('✅ All services initialized successfully');
   } catch (e) {
-    debugPrint('❌ Error during service initialization: $e');
+    AppLogger.e('Error during secondary service initialization', e as Object?);
   }
 }
 
@@ -164,8 +174,7 @@ Future<void> _clearNotificationsOnAppStartup() async {
     final bool enableAutoClear = await _getAutoClearSetting();
 
     if (!enableAutoClear) {
-      debugPrint(
-          '📱 Auto-clear disabled - preserving all notifications including severity alerts');
+      AppLogger.d('Auto-clear disabled - preserving notifications');
       return;
     }
 
@@ -173,13 +182,12 @@ Future<void> _clearNotificationsOnAppStartup() async {
     await Future.any([
       _doClearNotifications(supabaseService),
       Future.delayed(const Duration(seconds: 3), () {
-        debugPrint(
-            '⚠️ Notification clearing timed out after 3 seconds, continuing startup');
+        AppLogger.w('Notification clearing timed out after 3s - continuing');
         // Don't throw exception, just continue
       })
     ]);
   } catch (e) {
-    debugPrint('❌ Error clearing old notifications on startup: $e');
+    AppLogger.e('Error clearing old notifications on startup', e as Object?);
     // Don't rethrow - allow the app to continue even if clearing fails
   }
 }
@@ -243,6 +251,11 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initAppLinks();
+    // Profile first frame scheduling
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final now = DateTime.now();
+      debugPrint('🕒 First frame rendered at: ' + now.toIso8601String());
+    });
   }
 
   Future<void> _initAppLinks() async {
@@ -447,6 +460,8 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
+  // Toggle to true temporarily if you want to visualize rendering performance
+  showPerformanceOverlay: false,
       title: 'AnxieEase',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,

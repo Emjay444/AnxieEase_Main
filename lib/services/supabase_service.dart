@@ -1521,7 +1521,11 @@ class SupabaseService {
       'id': psychologist['id'] ?? 'unknown-id',
       'name': psychologist['name'] ?? 'Unknown Psychologist',
       'specialization': psychologist['specialization'] ?? 'General Psychology',
-      'contact_email': psychologist['contact_email'] ?? 'contact@anxiease.com',
+    // Try multiple possible keys before using placeholder
+    'contact_email': psychologist['contact_email'] ??
+      psychologist['email'] ??
+      psychologist['contactEmail'] ??
+      'contact@anxiease.com',
       'contact_phone':
           psychologist['contact'] ?? psychologist['contact_phone'] ?? 'N/A',
       'biography': psychologist['bio'] ??

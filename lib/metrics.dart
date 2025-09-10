@@ -76,7 +76,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   bool _isLoading = true;
   bool _hasData = false;
-  bool _isConnected = false;
 
   // Mood categories for grouping similar moods
   final Map<String, String> moodCategories = {
@@ -125,14 +124,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
   @override
   void initState() {
     super.initState();
-    _checkConnectionStatus();
+  _checkConnectionStatus();
     _loadLogs();
   }
 
   Future<void> _checkConnectionStatus() async {
-    setState(() {
-      _isConnected = _supabaseService.isAuthenticated;
-    });
+  // no-op for UI; kept for potential future use
   }
 
   Future<void> _loadLogs() async {
@@ -225,16 +222,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
           Logger.info('Added $logsAdded new logs from Supabase');
           Logger.info('Total logs after adding Supabase logs: $totalLogsAfter');
 
-          setState(() {
-            _isConnected = true;
-          });
+          // keep data-only change; no UI indicator anymore
 
           Logger.info(
               'Successfully loaded ${supabaseLogs.length} logs from Supabase');
         } catch (e) {
-          setState(() {
-            _isConnected = false;
-          });
+          // keep data-only change; no UI indicator anymore
           Logger.error('Error loading logs from Supabase', e);
           // Continue with local data if Supabase fetch fails
         }
@@ -311,6 +304,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return true;
   }
 
+  // ignore: unused_element
   void _initializeSampleData() {
     // Sample data for mood (scale 0-10, where higher is more positive mood)
     moodData = {
@@ -679,6 +673,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+  automaticallyImplyLeading: false, // prevent auto back arrow on first visit
+  foregroundColor: Colors.black, // ensure icons are visible on white bg
         title: const Text(
           'Wellness Insights',
           style: TextStyle(
@@ -686,21 +682,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        actions: [
-          // Connection status indicator
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: _isConnected
-                ? const Icon(Icons.cloud_done, color: Color(0xFF4CAF50))
-                : const Icon(Icons.cloud_off, color: Colors.grey),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF6200EE)),
-            onPressed: () async {
-              await _refreshData();
-            },
-          ),
-        ],
+  // No actions per request (removed cloud and refresh)
       ),
       body: SafeArea(
         child: _isLoading

@@ -478,158 +478,121 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            Color getStressColor(double value) {
-              return Colors.teal[700]!;
-            }
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          Color getColor(double v) => Colors.teal[700]!;
+          String label(double v) => v <= 3
+              ? 'Low Stress'
+              : v <= 6
+                  ? 'Moderate Stress'
+                  : 'High Stress';
 
-            String getStressLabel(double value) {
-              if (value <= 3) return 'Low Stress';
-              if (value <= 6) return 'Moderate Stress';
-              return 'High Stress';
-            }
-
-            return Container(
-              padding: EdgeInsets.only(
-                top: 20,
-                left: 20,
-                right: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
+          return Padding(
+            padding: EdgeInsets.only(
+              top: 20,
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Stress Level',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
+                        color: getColor(stressLevel).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        label(stressLevel),
+                        style: TextStyle(color: getColor(stressLevel), fontWeight: FontWeight.w600),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'How stressed are you feeling right now?',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                ),
+                const SizedBox(height: 30),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    StressLabel(label: 'Not at all', range: '0-3'),
+                    StressLabel(label: 'Moderate', range: '4-6'),
+                    StressLabel(label: 'Extreme', range: '7-10'),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: getColor(stressLevel),
+                    inactiveTrackColor: getColor(stressLevel).withValues(alpha: 0.2),
+                    thumbColor: getColor(stressLevel),
+                    overlayColor: getColor(stressLevel).withValues(alpha: 0.2),
+                    trackHeight: 8,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Stress Level',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: getStressColor(stressLevel)
-                              .withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          getStressLabel(stressLevel),
-                          style: TextStyle(
-                            color: getStressColor(stressLevel),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: Slider(
+                    value: stressLevel,
+                    min: 0,
+                    max: 10,
+                    divisions: 10,
+                    onChanged: (v) => setState(() => stressLevel = v),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'How stressed are you feeling right now?',
+                ),
+                const SizedBox(height: 20),
+                Center(
+                  child: Text(
+                    stressLevel.toInt().toString(),
                     style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 16,
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold,
+                      color: getColor(stressLevel),
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      StressLabel(label: 'Not at all', range: '0-3'),
-                      StressLabel(label: 'Moderate', range: '4-6'),
-                      StressLabel(label: 'Extreme', range: '7-10'),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: getStressColor(stressLevel),
-                      inactiveTrackColor:
-                          getStressColor(stressLevel).withValues(alpha: 0.2),
-                      thumbColor: getStressColor(stressLevel),
-                      overlayColor:
-                          getStressColor(stressLevel).withValues(alpha: 0.2),
-                      trackHeight: 8,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 12,
-                      ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 24,
-                      ),
+                ),
+                const SizedBox(height: 30),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: Slider(
-                      value: stressLevel,
-                      min: 0,
-                      max: 10,
-                      divisions: 10,
-                      onChanged: (double value) {
-                        setState(() {
-                          stressLevel = value;
-                        });
-                      },
+                    child: const Text(
+                      'Save Stress Level',
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Center(
-                    child: Text(
-                      stressLevel.toInt().toString(),
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: getStressColor(stressLevel),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // Save stress level
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal[700],
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Save Stress Level',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -2273,23 +2236,39 @@ class _HomeContentState extends State<HomeContent> {
     return SafeArea(
       child: Column(
         children: [
-          // App Bar with Profile
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: screenWidth * 0.05,
-              vertical: screenWidth * 0.03,
-            ),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
+          // App Bar with Profile (enhanced shadow for stronger separation)
+          Material(
+            elevation: 4,
+            shadowColor: Colors.black.withOpacity(0.18),
+            surfaceTintColor: theme.cardColor,
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.05,
+                vertical: screenWidth * 0.03,
+              ),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                boxShadow: [
+                  // Subtle primary shadow
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    spreadRadius: 0.5,
+                    offset: const Offset(0, 4),
+                  ),
+                  // Softer ambient shadow
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(18),
+                  bottomRight: Radius.circular(18),
                 ),
-              ],
-            ),
-            child: Row(
+              ),
+              child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
@@ -2398,6 +2377,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
               ],
+              ),
             ),
           ),
 

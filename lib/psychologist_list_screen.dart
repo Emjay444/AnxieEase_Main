@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models/psychologist_model.dart';
 import 'services/supabase_service.dart';
 import 'utils/logger.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PsychologistListScreen extends StatefulWidget {
   const PsychologistListScreen({super.key});
@@ -12,47 +13,34 @@ class PsychologistListScreen extends StatefulWidget {
 
 class _PsychologistListScreenState extends State<PsychologistListScreen> {
   final SupabaseService _supabaseService = SupabaseService();
-  List<PsychologistModel> _psychologists = [];
-  bool _isLoading = true;
+  late Future<List<PsychologistModel>> _futurePsychologists;
 
   @override
   void initState() {
     super.initState();
-    _loadPsychologists();
+    _futurePsychologists = _fetchPsychologists();
   }
 
-  Future<void> _loadPsychologists() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  Future<List<PsychologistModel>> _fetchPsychologists() async {
     try {
       final result = await _supabaseService.getAllPsychologists();
-      setState(() {
-        _psychologists =
-            result.map((data) => PsychologistModel.fromJson(data)).toList();
-      });
+      return result.map((data) => PsychologistModel.fromJson(data)).toList();
     } catch (e) {
       Logger.error('Error loading psychologists', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error loading psychologists: ${e.toString()}')),
-        );
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      rethrow;
     }
   }
 
   Future<void> _assignPsychologist(String psychologistId) async {
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
+      // Show a modal progress indicator without rebuilding the entire list
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF3AA772)),
+        ),
+      );
       await _supabaseService.assignPsychologist(psychologistId);
 
       if (mounted) {
@@ -76,11 +64,7 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) Navigator.of(context, rootNavigator: true).maybePop();
     }
   }
 
@@ -95,24 +79,63 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF3AA772)))
-          : _psychologists.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No psychologists available at this time',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _psychologists.length,
-                  itemBuilder: (context, index) {
-                    final psychologist = _psychologists[index];
-                    return _buildPsychologistCard(psychologist);
-                  },
+      body: FutureBuilder<List<PsychologistModel>>(
+        future: _futurePsychologists,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+                child: CircularProgressIndicator(color: Color(0xFF3AA772)));
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                    const SizedBox(height: 12),
+                    const Text('Failed to load psychologists'),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _futurePsychologists = _fetchPsychologists();
+                        });
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3AA772),
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  ],
                 ),
+              ),
+            );
+          }
+          final data = snapshot.data ?? [];
+          if (data.isEmpty) {
+            return const Center(
+              child: Text(
+                'No psychologists available at this time',
+                style: TextStyle(fontSize: 16),
+              ),
+            );
+          }
+          return ScrollConfiguration(
+            behavior: const _NoGlowBehavior(),
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: data.length,
+              itemBuilder: (context, index) {
+                return _buildPsychologistCard(data[index]);
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -131,20 +154,7 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: const Color(0xFF3AA772).withOpacity(0.1),
-                  backgroundImage: psychologist.imageUrl != null
-                      ? NetworkImage(psychologist.imageUrl!)
-                      : null,
-                  child: psychologist.imageUrl == null
-                      ? const Icon(
-                          Icons.person,
-                          size: 30,
-                          color: Color(0xFF3AA772),
-                        )
-                      : null,
-                ),
+                _Avatar(imageUrl: psychologist.imageUrl),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -244,5 +254,47 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
         ),
       ),
     );
+  }
+}
+
+// Custom avatar with caching & shimmer
+class _Avatar extends StatelessWidget {
+  final String? imageUrl;
+  const _Avatar({required this.imageUrl});
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: Container(
+        width: 60,
+        height: 60,
+        color: const Color(0xFF3AA772).withOpacity(0.08),
+        child: imageUrl == null || imageUrl!.isEmpty
+            ? const Icon(Icons.person, size: 30, color: Color(0xFF3AA772))
+            : CachedNetworkImage(
+                imageUrl: imageUrl!,
+                fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 200),
+                placeholder: (c, _) => const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                errorWidget: (c, _, __) => const Icon(Icons.person,
+                    size: 30, color: Color(0xFF3AA772)),
+              ),
+      ),
+    );
+  }
+}
+
+// Remove overscroll glow (slight perf & UX polish)
+class _NoGlowBehavior extends ScrollBehavior {
+  const _NoGlowBehavior();
+  @override
+  Widget buildOverscrollIndicator(
+      BuildContext context, Widget child, ScrollableDetails details) {
+    return child;
   }
 }

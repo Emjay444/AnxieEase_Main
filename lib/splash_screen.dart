@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'services/notification_service.dart';
 import 'widgets/notification_permission_dialog.dart';
-import 'main.dart'; // Import to access the global servicesInitialized flag
+import 'main.dart'; // Access servicesInitializedCompleter
+import 'dart:async';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -24,10 +25,15 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkInitialization() async {
     debugPrint('🔄 SplashScreen - Starting initialization check...');
 
-    // Check every 500ms if services are initialized
-    while (!servicesInitialized) {
-      debugPrint('🔄 SplashScreen - Waiting for services to initialize...');
-      await Future.delayed(const Duration(milliseconds: 500));
+    // Await the global completer instead of actively polling to reduce main thread work
+    if (!servicesInitializedCompleter.isCompleted) {
+      debugPrint('🔄 SplashScreen - Awaiting services initialization...');
+      try {
+        await servicesInitializedCompleter.future
+            .timeout(const Duration(seconds: 30));
+      } on TimeoutException {
+        debugPrint('⚠️ SplashScreen - Initialization timeout, continuing');
+      }
       if (!mounted) return;
     }
 

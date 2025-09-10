@@ -1,5 +1,4 @@
 package com.example.anxiease
 
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity : FlutterActivity()
+// Intentionally left without classes. The app uses io.flutter.embedding.android.FlutterActivity via AndroidManifest.
+// Keeping this file as a placeholder to avoid package confusion during cleanup. Safe to delete later.

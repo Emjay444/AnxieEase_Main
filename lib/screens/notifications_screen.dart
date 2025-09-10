@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/notification_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../search.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -24,6 +29,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _loadNotifications();
+  }
+
+  // Color utilities for nicer gradients/contrast
+  Color _lighten(Color c, [double amount = 0.08]) {
+    final hsl = HSLColor.fromColor(c);
+    final hslLight = hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
+    return hslLight.toColor();
+  }
+
+  Color _darken(Color c, [double amount = 0.08]) {
+    final hsl = HSLColor.fromColor(c);
+    final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+    return hslDark.toColor();
+  }
+
+  // Derive a severity color from the notification title markers/keywords
+  Color _severityColorFromTitle(String title) {
+    final t = title.toLowerCase();
+    if (t.contains('🔴') || t.contains('severe')) return Colors.red;
+    if (t.contains('🟠') || t.contains('moderate')) return Colors.orange;
+    if (t.contains('🟢') || t.contains('mild')) return Colors.green;
+    return Colors.red; // default for generic alerts
   }
 
   Future<void> _loadNotifications() async {
@@ -90,15 +117,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Add a method to show notification details
   void _showNotificationDetails(String title, String message, String time,
       String type, Map<String, dynamic> notification) {
+    final bool isSevere = title.contains('Severe') || title.contains('🔴');
     Color getTypeColor() {
       switch (type) {
         case 'warning':
           return Colors.orange;
         case 'alert':
-          return Colors.red;
+          return _severityColorFromTitle(title);
         case 'log':
           return Colors.green;
         case 'info':
+        case 'reminder':
           return Colors.blue;
         default:
           return Colors.grey;
@@ -120,14 +149,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     }
 
-    // Helper function to categorize notifications - not displayed to user
-    String getSeverityLevel() {
-      if (title.contains('🟢') || title.contains('Mild')) return 'Mild';
-      if (title.contains('🟠') || title.contains('Moderate')) return 'Moderate';
-      if (title.contains('🔴') || title.contains('Severe')) return 'Severe';
-      if (title.contains('Mood Pattern')) return 'Informational';
-      return 'Normal';
-    }
+  // (Removed unused severity label helper)
 
     String getRecommendation() {
       if (title.contains('Mood Pattern')) {
@@ -178,245 +200,412 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final accent = getTypeColor();
         return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.of(context).size.height * 0.85,
           decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            color: Colors.transparent,
           ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 24,
+                    offset: const Offset(0, -6),
+                  ),
+                ],
               ),
-
-              // Header
-              Container(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  // Modern Curved Gradient Header (no top white part)
+                  ClipPath(
+                    clipper: _HeaderClipper(),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 26, 20, 28),
                       decoration: BoxDecoration(
-                        color: getTypeColor().withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            _darken(accent, 0.06),
+                            _lighten(accent, 0.06),
+                          ],
+                        ),
                       ),
-                      child: Icon(
-                        getTypeIcon(),
-                        color: getTypeColor(),
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E2432),
+                          // Slight scale-in animation for the icon tile
+                          TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutBack,
+                            tween: Tween(begin: 0.9, end: 1),
+                            builder: (context, scale, child) => Transform.scale(
+                              scale: scale,
+                              child: child,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                getTypeIcon(),
+                                color: _darken(accent, 0.15),
+                                size: 28,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            time,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    height: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.access_time, size: 14, color: Colors.white70),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      time,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    if (type.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.14),
+                                          borderRadius: BorderRadius.circular(28),
+                                          border: Border.all(color: Colors.white.withOpacity(0.35)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.circle, size: 8, color: Colors.white),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              type[0].toUpperCase() + type.substring(1),
+                                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Details Section
-                      const Text(
-                        'Details',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Details Section with copy
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Details',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E2432),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Copy',
+                                icon: const Icon(Icons.copy_rounded, size: 18),
+                                color: Colors.grey[700],
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: message));
+                                  HapticFeedback.lightImpact();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Message copied to clipboard')),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Text(
+                              message,
+                              style: TextStyle(
+                                color: Colors.grey[800],
+                                fontSize: 16,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 22),
+
+                          // Recommendation Section with accent styling
+                          const Text(
+                            'Recommendation',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E2432),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: accent.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: accent.withOpacity(0.2)),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.lightbulb_outline, color: accent),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    getRecommendation(),
+                                    style: TextStyle(
+                                      color: Colors.grey[900],
+                                      fontSize: 16,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 22),
+
+                          // Safety plan / Action Items Section
+                          Text(
+                            isSevere ? 'Safety Plan' : 'Suggested Actions',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E2432),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (isSevere) _buildSafetyContacts(context),
+                          if (isSevere) const SizedBox(height: 12),
+
+                          // Modern chips for actions
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: getActionItems()
+                                .map((action) => _buildActionChip(action, _darken(accent, 0.1)))
+                                .toList(),
+                          ),
+
+                          const SizedBox(height: 16),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          message,
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 16,
-                            height: 1.5,
+                    ),
+                  ),
+
+                  // Action Button footer
+                  SafeArea(
+                    top: false,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            Navigator.pop(context);
+                            if (isSevere) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SearchScreen(),
+                                ),
+                              );
+                            } else {
+                              Navigator.pushNamed(context, '/breathing');
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isSevere ? Colors.red.shade700 : _darken(accent, 0.05),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            isSevere ? 'Find Nearby Clinics' : 'Try Breathing Exercise',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 24),
-
-                      // Recommendation Section
-                      const Text(
-                        'Recommendation',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue[100]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.lightbulb_outline,
-                                color: Colors.blue[600]),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                getRecommendation(),
-                                style: TextStyle(
-                                  color: Colors.blue[800],
-                                  fontSize: 16,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Action Items Section
-                      const Text(
-                        'Suggested Actions',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...getActionItems()
-                          .map((action) => Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey[200]!),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color: getTypeColor(),
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        action,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Color(0xFF1E2432),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ))
-                          .toList(),
-
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Action Button
-              Container(
-                padding: const EdgeInsets.all(24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // Navigate to breathing exercise screen instead
-                      Navigator.pushNamed(context, '/breathing');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: getTypeColor(),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Try Breathing Exercise',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
     );
   }
 
-  // Helper method to navigate to related screens
-  void _navigateToRelatedScreen(Map<String, dynamic> notification) {
-    final String? relatedScreen = notification['related_screen'];
-    if (relatedScreen == null) return;
+  // Modern action chip for action items
+  Widget _buildActionChip(String label, Color accent) {
+    return InkWell(
+      onTap: () => HapticFeedback.selectionClick(),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: accent.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: accent.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline, color: accent, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E2432),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-    switch (relatedScreen) {
-      case 'alert_log':
-        Navigator.pushNamed(context, '/alert_log');
-        break;
-      case 'metrics':
-        Navigator.pushNamed(context, '/metrics');
-        break;
-      case 'calendar':
-        Navigator.pushNamed(context, '/calendar');
-        break;
-      case 'breathing_screen':
-        Navigator.pushNamed(context, '/breathing');
-        break;
+  // Build emergency contacts block for severe alerts
+  Widget _buildSafetyContacts(BuildContext context) {
+    final user = context.read<AuthProvider>().currentUser;
+    final String? userEmergency = user?.emergencyContact;
+
+    Widget callChip(String label, String number) {
+      return InkWell(
+        onTap: () => _callNumber(number),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.red.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.call, color: Colors.red),
+              const SizedBox(width: 8),
+              Text('$label: $number', style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Emergency Contacts',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          if (userEmergency != null && userEmergency.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: callChip('Your contact', userEmergency.trim()),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                'No personal emergency contact set. Add one in Profile.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            ),
+          callChip('NCMH Crisis Hotline', '1553'),
+          const SizedBox(height: 8),
+          callChip('Smart/TNT', '0919-057-1553'),
+          const SizedBox(height: 8),
+          callChip('Globe/TM', '0917-899-8727'),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _callNumber(String number) async {
+    final uri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cannot place call to $number')),
+        );
+      }
     }
   }
+
+  // (Removed unused related screen navigator)
 
   Future<void> _deleteNotification(String id) async {
     try {
@@ -521,6 +710,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Build a modern notification card
   Widget _buildNotificationItem(Map<String, dynamic> notification) {
     final DateTime createdAt = DateTime.parse(notification['created_at']);
     final String timeAgo = timeago.format(createdAt);
@@ -536,6 +726,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title.contains('Wellness Reminder') ||
         title.contains('Mental Health Moment') ||
         title.contains('Relaxation Reminder');
+
+    final Color accent = () {
+      switch (type) {
+        case 'alert':
+          return _severityColorFromTitle(title);
+        case 'reminder':
+          return Colors.blue;
+        case 'log':
+          return Colors.green;
+        default:
+          return Colors.teal;
+      }
+    }();
 
     return Dismissible(
       key: Key(notification['id']),
@@ -567,99 +770,137 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         );
       },
-      child: ListTile(
-        leading: Stack(
-          children: [
-            _getNotificationIcon(notification['type']),
-            if (!isRead)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        title: Text(
-          notification['title'],
-          style: TextStyle(
-            fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(notification['message']),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      timeAgo,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                // Show arrow indicator only for clickable notifications
-                if (!isReminder)
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 12,
-                    color: Colors.grey[400],
-                  ),
-              ],
-            ),
-          ],
-        ),
-        // For regular notifications, show modal. For reminders or unread notifications, just mark as read
+      child: InkWell(
         onTap: isReminder
             ? (!isRead ? () => _markNotificationAsRead(notification) : null)
             : () => _handleNotificationTap(notification),
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isRead ? Colors.white : Colors.teal.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isRead
+                    ? Colors.grey.withOpacity(0.15)
+                    : accent.withOpacity(0.5),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Leading icon with subtle background
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Center(child: _getNotificationIcon(type, accent)),
+                      if (!isRead)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              notification['title'],
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
+                                color: const Color(0xFF1E2432),
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                          if (!isReminder)
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 12,
+                              color: Colors.grey[400],
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        notification['message'],
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          color: Colors.grey[700],
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(Icons.access_time, size: 12, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            timeAgo,
+                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ),
       ),
     );
   }
 
-  Widget _getNotificationIcon(String type) {
+  Widget _getNotificationIcon(String type, Color accent) {
     switch (type) {
       case 'alert':
-        return const CircleAvatar(
-          backgroundColor: Colors.red,
-          child: Icon(Icons.warning, color: Colors.white),
-        );
+        return Icon(Icons.warning_rounded, color: accent, size: 24);
       case 'reminder':
-        return const CircleAvatar(
-          backgroundColor: Colors.blue,
-          child: Icon(Icons.notifications_active, color: Colors.white),
-        );
+        return Icon(Icons.notifications_active, color: accent, size: 24);
       case 'log':
-        return const CircleAvatar(
-          backgroundColor: Colors.green,
-          child: Icon(Icons.check_circle, color: Colors.white),
-        );
+        return Icon(Icons.check_circle, color: accent, size: 24);
       default:
-        return const CircleAvatar(
-          backgroundColor: Colors.grey,
-          child: Icon(Icons.notifications, color: Colors.white),
-        );
+        return Icon(Icons.notifications, color: accent, size: 24);
     }
   }
 
@@ -680,12 +921,84 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Group notifications by date (Today, Yesterday, Older)
+  Map<String, List<Map<String, dynamic>>> _groupNotifications() {
+    final Map<String, List<Map<String, dynamic>>> groups = {
+      'Today': [],
+      'Yesterday': [],
+      'Earlier': [],
+    };
+    final now = DateTime.now();
+    for (final n in _notifications) {
+      final created = DateTime.parse(n['created_at']);
+      final difference = now.difference(created).inDays;
+      if (difference == 0) {
+        groups['Today']!.add(n);
+      } else if (difference == 1) {
+        groups['Yesterday']!.add(n);
+      } else {
+        groups['Earlier']!.add(n);
+      }
+    }
+    // Remove empty groups
+    groups.removeWhere((k, v) => v.isEmpty);
+    return groups;
+  }
+
+  Widget _buildFilterChips() {
+    final filters = ['all', 'alert', 'reminder', 'log'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: filters.map((f) {
+          final selected = (_selectedFilter ?? 'all') == f;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(
+                f == 'all'
+                    ? 'All'
+                    : f[0].toUpperCase() + f.substring(1) + (f == 'log' ? 's' : ''),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: selected ? Colors.white : Colors.grey[700],
+                ),
+              ),
+              selected: selected,
+              onSelected: (_) {
+                setState(() => _selectedFilter = f == 'all' ? null : f);
+                _loadNotifications();
+                HapticFeedback.selectionClick();
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              backgroundColor: Colors.grey[200],
+              selectedColor: Colors.teal[600],
+              elevation: selected ? 2 : 0,
+              pressElevation: 0,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final grouped = _groupNotifications();
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F7F9),
       appBar: AppBar(
+        elevation: 0,
+        titleSpacing: 0,
         title: Row(
           children: [
+            const SizedBox(width: 8),
             const Text('Notifications'),
             if (_unreadCount > 0)
               Container(
@@ -697,42 +1010,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: Text(
                   _unreadCount.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
           ],
         ),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (String value) {
-              setState(() {
-                _selectedFilter = value == 'all' ? null : value;
-              });
-              _loadNotifications();
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: 'all',
-                child: Text('All'),
-              ),
-              const PopupMenuItem(
-                value: 'alert',
-                child: Text('Alerts'),
-              ),
-              const PopupMenuItem(
-                value: 'reminder',
-                child: Text('Reminders'),
-              ),
-              const PopupMenuItem(
-                value: 'log',
-                child: Text('Logs'),
-              ),
-            ],
-          ),
           if (_notifications.any((n) => !n['read']))
             IconButton(
               icon: const Icon(Icons.done_all),
@@ -747,20 +1030,48 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadNotifications,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _notifications.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    itemCount: _notifications.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      return _buildNotificationItem(_notifications[index]);
-                    },
-                  ),
+      body: Column(
+        children: [
+          const SizedBox(height: 8),
+            _buildFilterChips(),
+          const SizedBox(height: 4),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadNotifications,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _notifications.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: grouped.entries.length,
+                          itemBuilder: (context, groupIndex) {
+                            final entry = grouped.entries.elementAt(groupIndex);
+                            final groupLabel = entry.key;
+                            final items = entry.value;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+                                  child: Text(
+                                    groupLabel,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ),
+                                ...items.map(_buildNotificationItem).toList(),
+                              ],
+                            );
+                          },
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -808,4 +1119,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
   }
+
+}
+
+// Curved header clipper to remove flat white top and add modern curve
+class _HeaderClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 24);
+    // Smooth curve at the bottom of header
+    path.quadraticBezierTo(
+      size.width * 0.5, size.height,
+      size.width, size.height - 24,
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

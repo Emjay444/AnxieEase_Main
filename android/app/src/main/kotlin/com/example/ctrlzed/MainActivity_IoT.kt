@@ -1,1 +1,2 @@
-// Deprecated IoT-specific MainActivity removed. Use default FlutterActivity in java/com/example/ctrlzed/MainActivity.kt
+// Deprecated IoT-specific Activity removed. Manifest launches FlutterActivity directly.
+// Keeping as empty to prevent IDE from auto-creating classes.
