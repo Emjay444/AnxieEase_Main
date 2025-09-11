@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'auth.dart';
 import 'auth_wrapper.dart';
 import 'providers/theme_provider.dart';
@@ -9,6 +10,7 @@ import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/iot_sensor_service.dart';
+import 'utils/timezone_utils.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -23,7 +25,6 @@ import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
 import 'grounding_screen.dart';
-import 'dart:async';
 
 // Global completer to signal when services finish initialization (replaces polling bool)
 final Completer<void> servicesInitializedCompleter = Completer<void>();
@@ -535,11 +536,41 @@ Future<void> _configureFCM() async {
             '📥 Foreground FCM received: ${notification?.title} - ${notification?.body}');
         debugPrint('📊 FCM data: $data');
 
-        // DON'T show device notifications when app is open
-        // The local Firebase listener (NotificationService) will handle notifications when app is open
-        // This prevents duplicate notifications
-        debugPrint(
-            '🔇 App is open - skipping FCM device notification (local listener will handle it)');
+        // Check if this is a wellness reminder
+        final messageType = data['type'] ?? '';
+        if (messageType == 'wellness_reminder' || 
+            notification?.title?.contains('Wellness') == true ||
+            notification?.title?.contains('Anxiety Check-in') == true) {
+          
+          // Debug the timing
+          final currentTime = DateTime.now();
+          final philippinesTime = TimezoneUtils.now();
+          debugPrint('🍃 Wellness reminder FCM received at:');
+          debugPrint('   Device time: ${currentTime.toString()}');
+          debugPrint('   Philippines time: ${philippinesTime.toString()}');
+          debugPrint('   Timestamp from FCM: ${data['timestamp'] ?? 'N/A'}');
+          
+          debugPrint('🍃 Wellness reminder FCM received - showing with correct green styling');
+          
+          // Show local notification with correct green styling and AnxieEase branding
+          final notificationService = NotificationService();
+          await notificationService.initialize();
+          
+          await AwesomeNotifications().createNotification(
+            content: NotificationContent(
+              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              channelKey: 'wellness_reminders',
+              title: notification?.title ?? 'Wellness Reminder',
+              body: notification?.body ?? 'Take a moment to check how you\'re feeling.',
+              notificationLayout: NotificationLayout.Default,
+              category: NotificationCategory.Reminder,
+            ),
+          );
+        } else {
+          // For non-wellness FCM messages, let the NotificationService handle them
+          debugPrint(
+              '🔇 Non-wellness FCM - letting NotificationService handle it');
+        }
       } catch (e) {
         debugPrint('❌ Error handling foreground FCM: $e');
       }

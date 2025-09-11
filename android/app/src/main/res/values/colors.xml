@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="notification_color">#FF5252</color>
+    <color name="notification_color_green">#2D9254</color>
+    <color name="anxieease_green">#3AA772</color>
 </resources>

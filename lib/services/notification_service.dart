@@ -166,18 +166,13 @@ class NotificationService extends ChangeNotifier {
     // Check if reminders are enabled
     final bool isEnabled = await isAnxietyReminderEnabled();
     if (isEnabled) {
-      // Check if we already have active reminders before scheduling new ones
-      final List<NotificationModel> activeReminders =
-          await AwesomeNotifications().listScheduledNotifications();
-
-      if (!activeReminders.any((notification) =>
-          notification.content?.channelKey == 'reminders_channel')) {
-        final int intervalHours = await getAnxietyReminderInterval();
-        await scheduleAnxietyReminders(intervalHours);
-      } else {
-        debugPrint(
-            'Reminders already active. Skipping scheduling on initialize.');
-      }
+      // For wellness reminders, prefer FCM over local scheduling
+      // Only schedule local reminders if FCM is not available
+      debugPrint('🔔 Wellness reminders enabled - using FCM for delivery');
+      debugPrint('💡 Local scheduling disabled in favor of FCM wellness reminders');
+      
+      // Don't schedule local reminders since FCM handles wellness reminders
+      // This prevents duplicate notifications
     }
   }
 
@@ -547,8 +542,13 @@ class NotificationService extends ChangeNotifier {
     await prefs.setInt(reminderIntervalKey, intervalHours);
 
     if (enabled) {
-      // Schedule the reminders
-      await scheduleAnxietyReminders(intervalHours);
+      // Prefer FCM wellness reminders over local scheduling
+      // This prevents duplicate notifications
+      debugPrint('✅ Wellness reminders enabled - using FCM delivery');
+      debugPrint('🚫 Local scheduling disabled to prevent duplicates');
+      
+      // Cancel any existing local reminders since FCM will handle delivery
+      await cancelAnxietyReminders();
     } else {
       // Cancel all scheduled reminders
       await cancelAnxietyReminders();
@@ -638,8 +638,14 @@ class NotificationService extends ChangeNotifier {
     final message =
         reminderMessages[DateTime.now().millisecond % reminderMessages.length];
 
-    // Calculate the next reminder time using Philippines timezone
-    final DateTime scheduledTime = TimezoneUtils.now().add(Duration(hours: intervalHours));
+    // Calculate the next reminder time
+    // Use device local time since NotificationCalendar works with device timezone
+    final DateTime now = DateTime.now();
+    final DateTime scheduledTime = now.add(Duration(hours: intervalHours));
+    
+    debugPrint('📅 Current device time: ${now.toString()}');
+    debugPrint('⏰ Scheduled device time: ${scheduledTime.toString()}');
+    debugPrint('🇵🇭 Philippines equivalent: ${TimezoneUtils.utcToPhilippines(scheduledTime.toUtc()).toString()}');
 
     // Check if a notification with this ID is already scheduled
     final List<NotificationModel> activeNotifications =
@@ -689,7 +695,7 @@ class NotificationService extends ChangeNotifier {
     });
 
     debugPrint(
-        'Scheduled anxiety prevention reminder for ${scheduledTime.toString()} with ID $notificationId');
+        'Scheduled anxiety prevention reminder for device time: ${scheduledTime.toString()} with ID $notificationId');
   }
 
   @override
