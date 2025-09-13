@@ -66,10 +66,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _loadProfileImage() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
       final user = context.read<AuthProvider>().currentUser;
 
       if (user != null) {
+        // First try to load from user's avatar URL (from Supabase)
+        if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
+          debugPrint('Using avatar from Supabase: ${user.avatarUrl}');
+          // For network images, we don't set _profileImage file, we'll handle this in the UI
+          // The CircleAvatar will use NetworkImage if avatarUrl is available
+          return;
+        }
+
+        // Fallback to local storage
+        final directory = await getApplicationDocumentsDirectory();
         final dir = Directory(directory.path);
         List<FileSystemEntity> profileImages = [];
 
@@ -134,6 +143,18 @@ class _ProfilePageState extends State<ProfilePage> {
           // Delete any previous profile images
           await _deleteOldProfileImages(user.id, directory, timestamp);
 
+          // Upload to Supabase storage
+          try {
+            final avatarUrl = await context.read<AuthProvider>().uploadAvatar(savedFile);
+            
+            if (avatarUrl != null) {
+              debugPrint('Avatar uploaded successfully to Supabase: $avatarUrl');
+            }
+          } catch (supabaseError) {
+            debugPrint('Error uploading to Supabase: $supabaseError');
+            // Continue with local storage even if Supabase upload fails
+          }
+
           // Verify the file was copied correctly
           if (await savedFile.exists()) {
             debugPrint('Profile image saved successfully to: $imagePath');
@@ -192,6 +213,24 @@ class _ProfilePageState extends State<ProfilePage> {
       debugPrint('Error deleting old profile images: $e');
       // Don't throw here, just log the error
     }
+  }
+
+  // Helper method to get the appropriate avatar image
+  ImageProvider? _getAvatarImage() {
+    final user = context.read<AuthProvider>().currentUser;
+    
+    // Priority 1: Supabase avatar URL
+    if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
+      return NetworkImage(user.avatarUrl!);
+    }
+    
+    // Priority 2: Local profile image
+    if (_profileImage != null) {
+      return FileImage(_profileImage!);
+    }
+    
+    // No image available
+    return null;
   }
 
   // Show date picker to select birth date
@@ -295,10 +334,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                   child: CircleAvatar(
                                     radius: 54,
                                     backgroundColor: const Color(0xFF3AA772),
-                                    backgroundImage: _profileImage != null
-                                        ? FileImage(_profileImage!)
-                                        : null,
-                                    child: _profileImage == null
+                                    backgroundImage: _getAvatarImage(),
+                                    child: _getAvatarImage() == null
                                         ? Text(
                                             _firstNameController.text
                                                     .isNotEmpty

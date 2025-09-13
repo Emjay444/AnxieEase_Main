@@ -9,6 +9,7 @@ class UserModel {
   final String? gender;
   final String? contactNumber;
   final String? emergencyContact;
+  final String? avatarUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,6 +24,7 @@ class UserModel {
     this.gender,
     this.contactNumber,
     this.emergencyContact,
+    this.avatarUrl,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -57,6 +59,7 @@ class UserModel {
       gender: json['gender'],
       contactNumber: json['contact_number'],
       emergencyContact: json['emergency_contact'],
+      avatarUrl: json['avatar_url'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
@@ -74,6 +77,7 @@ class UserModel {
       'gender': gender,
       'contact_number': contactNumber,
       'emergency_contact': emergencyContact,
+      'avatar_url': avatarUrl,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -90,6 +94,7 @@ class UserModel {
     String? gender,
     String? contactNumber,
     String? emergencyContact,
+    String? avatarUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -104,6 +109,7 @@ class UserModel {
       gender: gender ?? this.gender,
       contactNumber: contactNumber ?? this.contactNumber,
       emergencyContact: emergencyContact ?? this.emergencyContact,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

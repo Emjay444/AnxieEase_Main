@@ -1604,6 +1604,75 @@ class SupabaseService {
     }
   }
 
+  // User avatar upload methods
+  Future<String?> uploadUserAvatar(String userId, File imageFile) async {
+    try {
+      final fileExt = imageFile.path.split('.').last;
+      final fileName = '$userId.$fileExt';
+      final filePath = 'users/$fileName';
+
+      // Upload file to Supabase Storage (avatars bucket)
+      await client.storage.from('avatars').upload(
+          filePath, imageFile,
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
+
+      // Get public URL
+      final imageUrl = client.storage.from('avatars').getPublicUrl(filePath);
+
+      // Update user profile record with avatar URL
+      await client
+          .from('user_profiles')
+          .update({'avatar_url': imageUrl}).eq('id', userId);
+
+      return imageUrl;
+    } catch (e) {
+      Logger.error('Error uploading user avatar', e);
+      return null;
+    }
+  }
+
+  Future<String?> getUserAvatarUrl(String userId) async {
+    try {
+      // First check if the user has an avatar_url directly in their record
+      final userProfile = await client
+          .from('user_profiles')
+          .select('avatar_url')
+          .eq('id', userId)
+          .maybeSingle();
+
+      // If there's an avatar_url in the database record, use that directly
+      if (userProfile != null &&
+          userProfile['avatar_url'] != null &&
+          userProfile['avatar_url'].toString().isNotEmpty) {
+        return userProfile['avatar_url'];
+      }
+
+      // Fallback to storage bucket lookup
+      final files = await client.storage.from('avatars').list(path: 'users');
+
+      // Find files that start with the user ID
+      final avatar = files
+          .where((file) => file.name.startsWith(userId))
+          .firstOrNull;
+
+      if (avatar != null) {
+        final avatarUrl = client.storage.from('avatars').getPublicUrl('users/${avatar.name}');
+        
+        // Update the database with the found URL for future use
+        await client
+            .from('user_profiles')
+            .update({'avatar_url': avatarUrl}).eq('id', userId);
+            
+        return avatarUrl;
+      }
+
+      return null;
+    } catch (e) {
+      Logger.error('Error fetching user avatar', e);
+      return null;
+    }
+  }
+
   // Method to manually refresh an appointment's status from the database
   Future<Map<String, dynamic>?> refreshAppointmentStatus(
       String appointmentId) async {

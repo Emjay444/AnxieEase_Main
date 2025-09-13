@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import '../services/supabase_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_model.dart';
@@ -111,23 +112,23 @@ class AuthProvider extends ChangeNotifier {
         final userProfile = await _supabaseService.getUserProfile();
         if (userProfile != null) {
           // Ensure required fields exist (email may not be in user_profiles)
-          final enriched = Map<String, dynamic>.from(userProfile);
-          enriched['email'] ??=
-              _supabaseService.client.auth.currentUser?.email ?? '';
-          // If first_name is missing but full_name exists, derive first_name
-          if ((enriched['first_name'] == null ||
-                  (enriched['first_name'] is String &&
-                      (enriched['first_name'] as String).trim().isEmpty)) &&
-              enriched['full_name'] is String &&
-              (enriched['full_name'] as String).trim().isNotEmpty) {
-            final parts = (enriched['full_name'] as String).trim().split(' ');
-            if (parts.isNotEmpty) enriched['first_name'] = parts.first;
-          }
-          // created_at/updated_at should exist but set sane defaults if missing
-          enriched['created_at'] ??= DateTime.now().toIso8601String();
-          enriched['updated_at'] ??= DateTime.now().toIso8601String();
-
-          _currentUser = UserModel.fromJson(enriched);
+        final enriched = Map<String, dynamic>.from(userProfile);
+        enriched['email'] ??=
+            _supabaseService.client.auth.currentUser?.email ?? '';
+        // If first_name is missing but full_name exists, derive first_name
+        if ((enriched['first_name'] == null ||
+                (enriched['first_name'] is String &&
+                    (enriched['first_name'] as String).trim().isEmpty)) &&
+            enriched['full_name'] is String &&
+            (enriched['full_name'] as String).trim().isNotEmpty) {
+          final parts = (enriched['full_name'] as String).trim().split(' ');
+          if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+        }
+        // created_at/updated_at should exist but set sane defaults if missing
+        enriched['created_at'] ??= DateTime.now().toIso8601String();
+        enriched['updated_at'] ??= DateTime.now().toIso8601String();
+        // Ensure avatar_url is included
+        enriched['avatar_url'] ??= userProfile['avatar_url'];          _currentUser = UserModel.fromJson(enriched);
           debugPrint(
               '✅ User profile loaded after sign in: ${_currentUser?.firstName}');
         }
@@ -168,6 +169,8 @@ class AuthProvider extends ChangeNotifier {
           }
           enriched['created_at'] ??= DateTime.now().toIso8601String();
           enriched['updated_at'] ??= DateTime.now().toIso8601String();
+          // Ensure avatar_url is included
+          enriched['avatar_url'] ??= userProfile['avatar_url'];
 
           _currentUser = UserModel.fromJson(enriched);
           debugPrint('✅ User profile updated: ${_currentUser?.firstName}');
@@ -220,6 +223,8 @@ class AuthProvider extends ChangeNotifier {
             }
             enriched['created_at'] ??= DateTime.now().toIso8601String();
             enriched['updated_at'] ??= DateTime.now().toIso8601String();
+            // Ensure avatar_url is included
+            enriched['avatar_url'] ??= userProfile['avatar_url'];
 
             _currentUser = UserModel.fromJson(enriched);
             debugPrint(
@@ -406,6 +411,8 @@ class AuthProvider extends ChangeNotifier {
         }
         enriched['created_at'] ??= DateTime.now().toIso8601String();
         enriched['updated_at'] ??= DateTime.now().toIso8601String();
+        // Ensure avatar_url is included
+        enriched['avatar_url'] ??= userProfile['avatar_url'];
 
         _currentUser = UserModel.fromJson(enriched);
         notifyListeners();
@@ -413,6 +420,31 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       print('Error updating profile: $e');
       throw Exception('Error updating profile: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<String?> uploadAvatar(File imageFile) async {
+    if (_currentUser == null) {
+      throw Exception('No user authenticated');
+    }
+
+    try {
+      _setLoading(true);
+      
+      // Upload the avatar to Supabase storage
+      final avatarUrl = await _supabaseService.uploadUserAvatar(_currentUser!.id, imageFile);
+      
+      if (avatarUrl != null) {
+        // Reload the user profile to get the updated avatar URL
+        await loadUserProfile();
+      }
+      
+      return avatarUrl;
+    } catch (e) {
+      debugPrint('Error uploading avatar: $e');
+      throw Exception('Error uploading avatar: $e');
     } finally {
       _setLoading(false);
     }
@@ -445,6 +477,8 @@ class AuthProvider extends ChangeNotifier {
         }
         enriched['created_at'] ??= DateTime.now().toIso8601String();
         enriched['updated_at'] ??= DateTime.now().toIso8601String();
+        // Ensure avatar_url is included
+        enriched['avatar_url'] ??= userProfile['avatar_url'];
 
         _currentUser = UserModel.fromJson(enriched);
         notifyListeners();
