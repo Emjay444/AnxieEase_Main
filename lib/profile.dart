@@ -38,8 +38,8 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-  // Start in editing mode only if explicitly allowed.
-  _isEditing = widget.isEditable;
+    // Start in editing mode only if explicitly allowed.
+    _isEditing = widget.isEditable;
     _loadUserData();
     _loadProfileImage();
   }
@@ -145,10 +145,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // Upload to Supabase storage
           try {
-            final avatarUrl = await context.read<AuthProvider>().uploadAvatar(savedFile);
-            
+            final avatarUrl =
+                await context.read<AuthProvider>().uploadAvatar(savedFile);
+
             if (avatarUrl != null) {
-              debugPrint('Avatar uploaded successfully to Supabase: $avatarUrl');
+              debugPrint(
+                  'Avatar uploaded successfully to Supabase: $avatarUrl');
             }
           } catch (supabaseError) {
             debugPrint('Error uploading to Supabase: $supabaseError');
@@ -218,17 +220,17 @@ class _ProfilePageState extends State<ProfilePage> {
   // Helper method to get the appropriate avatar image
   ImageProvider? _getAvatarImage() {
     final user = context.read<AuthProvider>().currentUser;
-    
+
     // Priority 1: Supabase avatar URL
     if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
       return NetworkImage(user.avatarUrl!);
     }
-    
+
     // Priority 2: Local profile image
     if (_profileImage != null) {
       return FileImage(_profileImage!);
     }
-    
+
     // No image available
     return null;
   }
@@ -259,14 +261,18 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(width: 8),
             if (_isEditing)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
                   'Editing',
-                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
                 ),
               ),
           ],
@@ -274,7 +280,7 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: const Color(0xFF3AA772),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-  actions: const [],
+        actions: const [],
       ),
       body: Form(
         key: _formKey,
@@ -337,8 +343,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                     backgroundImage: _getAvatarImage(),
                                     child: _getAvatarImage() == null
                                         ? Text(
-                                            _firstNameController.text
-                                                    .isNotEmpty
+                                            _firstNameController.text.isNotEmpty
                                                 ? _firstNameController.text[0]
                                                     .toUpperCase()
                                                 : '?',
@@ -397,11 +402,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 20),
-          if (_isEditing) _editTabs(),
-          if (_isEditing) const SizedBox(height: 8),
+                  if (_isEditing) _editTabs(),
+                  if (_isEditing) const SizedBox(height: 8),
                   // Personal Info Section
-          !_isEditing
-            ? _sectionCard(
+                  !_isEditing
+                      ? _sectionCard(
                           title: 'Personal Information',
                           children: [
                             _infoTile(
@@ -511,31 +516,29 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 16),
                   if (!_isEditing)
                     _sectionCard(
-                          title: 'Contact Details',
-                          children: [
-                            _infoTile(
-                              icon: Icons.phone_outlined,
-                              label: 'Contact Number',
-                              value: _contactNumberController.text.trim().isEmpty
-                                  ? '-'
-                                  : _contactNumberController.text.trim(),
-                            ),
-                            _infoTile(
-                              icon: Icons.contact_phone_outlined,
-                              label: 'Emergency Contact',
-                              value:
-                                  _emergencyContactController.text.trim().isEmpty
-                                      ? '-'
-                                      : _emergencyContactController.text
-                                          .trim(),
-                            ),
-                            _infoTile(
-                              icon: Icons.email_outlined,
-                              label: 'Email',
-                              value: _emailController.text,
-                            ),
-                          ],
+                      title: 'Contact Details',
+                      children: [
+                        _infoTile(
+                          icon: Icons.phone_outlined,
+                          label: 'Contact Number',
+                          value: _contactNumberController.text.trim().isEmpty
+                              ? '-'
+                              : _contactNumberController.text.trim(),
                         ),
+                        _infoTile(
+                          icon: Icons.contact_phone_outlined,
+                          label: 'Emergency Contact',
+                          value: _emergencyContactController.text.trim().isEmpty
+                              ? '-'
+                              : _emergencyContactController.text.trim(),
+                        ),
+                        _infoTile(
+                          icon: Icons.email_outlined,
+                          label: 'Email',
+                          value: _emailController.text,
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -572,18 +575,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           if (_formKey.currentState!.validate()) {
                             try {
                               await context.read<AuthProvider>().updateProfile(
-                                    firstName:
-                                        _firstNameController.text.trim(),
+                                    firstName: _firstNameController.text.trim(),
                                     middleName:
                                         _middleNameController.text.trim(),
-                                    lastName:
-                                        _lastNameController.text.trim(),
+                                    lastName: _lastNameController.text.trim(),
                                     birthDate: _selectedBirthDate,
-                                    contactNumber: _contactNumberController.text
-                                        .trim(),
+                                    contactNumber:
+                                        _contactNumberController.text.trim(),
                                     emergencyContact:
-                                        _emergencyContactController.text
-                                            .trim(),
+                                        _emergencyContactController.text.trim(),
                                     gender: _selectedGender,
                                   );
                               if (mounted) {
@@ -751,7 +751,10 @@ class _ProfilePageState extends State<ProfilePage> {
   // Removed old read-only field widgets; replaced with _fixedInfoRow.
 
   // Edit mode section card with distinct styling
-  Widget _editSectionCard({required IconData icon, required String title, required List<Widget> children}) {
+  Widget _editSectionCard(
+      {required IconData icon,
+      required String title,
+      required List<Widget> children}) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -790,7 +793,8 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 for (int i = 0; i < children.length; i++) ...[
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     child: children[i],
                   ),
                   if (i != children.length - 1)
@@ -805,7 +809,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // Fixed info row used in edit mode for non-editable fields (e.g., Birth Date, Gender, Email)
-  Widget _fixedInfoRow({required String label, required IconData icon, required String value}) {
+  Widget _fixedInfoRow(
+      {required String label, required IconData icon, required String value}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -825,12 +830,16 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               Text(
                 label,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ],
           ),

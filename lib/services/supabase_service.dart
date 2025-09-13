@@ -1521,11 +1521,11 @@ class SupabaseService {
       'id': psychologist['id'] ?? 'unknown-id',
       'name': psychologist['name'] ?? 'Unknown Psychologist',
       'specialization': psychologist['specialization'] ?? 'General Psychology',
-    // Try multiple possible keys before using placeholder
-    'contact_email': psychologist['contact_email'] ??
-      psychologist['email'] ??
-      psychologist['contactEmail'] ??
-      'contact@anxiease.com',
+      // Try multiple possible keys before using placeholder
+      'contact_email': psychologist['contact_email'] ??
+          psychologist['email'] ??
+          psychologist['contactEmail'] ??
+          'contact@anxiease.com',
       'contact_phone':
           psychologist['contact'] ?? psychologist['contact_phone'] ?? 'N/A',
       'biography': psychologist['bio'] ??
@@ -1612,8 +1612,7 @@ class SupabaseService {
       final filePath = 'users/$fileName';
 
       // Upload file to Supabase Storage (avatars bucket)
-      await client.storage.from('avatars').upload(
-          filePath, imageFile,
+      await client.storage.from('avatars').upload(filePath, imageFile,
           fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
 
       // Get public URL
@@ -1651,18 +1650,18 @@ class SupabaseService {
       final files = await client.storage.from('avatars').list(path: 'users');
 
       // Find files that start with the user ID
-      final avatar = files
-          .where((file) => file.name.startsWith(userId))
-          .firstOrNull;
+      final avatar =
+          files.where((file) => file.name.startsWith(userId)).firstOrNull;
 
       if (avatar != null) {
-        final avatarUrl = client.storage.from('avatars').getPublicUrl('users/${avatar.name}');
-        
+        final avatarUrl =
+            client.storage.from('avatars').getPublicUrl('users/${avatar.name}');
+
         // Update the database with the found URL for future use
         await client
             .from('user_profiles')
             .update({'avatar_url': avatarUrl}).eq('id', userId);
-            
+
         return avatarUrl;
       }
 
