@@ -425,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
-  return ListTile(
+    return ListTile(
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 20,
         vertical: 8,
@@ -433,13 +433,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-      color: const Color(0xFF2D9254).withOpacity(0.08),
-      borderRadius: BorderRadius.circular(14),
+          color: const Color(0xFF2D9254).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
-      icon,
-      color: const Color(0xFF2D9254),
-      size: 24,
+          icon,
+          color: const Color(0xFF2D9254),
+          size: 24,
         ),
       ),
       title: Text(
@@ -490,9 +490,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'AnxieEase helps you practice grounding and breathing techniques, log moods, and manage reminders to support anxiety prevention.',
             ),
             SizedBox(height: 10),
-            Text('What you can do:', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text('What you can do:',
+                style: TextStyle(fontWeight: FontWeight.w700)),
             SizedBox(height: 6),
-            _AboutBullet(text: 'Guided grounding (5-4-3-2-1) and breathing exercises'),
+            _AboutBullet(
+                text: 'Guided grounding (5-4-3-2-1) and breathing exercises'),
             _AboutBullet(text: 'Track moods and view patterns over time'),
             _AboutBullet(text: 'Set gentle reminders to practice techniques'),
             _AboutBullet(text: 'Keep your profile up to date'),
@@ -502,7 +504,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
 }
 
 class _AboutHeader extends StatelessWidget {
@@ -518,14 +519,16 @@ class _AboutHeader extends StatelessWidget {
             color: const Color(0xFF2D9254).withOpacity(0.1),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(Icons.info_outline, color: Color(0xFF2D9254), size: 28),
+          child: const Icon(Icons.info_outline,
+              color: Color(0xFF2D9254), size: 28),
         ),
         const SizedBox(width: 12),
         const Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('AnxieEase', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              Text('AnxieEase',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               SizedBox(height: 2),
               Text('Version 1.0.0 (1)', style: TextStyle(color: Colors.grey)),
             ],
