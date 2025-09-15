@@ -112,8 +112,8 @@ class _WatchScreenState extends State<WatchScreen>
             // Update connection status
             isConnected = _iotSensorService.isConnected;
 
-      debugPrint(
-        '📊 Wearable: Updated IoT data - HR: $heartRateValue, SpO2: $spo2Value, Battery: $batteryPercentage, Worn: $isDeviceWorn');
+            debugPrint(
+                '📊 Wearable: Updated IoT data - HR: $heartRateValue, SpO2: $spo2Value, Battery: $batteryPercentage, Worn: $isDeviceWorn');
           });
         } catch (e) {
           debugPrint('Error parsing IoT data: $e');
@@ -127,7 +127,7 @@ class _WatchScreenState extends State<WatchScreen>
 
   /// Initialize IoT Sensor Service
   Future<void> _initializeIoTService() async {
-  debugPrint('🔧 Wearable: Initializing IoT Sensor Service...');
+    debugPrint('🔧 Wearable: Initializing IoT Sensor Service...');
 
     try {
       await _iotSensorService.initialize();
@@ -138,9 +138,9 @@ class _WatchScreenState extends State<WatchScreen>
         isConnected = _iotSensorService.isConnected;
       });
 
-  debugPrint('✅ Wearable: IoT Sensor Service initialized');
+      debugPrint('✅ Wearable: IoT Sensor Service initialized');
     } catch (e) {
-  debugPrint('❌ Wearable: Error initializing IoT service: $e');
+      debugPrint('❌ Wearable: Error initializing IoT service: $e');
     }
   }
 
@@ -173,43 +173,44 @@ class _WatchScreenState extends State<WatchScreen>
 
   /// Start IoT sensor monitoring
   Future<void> _startIoTMonitoring() async {
-  debugPrint('🚀 Wearable: Starting IoT monitoring...');
+    debugPrint('🚀 Wearable: Starting IoT monitoring...');
 
     try {
       await _iotSensorService.startSensors();
-  debugPrint('🚀 Wearable: IoT monitoring started successfully');
+      debugPrint('🚀 Wearable: IoT monitoring started successfully');
 
       _showSuccess('IoT monitoring started successfully');
     } catch (e) {
-  debugPrint('❌ Wearable: Error starting IoT monitoring: $e');
+      debugPrint('❌ Wearable: Error starting IoT monitoring: $e');
       _showError('Failed to start IoT monitoring: $e');
     }
   }
 
   /// Stop IoT sensor monitoring
   Future<void> _stopIoTMonitoring() async {
-  debugPrint('🛑 Wearable: Stopping IoT monitoring...');
+    debugPrint('🛑 Wearable: Stopping IoT monitoring...');
 
     try {
       await _iotSensorService.stopSensors();
-  debugPrint('🛑 Wearable: IoT monitoring stopped successfully');
+      debugPrint('🛑 Wearable: IoT monitoring stopped successfully');
 
       _showSuccess('IoT monitoring stopped');
     } catch (e) {
-  debugPrint('❌ Wearable: Error stopping IoT monitoring: $e');
+      debugPrint('❌ Wearable: Error stopping IoT monitoring: $e');
       _showError('Failed to stop IoT monitoring: $e');
     }
   }
 
   /// Simulate stress event for testing
   Future<void> _simulateStressEvent() async {
-  debugPrint('⚠️ Wearable: Simulating stress event...');
+    debugPrint('⚠️ Wearable: Simulating stress event...');
 
     try {
       await _iotSensorService.simulateStressEvent();
-  _showSuccess('Stress event simulated - check wearable for elevated readings');
+      _showSuccess(
+          'Stress event simulated - check wearable for elevated readings');
     } catch (e) {
-  debugPrint('❌ Wearable: Error simulating stress event: $e');
+      debugPrint('❌ Wearable: Error simulating stress event: $e');
       _showError('Failed to simulate stress event: $e');
     }
   }
@@ -307,7 +308,7 @@ class _WatchScreenState extends State<WatchScreen>
           ),
           child: Row(
             children: [
-        Icon(isDeviceWorn ? Icons.watch : Icons.watch_off,
+              Icon(isDeviceWorn ? Icons.watch : Icons.watch_off,
                   color: isDeviceWorn ? Colors.blue : Colors.grey, size: 18),
               const SizedBox(width: 8),
               Text(isDeviceWorn ? 'Worn' : 'Not Worn',

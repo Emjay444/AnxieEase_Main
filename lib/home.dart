@@ -53,8 +53,7 @@ class StressLabel extends StatelessWidget {
   }
 }
 
-class _HomeScreenState extends State<HomeScreen>
-  with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late double screenWidth;
   late double screenHeight;
   int _currentTechniqueIndex = 0;
@@ -544,17 +543,21 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     const Text(
                       'Stress Level',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: getColor(stressLevel).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         label(stressLevel),
-                        style: TextStyle(color: getColor(stressLevel), fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            color: getColor(stressLevel),
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -576,12 +579,15 @@ class _HomeScreenState extends State<HomeScreen>
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: getColor(stressLevel),
-                    inactiveTrackColor: getColor(stressLevel).withValues(alpha: 0.2),
+                    inactiveTrackColor:
+                        getColor(stressLevel).withValues(alpha: 0.2),
                     thumbColor: getColor(stressLevel),
                     overlayColor: getColor(stressLevel).withValues(alpha: 0.2),
                     trackHeight: 8,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 12),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 24),
                   ),
                   child: Slider(
                     value: stressLevel,
@@ -610,11 +616,15 @@ class _HomeScreenState extends State<HomeScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal[700],
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     child: const Text(
                       'Save Stress Level',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -1652,123 +1662,125 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildBreathingCardContent({required bool isActive}) {
     return Container(
-          padding: EdgeInsets.all(screenWidth * 0.05),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.green[400]!,
-                Colors.green[300]!,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(screenWidth * 0.05),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.green
-                    .withOpacity(isActive ? 0.35 : 0.18),
-                blurRadius: isActive ? 22 : 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
+      padding: EdgeInsets.all(screenWidth * 0.05),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.green[400]!,
+            Colors.green[300]!,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(screenWidth * 0.05),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withOpacity(isActive ? 0.35 : 0.18),
+            blurRadius: isActive ? 22 : 14,
+            offset: const Offset(0, 6),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: screenWidth * 0.03,
-                        vertical: screenHeight * 0.008,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius:
-                            BorderRadius.circular(screenWidth * 0.05),
-                      ),
-                      child: Text(
-                        'Featured',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: screenWidth * 0.035,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.03,
+                    vertical: screenHeight * 0.008,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.05),
+                  ),
+                  child: Text(
+                    'Featured',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.035,
+                      fontWeight: FontWeight.w500,
                     ),
-                    SizedBox(height: screenHeight * 0.015),
-                    Text(
-                      'Breathing Exercise',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: screenWidth * 0.055,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: screenHeight * 0.01),
-                    Text(
-                      'Reduce anxiety with guided breathing',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: screenWidth * 0.035,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              // Icon with pulsing ring + bobbing (only icon/circle breathes)
-              AnimatedBuilder(
-                animation: _breathingController ?? const AlwaysStoppedAnimation(0.0),
-                builder: (context, _) {
-                  final v = _breathingController?.value ?? 0.0; // 0..1
-                  final ringScale = isActive ? (0.92 + 0.16 * v) : 1.0; // 0.92..1.08
-                  final circleScale = isActive ? (0.98 + 0.04 * v) : 1.0; // 0.98..1.02
-                  final dy = isActive ? ((v * 2 - 1) * 3) : 0.0; // -3..3 px
-
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Transform.scale(
-                        scale: ringScale,
-                        child: Container(
-                          width: screenWidth * 0.22,
-                          height: screenWidth * 0.22,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withOpacity(isActive ? 0.35 : 0.0),
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: Offset(0, dy),
-                        child: Transform.scale(
-                          scale: circleScale,
-                          child: Container(
-                            width: screenWidth * 0.2,
-                            height: screenWidth * 0.2,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.air,
-                              color: Colors.white,
-                              size: screenWidth * 0.1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+                SizedBox(height: screenHeight * 0.015),
+                Text(
+                  'Breathing Exercise',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.055,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.01),
+                Text(
+                  'Reduce anxiety with guided breathing',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.035,
+                  ),
+                ),
+              ],
+            ),
           ),
-        );
+          // Icon with pulsing ring + bobbing (only icon/circle breathes)
+          AnimatedBuilder(
+            animation:
+                _breathingController ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, _) {
+              final v = _breathingController?.value ?? 0.0; // 0..1
+              final ringScale =
+                  isActive ? (0.92 + 0.16 * v) : 1.0; // 0.92..1.08
+              final circleScale =
+                  isActive ? (0.98 + 0.04 * v) : 1.0; // 0.98..1.02
+              final dy = isActive ? ((v * 2 - 1) * 3) : 0.0; // -3..3 px
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: ringScale,
+                    child: Container(
+                      width: screenWidth * 0.22,
+                      height: screenWidth * 0.22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color:
+                              Colors.white.withOpacity(isActive ? 0.35 : 0.0),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: Offset(0, dy),
+                    child: Transform.scale(
+                      scale: circleScale,
+                      child: Container(
+                        width: screenWidth * 0.2,
+                        height: screenWidth * 0.2,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.air,
+                          color: Colors.white,
+                          size: screenWidth * 0.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildGroundingCard(bool isActive) {
@@ -1780,121 +1792,122 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildGroundingCardContent({required bool isActive}) {
     return Container(
-          padding: EdgeInsets.all(screenWidth * 0.05),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.blue[500]!,
-                Colors.blue[400]!,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(screenWidth * 0.05),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(isActive ? 0.35 : 0.18),
-                blurRadius: isActive ? 22 : 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
+      padding: EdgeInsets.all(screenWidth * 0.05),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.blue[500]!,
+            Colors.blue[400]!,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(screenWidth * 0.05),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(isActive ? 0.35 : 0.18),
+            blurRadius: isActive ? 22 : 14,
+            offset: const Offset(0, 6),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: screenWidth * 0.03,
-                        vertical: screenHeight * 0.008,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius:
-                            BorderRadius.circular(screenWidth * 0.05),
-                      ),
-                      child: Text(
-                        'New',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: screenWidth * 0.035,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.03,
+                    vertical: screenHeight * 0.008,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.05),
+                  ),
+                  child: Text(
+                    'New',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.035,
+                      fontWeight: FontWeight.w500,
                     ),
-                    SizedBox(height: screenHeight * 0.015),
-                    Text(
-                      '5-4-3-2-1 Grounding',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: screenWidth * 0.055,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: screenHeight * 0.01),
-                    Text(
-                      'Interrupt anxiety with sensory grounding',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: screenWidth * 0.035,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              AnimatedBuilder(
-                animation: _groundingController ?? const AlwaysStoppedAnimation(0.0),
-                builder: (context, _) {
-                  final v = _groundingController?.value ?? 0.0; // 0..1
-                  final ringScale = isActive ? (0.92 + 0.16 * v) : 1.0;
-                  final circleScale = isActive ? (0.98 + 0.04 * v) : 1.0;
-                  final dy = isActive ? ((v * 2 - 1) * -3) : 0.0; // inverse bob
-
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Transform.scale(
-                        scale: ringScale,
-                        child: Container(
-                          width: screenWidth * 0.22,
-                          height: screenWidth * 0.22,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withOpacity(isActive ? 0.35 : 0.0),
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: Offset(0, dy),
-                        child: Transform.scale(
-                          scale: circleScale,
-                          child: Container(
-                            width: screenWidth * 0.2,
-                            height: screenWidth * 0.2,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.touch_app,
-                              color: Colors.white,
-                              size: screenWidth * 0.1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+                SizedBox(height: screenHeight * 0.015),
+                Text(
+                  '5-4-3-2-1 Grounding',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.055,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.01),
+                Text(
+                  'Interrupt anxiety with sensory grounding',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.035,
+                  ),
+                ),
+              ],
+            ),
           ),
-        );
+          AnimatedBuilder(
+            animation:
+                _groundingController ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, _) {
+              final v = _groundingController?.value ?? 0.0; // 0..1
+              final ringScale = isActive ? (0.92 + 0.16 * v) : 1.0;
+              final circleScale = isActive ? (0.98 + 0.04 * v) : 1.0;
+              final dy = isActive ? ((v * 2 - 1) * -3) : 0.0; // inverse bob
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: ringScale,
+                    child: Container(
+                      width: screenWidth * 0.22,
+                      height: screenWidth * 0.22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color:
+                              Colors.white.withOpacity(isActive ? 0.35 : 0.0),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: Offset(0, dy),
+                    child: Transform.scale(
+                      scale: circleScale,
+                      child: Container(
+                        width: screenWidth * 0.2,
+                        height: screenWidth * 0.2,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.touch_app,
+                          color: Colors.white,
+                          size: screenWidth * 0.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTechniqueCarousel() {
@@ -2380,172 +2393,182 @@ class _HomeContentState extends State<HomeContent> {
                 ),
               ),
               child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Consumer<AuthProvider>(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, child) {
+                          // Default to 'Guest' if no user or no first name
+                          String firstName = 'Guest';
+                          // Use firstName directly from user model
+                          if (authProvider.currentUser != null &&
+                              authProvider.currentUser!.firstName != null &&
+                              authProvider.currentUser!.firstName!.isNotEmpty) {
+                            firstName = authProvider.currentUser!.firstName!;
+                          }
+                          return Text(
+                            'Hello $firstName',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontSize: screenWidth * 0.055,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          );
+                        },
+                      ),
+                      Text(
+                        'Welcome back',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: screenWidth * 0.035,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ProfilePage(),
+                        ),
+                      );
+
+                      // Refresh image cache when returning from profile page
+                      setState(() {
+                        PaintingBinding.instance.imageCache.clear();
+                        PaintingBinding.instance.imageCache.clearLiveImages();
+                      });
+                    },
+                    child: Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
-                        // Default to 'Guest' if no user or no first name
-                        String firstName = 'Guest';
-                        // Use firstName directly from user model
-                        if (authProvider.currentUser != null &&
-                            authProvider.currentUser!.firstName != null &&
-                            authProvider.currentUser!.firstName!.isNotEmpty) {
-                          firstName = authProvider.currentUser!.firstName!;
+                        // Check if user has an avatar URL first, then fallback to local file
+                        final user = authProvider.currentUser;
+                        final avatarUrl = user?.avatarUrl;
+
+                        // Debug logging to see avatar URL status
+                        debugPrint(
+                            '🖼️ Avatar debug - User: ${user?.firstName}, Avatar URL: $avatarUrl');
+
+                        // If we have an avatar URL, try to use network image with error handling
+                        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+                          return CircleAvatar(
+                            radius: screenWidth * 0.06,
+                            backgroundColor: const Color(0xFF3AA772),
+                            child: ClipOval(
+                              child: Image.network(
+                                avatarUrl,
+                                width: screenWidth * 0.12,
+                                height: screenWidth * 0.12,
+                                fit: BoxFit.cover,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) {
+                                  debugPrint(
+                                      'Error loading network avatar: $error');
+                                  // Fallback to first letter if network image fails
+                                  String firstLetter = 'G';
+                                  if (user != null &&
+                                      user.firstName != null &&
+                                      user.firstName!.isNotEmpty) {
+                                    firstLetter =
+                                        user.firstName![0].toUpperCase();
+                                  }
+                                  return Center(
+                                    child: Text(
+                                      firstLetter,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
                         }
-                        return Text(
-                          'Hello $firstName',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontSize: screenWidth * 0.055,
-                            fontWeight: FontWeight.bold,
-                          ),
+
+                        // Fallback to local file system
+                        debugPrint(
+                            '🖼️ Avatar debug - No URL found, checking local files for user: ${user?.id}');
+                        return FutureBuilder<File?>(
+                          future:
+                              _loadProfileImage(authProvider.currentUser?.id),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return CircleAvatar(
+                                radius: screenWidth * 0.06,
+                                backgroundColor:
+                                    theme.primaryColor.withValues(alpha: 0.1),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.primaryColor,
+                                ),
+                              );
+                            }
+
+                            if (snapshot.hasData && snapshot.data != null) {
+                              // Use the actual profile image from local storage
+                              return CircleAvatar(
+                                radius: screenWidth * 0.06,
+                                backgroundImage: FileImage(
+                                  snapshot.data!,
+                                  // Add a scale parameter to force refresh
+                                  scale: 1.0,
+                                ),
+                                // Add a key with timestamp to force widget rebuild
+                                key: ValueKey(snapshot.data!.path),
+                              );
+                            } else {
+                              // If no profile image, show first letter of name or fallback icon
+                              String firstLetter = 'G';
+                              if (authProvider.currentUser != null &&
+                                  authProvider.currentUser!.firstName != null &&
+                                  authProvider
+                                      .currentUser!.firstName!.isNotEmpty) {
+                                firstLetter = authProvider
+                                    .currentUser!.firstName![0]
+                                    .toUpperCase();
+                              }
+
+                              return CircleAvatar(
+                                radius: screenWidth * 0.06,
+                                backgroundColor: const Color(0xFF3AA772),
+                                child: Text(
+                                  firstLetter,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
                         );
                       },
                     ),
-                    Text(
-                      'Welcome back',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: screenWidth * 0.035,
-                      ),
-                    ),
-                  ],
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ProfilePage(),
-                      ),
-                    );
-
-                    // Refresh image cache when returning from profile page
-                    setState(() {
-                      PaintingBinding.instance.imageCache.clear();
-                      PaintingBinding.instance.imageCache.clearLiveImages();
-                    });
-                  },
-                  child: Consumer<AuthProvider>(
-                    builder: (context, authProvider, child) {
-                      // Check if user has an avatar URL first, then fallback to local file
-                      final user = authProvider.currentUser;
-                      final avatarUrl = user?.avatarUrl;
-                      
-                      // Debug logging to see avatar URL status
-                      debugPrint('🖼️ Avatar debug - User: ${user?.firstName}, Avatar URL: $avatarUrl');
-                      
-                      // If we have an avatar URL, try to use network image with error handling
-                      if (avatarUrl != null && avatarUrl.isNotEmpty) {
-                        return CircleAvatar(
-                          radius: screenWidth * 0.06,
-                          backgroundColor: const Color(0xFF3AA772),
-                          child: ClipOval(
-                            child: Image.network(
-                              avatarUrl,
-                              width: screenWidth * 0.12,
-                              height: screenWidth * 0.12,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                    value: loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress.cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                debugPrint('Error loading network avatar: $error');
-                                // Fallback to first letter if network image fails
-                                String firstLetter = 'G';
-                                if (user != null &&
-                                    user.firstName != null &&
-                                    user.firstName!.isNotEmpty) {
-                                  firstLetter = user.firstName![0].toUpperCase();
-                                }
-                                return Center(
-                                  child: Text(
-                                    firstLetter,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        );
-                      }
-                      
-                      // Fallback to local file system
-                      debugPrint('🖼️ Avatar debug - No URL found, checking local files for user: ${user?.id}');
-                      return FutureBuilder<File?>(
-                        future: _loadProfileImage(authProvider.currentUser?.id),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return CircleAvatar(
-                              radius: screenWidth * 0.06,
-                              backgroundColor:
-                                  theme.primaryColor.withValues(alpha: 0.1),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: theme.primaryColor,
-                              ),
-                            );
-                          }
-
-                          if (snapshot.hasData && snapshot.data != null) {
-                            // Use the actual profile image from local storage
-                            return CircleAvatar(
-                              radius: screenWidth * 0.06,
-                              backgroundImage: FileImage(
-                                snapshot.data!,
-                                // Add a scale parameter to force refresh
-                                scale: 1.0,
-                              ),
-                              // Add a key with timestamp to force widget rebuild
-                              key: ValueKey(snapshot.data!.path),
-                            );
-                          } else {
-                            // If no profile image, show first letter of name or fallback icon
-                            String firstLetter = 'G';
-                            if (authProvider.currentUser != null &&
-                                authProvider.currentUser!.firstName != null &&
-                                authProvider
-                                    .currentUser!.firstName!.isNotEmpty) {
-                              firstLetter = authProvider
-                                  .currentUser!.firstName![0]
-                                  .toUpperCase();
-                            }
-
-                            return CircleAvatar(
-                              radius: screenWidth * 0.06,
-                              backgroundColor: const Color(0xFF3AA772),
-                              child: Text(
-                                firstLetter,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      );
-                    },
                   ),
-                ),
-              ],
+                ],
               ),
             ),
           ),
