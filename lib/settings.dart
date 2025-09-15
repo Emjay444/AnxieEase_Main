@@ -19,11 +19,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   // Anxiety prevention reminder settings
   bool _anxietyRemindersEnabled = false;
-  int _reminderIntervalHours = 6;
   final NotificationService _notificationService = NotificationService();
-
-  // Interval options for the dropdown (in hours)
-  final List<int> _intervalOptions = [3, 6, 12, 24];
 
   @override
   void initState() {
@@ -34,12 +30,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Load the anxiety reminder settings
   Future<void> _loadReminderSettings() async {
     final bool enabled = await _notificationService.isAnxietyReminderEnabled();
-    final int intervalHours =
-        await _notificationService.getAnxietyReminderInterval();
 
     setState(() {
       _anxietyRemindersEnabled = enabled;
-      _reminderIntervalHours = intervalHours;
     });
   }
 
@@ -47,15 +40,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveReminderSettings() async {
     await _notificationService.setAnxietyReminderEnabled(
       _anxietyRemindersEnabled,
-      intervalHours: _reminderIntervalHours,
     );
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_anxietyRemindersEnabled
-              ? 'Anxiety prevention reminders enabled'
-              : 'Anxiety prevention reminders disabled'),
+              ? 'Wellness reminders enabled'
+              : 'Wellness reminders disabled'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -332,116 +324,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Build anxiety prevention reminder settings tile
   Widget _buildAnxietyReminderTile() {
-    return Column(
-      children: [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 8,
-          ),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2D9254).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              Icons.watch_later_outlined,
-              color: const Color(0xFF2D9254),
-              size: 24,
-            ),
-          ),
-          title: Text(
-            'Anxiety Prevention Reminders',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-          ),
-          subtitle: Text(
-            _anxietyRemindersEnabled
-                ? 'Reminders every $_reminderIntervalHours hours'
-                : 'Reminders are disabled',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 14,
-                  color: Colors.black.withOpacity(0.6),
-                ),
-          ),
-          trailing: Switch(
-            value: _anxietyRemindersEnabled,
-            onChanged: (value) {
-              setState(() {
-                _anxietyRemindersEnabled = value;
-              });
-              _saveReminderSettings();
-            },
-            activeColor: const Color(0xFF2D9254),
-          ),
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 8,
+      ),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2D9254).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
         ),
-        if (_anxietyRemindersEnabled)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Divider(),
-                const SizedBox(height: 8),
-                const Text(
-                  'Regular reminders can help you practice anxiety management techniques and prevent anxiety attacks.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Reminder Frequency:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    DropdownButton<int>(
-                      value: _reminderIntervalHours,
-                      items: _intervalOptions.map((int hours) {
-                        return DropdownMenuItem<int>(
-                          value: hours,
-                          child: Text(hours == 24
-                              ? 'Once daily'
-                              : 'Every $hours hours'),
-                        );
-                      }).toList(),
-                      onChanged: (int? newValue) {
-                        if (newValue != null) {
-                          setState(() {
-                            _reminderIntervalHours = newValue;
-                          });
-                          _saveReminderSettings();
-                        }
-                      },
-                      underline: Container(
-                        height: 1,
-                        color: const Color(0xFF2D9254),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Your next reminder will arrive in about $_reminderIntervalHours hours.',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
+        child: Icon(
+          Icons.watch_later_outlined,
+          color: const Color(0xFF2D9254),
+          size: 24,
+        ),
+      ),
+      title: Text(
+        'Wellness Reminder',
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
             ),
-          ),
-      ],
+      ),
+      subtitle: Text(
+        _anxietyRemindersEnabled
+            ? 'Receive wellness messages'
+            : 'Reminders are disabled',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              color: Colors.black.withOpacity(0.6),
+            ),
+      ),
+      trailing: Switch(
+        value: _anxietyRemindersEnabled,
+        onChanged: (value) {
+          setState(() {
+            _anxietyRemindersEnabled = value;
+          });
+          _saveReminderSettings();
+        },
+        activeColor: const Color(0xFF2D9254),
+      ),
     );
   }
 
