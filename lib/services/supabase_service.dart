@@ -546,7 +546,7 @@ class SupabaseService {
     try {
       // Ensure record has a timestamp
       if (!record.containsKey('timestamp')) {
-        record['timestamp'] = DateTime.now().toUtc().toIso8601String();
+        record['timestamp'] = DateTime.now().toIso8601String();
       }
 
       // Add additional fields for analytics
@@ -554,7 +554,7 @@ class SupabaseService {
         'user_id': user.id,
         'severity_level': record['severity_level'] ?? 'unknown',
         'timestamp': record['timestamp'],
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
         'is_manual': record['is_manual'] ?? false,
         'source': record['source'] ?? 'app',
         'details': record['details'] ?? '',
@@ -1070,7 +1070,7 @@ class SupabaseService {
 
       await client.from('user_profiles').update({
         'is_email_verified': true,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
       }).eq('email', email);
 
       print('Email verification status updated successfully');
@@ -1276,8 +1276,8 @@ class SupabaseService {
       // First try to create the table if it doesn't exist
       await createAppointmentsTableIfNotExists();
 
-      // Get the current timestamp for created_at in UTC (database storage)
-      final timestamp = DateTime.now().toUtc().toIso8601String();
+      // Get the current timestamp for created_at
+      final timestamp = DateTime.now().toIso8601String();
 
       // Try to insert the appointment record
       final response = await client.from('appointments').insert({
@@ -1723,7 +1723,7 @@ class SupabaseService {
       // Update the status in the database
       await client.from('appointments').update({
         'status': newStatus,
-        'updated_at': DateTime.now().toUtc().toIso8601String()
+        'updated_at': DateTime.now().toIso8601String()
       }).eq('id', appointmentId);
 
       Logger.info(
@@ -1741,7 +1741,7 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      final now = DateTime.now().toUtc();
+      final now = DateTime.now();
       final cutoffDate =
           now.subtract(const Duration(days: 30)).toIso8601String();
       int totalArchived = 0;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'lib/services/supabase_service.dart';
-import 'lib/database_test.dart';
+import 'services/supabase_service.dart';
+import 'database_test.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

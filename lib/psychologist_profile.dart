@@ -4,10 +4,8 @@ import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
 import 'services/supabase_service.dart';
 import 'utils/logger.dart';
-import 'utils/timezone_utils.dart';
 import 'psychologist_list_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/services.dart'; // For Clipboard copy
 
 class PsychologistProfilePage extends StatefulWidget {
   const PsychologistProfilePage({super.key});
@@ -159,14 +157,11 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
-    // Get current Philippines time for date picker
-    final currentPhilippinesTime = TimezoneUtils.now();
-    
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? currentPhilippinesTime.add(const Duration(days: 1)),
-      firstDate: currentPhilippinesTime,
-      lastDate: currentPhilippinesTime.add(const Duration(days: 90)),
+      initialDate: _selectedDate ?? DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 90)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -272,19 +267,19 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     });
 
     try {
-      // Combine date and time in Philippines timezone
-      final appointmentDateTime = TimezoneUtils.createPhilippinesDateTime(
-        year: _selectedDate!.year,
-        month: _selectedDate!.month,
-        day: _selectedDate!.day,
-        hour: _selectedTime!.hour,
-        minute: _selectedTime!.minute,
+      // Combine date and time
+      final appointmentDateTime = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+        _selectedTime!.hour,
+        _selectedTime!.minute,
       );
 
       // Create appointment data
       final appointmentData = {
         'psychologist_id': _psychologist!.id,
-        'appointment_date': TimezoneUtils.toIso8601String(appointmentDateTime),
+        'appointment_date': appointmentDateTime.toIso8601String(),
         'reason': _reasonController.text.trim(),
       };
 
@@ -329,7 +324,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
   // Method to determine if an appointment should be archived
   bool _shouldArchiveAppointment(AppointmentModel appointment) {
-    final currentPhilippinesTime = TimezoneUtils.now();
+    final now = DateTime.now();
 
     // Archive appointments that are:
     // 1. Completed older than 30 days
@@ -338,24 +333,20 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
     if (appointment.status == AppointmentStatus.completed) {
       // Only archive completed appointments that are older than 30 days
-      final daysDifference = currentPhilippinesTime.difference(
-          TimezoneUtils.utcToPhilippines(appointment.appointmentDate)).inDays;
-      return daysDifference > 30;
+      return now.difference(appointment.appointmentDate).inDays > 30;
     }
 
     if ((appointment.status == AppointmentStatus.cancelled ||
-            appointment.status == AppointmentStatus.denied)) {
-      final daysDifference = currentPhilippinesTime.difference(
-          TimezoneUtils.utcToPhilippines(appointment.createdAt)).inDays;
-      return daysDifference > 7;
+            appointment.status == AppointmentStatus.denied) &&
+        now.difference(appointment.createdAt).inDays > 7) {
+      return true;
     }
 
     if ((appointment.status == AppointmentStatus.accepted ||
             appointment.status == AppointmentStatus.approved) &&
-        TimezoneUtils.isPast(appointment.appointmentDate)) {
-      final daysDifference = currentPhilippinesTime.difference(
-          TimezoneUtils.utcToPhilippines(appointment.appointmentDate)).inDays;
-      return daysDifference > 3;
+        appointment.appointmentDate.isBefore(now) &&
+        now.difference(appointment.appointmentDate).inDays > 3) {
+      return true;
     }
 
     return false;
@@ -664,16 +655,23 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                             label: Text(_psychologist!.contactPhone,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
-                              final value = _psychologist!.contactPhone.trim();
-                              if (value.isEmpty || value == 'N/A') return;
-                              await Clipboard.setData(ClipboardData(text: value));
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Phone copied: $value'),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
+                              final uri = Uri(
+                                  scheme: 'tel',
+                                  path: _psychologist!.contactPhone);
+                              try {
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri);
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Cannot launch dialer on this device')),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                Logger.error('Failed to launch dialer', e);
                               }
                             },
                           ),
@@ -695,16 +693,23 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                             label: Text(_psychologist!.contactEmail,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
-                              final value = _psychologist!.contactEmail.trim();
-                              if (value.isEmpty || value == 'N/A') return;
-                              await Clipboard.setData(ClipboardData(text: value));
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Email copied: $value'),
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
+                              final uri = Uri(
+                                  scheme: 'mailto',
+                                  path: _psychologist!.contactEmail);
+                              try {
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri);
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Cannot open email app on this device')),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                Logger.error('Failed to launch email', e);
                               }
                             },
                           ),
@@ -1036,12 +1041,12 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         }
       }
 
-      // Group active appointments by status using Philippines time
+      // Group active appointments by status
       final upcomingAppointments = activeAppointments
           .where((apt) =>
               (apt.status == AppointmentStatus.accepted ||
                   apt.status == AppointmentStatus.approved) &&
-              !TimezoneUtils.isPast(apt.appointmentDate))
+              apt.appointmentDate.isAfter(DateTime.now()))
           .toList();
 
       final pendingAppointments = activeAppointments
@@ -1057,7 +1062,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               apt.status != AppointmentStatus.completed &&
               ((apt.status == AppointmentStatus.accepted ||
                       apt.status == AppointmentStatus.approved) &&
-                  TimezoneUtils.isPast(apt.appointmentDate)))
+                  apt.appointmentDate.isBefore(DateTime.now())))
           .toList();
 
       final cancelledAppointments = activeAppointments
@@ -1254,9 +1259,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   Widget _buildAppointmentCard(
       AppointmentModel appointment, Color statusColor) {
     try {
-      // Format dates using Philippines timezone
-      final formattedDate = TimezoneUtils.formatPhilippinesDate(appointment.appointmentDate);
-      final formattedTime = TimezoneUtils.formatPhilippinesTime(appointment.appointmentDate);
+      final formattedDate =
+          DateFormat('MMM dd, yyyy').format(appointment.appointmentDate);
+      final formattedTime =
+          DateFormat('h:mm a').format(appointment.appointmentDate);
 
       // Determine the correct status to display
       String displayStatus = appointment.statusText;
@@ -1269,8 +1275,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         displayStatus = "Accepted";
       }
 
-      // Use Philippines time for checking if appointment is past
-      final isPastAppointment = TimezoneUtils.isPast(appointment.appointmentDate);
+      final now = DateTime.now();
+      final isPastAppointment = appointment.appointmentDate.isBefore(now);
       final canMarkAsCompleted =
           (appointment.status == AppointmentStatus.accepted ||
                   appointment.status == AppointmentStatus.approved) &&
@@ -1317,7 +1323,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                                 size: 16, color: Colors.grey[600]),
                             const SizedBox(width: 6),
                             Text(
-                              '$formattedTime (PHT)',
+                              formattedTime,
                               style: TextStyle(
                                   color: Colors.grey[700], fontSize: 13),
                             ),

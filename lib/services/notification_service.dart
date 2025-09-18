@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'supabase_service.dart';
-import '../utils/timezone_utils.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
@@ -166,13 +165,18 @@ class NotificationService extends ChangeNotifier {
     // Check if reminders are enabled
     final bool isEnabled = await isAnxietyReminderEnabled();
     if (isEnabled) {
-      // For wellness reminders, prefer FCM over local scheduling
-      // Only schedule local reminders if FCM is not available
-      debugPrint('🔔 Wellness reminders enabled - using FCM for delivery');
-      debugPrint('💡 Local scheduling disabled in favor of FCM wellness reminders');
-      
-      // Don't schedule local reminders since FCM handles wellness reminders
-      // This prevents duplicate notifications
+      // Check if we already have active reminders before scheduling new ones
+      final List<NotificationModel> activeReminders =
+          await AwesomeNotifications().listScheduledNotifications();
+
+      if (!activeReminders.any((notification) =>
+          notification.content?.channelKey == 'reminders_channel')) {
+        final int intervalHours = await getAnxietyReminderInterval();
+        await scheduleAnxietyReminders(intervalHours);
+      } else {
+        debugPrint(
+            'Reminders already active. Skipping scheduling on initialize.');
+      }
     }
   }
 
@@ -409,7 +413,7 @@ class NotificationService extends ChangeNotifier {
 
       final anxietyRecord = {
         'severity_level': severity,
-        'timestamp': TimezoneUtils.toIso8601String(TimezoneUtils.now()),
+        'timestamp': DateTime.now().toIso8601String(),
         'is_manual': isManual,
         'source': 'app',
         'details': isManual
@@ -542,13 +546,8 @@ class NotificationService extends ChangeNotifier {
     await prefs.setInt(reminderIntervalKey, intervalHours);
 
     if (enabled) {
-      // Prefer FCM wellness reminders over local scheduling
-      // This prevents duplicate notifications
-      debugPrint('✅ Wellness reminders enabled - using FCM delivery');
-      debugPrint('🚫 Local scheduling disabled to prevent duplicates');
-      
-      // Cancel any existing local reminders since FCM will handle delivery
-      await cancelAnxietyReminders();
+      // Schedule the reminders
+      await scheduleAnxietyReminders(intervalHours);
     } else {
       // Cancel all scheduled reminders
       await cancelAnxietyReminders();
@@ -639,13 +638,8 @@ class NotificationService extends ChangeNotifier {
         reminderMessages[DateTime.now().millisecond % reminderMessages.length];
 
     // Calculate the next reminder time
-    // Use device local time since NotificationCalendar works with device timezone
-    final DateTime now = DateTime.now();
-    final DateTime scheduledTime = now.add(Duration(hours: intervalHours));
-    
-    debugPrint('📅 Current device time: ${now.toString()}');
-    debugPrint('⏰ Scheduled device time: ${scheduledTime.toString()}');
-    debugPrint('🇵🇭 Philippines equivalent: ${TimezoneUtils.utcToPhilippines(scheduledTime.toUtc()).toString()}');
+    final DateTime scheduledTime =
+        DateTime.now().add(Duration(hours: intervalHours));
 
     // Check if a notification with this ID is already scheduled
     final List<NotificationModel> activeNotifications =
@@ -695,7 +689,7 @@ class NotificationService extends ChangeNotifier {
     });
 
     debugPrint(
-        'Scheduled anxiety prevention reminder for device time: ${scheduledTime.toString()} with ID $notificationId');
+        'Scheduled anxiety prevention reminder for ${scheduledTime.toString()} with ID $notificationId');
   }
 
   @override
