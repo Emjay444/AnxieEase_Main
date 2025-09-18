@@ -10,7 +10,6 @@ import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/iot_sensor_service.dart';
-import 'utils/timezone_utils.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -30,6 +29,11 @@ import 'grounding_screen.dart';
 final Completer<void> servicesInitializedCompleter = Completer<void>();
 // Toggle this to enable/disable verbose logging app‑wide
 const bool kVerboseLogging = true;
+
+// Global keys for navigation and in-app banners (usable outside widget context)
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   // Ensure Flutter is initialized
@@ -245,7 +249,8 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late AppLinks _appLinks;
-  final _navigatorKey = GlobalKey<NavigatorState>();
+  // Use global navigator key so services/handlers can navigate safely
+  final _navigatorKey = rootNavigatorKey;
   final _supabaseService = SupabaseService();
 
   @override
@@ -459,10 +464,11 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return MaterialApp(
-      navigatorKey: _navigatorKey,
+      navigatorKey: rootNavigatorKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
-  // Toggle to true temporarily if you want to visualize rendering performance
-  showPerformanceOverlay: false,
+      // Toggle to true temporarily if you want to visualize rendering performance
+      showPerformanceOverlay: false,
       title: 'AnxieEase',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
@@ -487,6 +493,87 @@ class _MyAppState extends State<MyApp> {
       },
     );
   }
+}
+
+// Helper: show an in-app, floating banner for foreground events
+void _showInAppBanner({
+  required String title,
+  required String body,
+  Color? color,
+  String? actionLabel,
+  VoidCallback? onAction,
+  IconData? icon,
+}) {
+  final messenger = rootScaffoldMessengerKey.currentState;
+  if (messenger == null) return;
+
+  // Dismiss any existing snackbars to avoid stacking
+  messenger.clearSnackBars();
+
+  final ctx = rootNavigatorKey.currentContext;
+  final theme = ctx != null ? Theme.of(ctx) : null;
+  final bg = (color ?? Colors.blue).withOpacity(0.1);
+  final fg = color ?? theme?.colorScheme.primary ?? Colors.blue;
+
+  final snackBar = SnackBar(
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: bg,
+    elevation: 0,
+    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    shape: RoundedRectangleBorder(
+      side: BorderSide(color: fg.withOpacity(0.35), width: 1),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    duration: const Duration(seconds: 6),
+    content: Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: fg.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon ?? Icons.notifications_active, color: fg),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w700,
+                  )),
+              const SizedBox(height: 2),
+              Text(
+                body,
+                style: TextStyle(
+                  color: (theme?.colorScheme.onSurface ?? Colors.black87)
+                      .withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onAction != null && (actionLabel ?? '').isNotEmpty)
+          TextButton(
+            onPressed: () {
+              messenger.hideCurrentSnackBar();
+              onAction();
+            },
+            child: Text(
+              actionLabel!,
+              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  messenger.showSnackBar(snackBar);
 }
 
 // Configure Firebase Cloud Messaging for foreground messages and token retrieval
@@ -538,38 +625,62 @@ Future<void> _configureFCM() async {
 
         // Check if this is a wellness reminder
         final messageType = data['type'] ?? '';
-        if (messageType == 'wellness_reminder' || 
+        if (messageType == 'wellness_reminder' ||
             notification?.title?.contains('Wellness') == true ||
             notification?.title?.contains('Anxiety Check-in') == true) {
-          
           // Debug the timing
           final currentTime = DateTime.now();
-          final philippinesTime = TimezoneUtils.now();
           debugPrint('🍃 Wellness reminder FCM received at:');
           debugPrint('   Device time: ${currentTime.toString()}');
-          debugPrint('   Philippines time: ${philippinesTime.toString()}');
           debugPrint('   Timestamp from FCM: ${data['timestamp'] ?? 'N/A'}');
-          
-          debugPrint('🍃 Wellness reminder FCM received - showing with correct green styling');
-          
-          // Show local notification with correct green styling and AnxieEase branding
+
+          // Inline banner for instant feedback
+          _showInAppBanner(
+            title: notification?.title ?? 'Wellness Reminder',
+            body: notification?.body ??
+                'Take a moment to check how you\'re feeling.',
+            color: Colors.green,
+            icon: Icons.spa,
+            actionLabel: 'Open',
+            onAction: () {
+              // Navigate to breathing or grounding based on payload
+              final dest = (data['action'] ?? 'breathing').toString();
+              final route =
+                  dest.contains('ground') ? '/grounding' : '/breathing';
+              rootNavigatorKey.currentState?.pushNamed(route);
+            },
+          );
+
+          // Also post a system notification as a fallback
           final notificationService = NotificationService();
           await notificationService.initialize();
-          
           await AwesomeNotifications().createNotification(
             content: NotificationContent(
               id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
               channelKey: 'wellness_reminders',
               title: notification?.title ?? 'Wellness Reminder',
-              body: notification?.body ?? 'Take a moment to check how you\'re feeling.',
+              body: notification?.body ??
+                  'Take a moment to check how you\'re feeling.',
               notificationLayout: NotificationLayout.Default,
               category: NotificationCategory.Reminder,
             ),
           );
+        } else if (messageType == 'anxiety_alert' ||
+            notification?.title?.toLowerCase().contains('anxiety') == true) {
+          // Show inline alert banner with action to view notifications
+          _showInAppBanner(
+            title: notification?.title ?? 'Anxiety Alert',
+            body: notification?.body ?? 'We\'re here to help. Tap to view.',
+            color: Colors.deepOrange,
+            icon: Icons.health_and_safety,
+            actionLabel: 'View',
+            onAction: () {
+              rootNavigatorKey.currentState?.pushNamed('/notifications');
+            },
+          );
         } else {
-          // For non-wellness FCM messages, let the NotificationService handle them
-          debugPrint(
-              '🔇 Non-wellness FCM - letting NotificationService handle it');
+          // For other FCM messages, keep default handling
+          debugPrint('🔇 Other FCM - letting NotificationService handle it');
         }
       } catch (e) {
         debugPrint('❌ Error handling foreground FCM: $e');

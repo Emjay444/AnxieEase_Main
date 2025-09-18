@@ -37,6 +37,7 @@ class SearchScreenState extends State<SearchScreen>
   bool _mapCreated = false;
   final bool _showMap = true; // Default to showing the map
   bool _mapError = false;
+  bool _hasLocationPermission = false;
   Map<String, dynamic>? _selectedPlace;
   String _errorMessage = '';
   final TravelMode _selectedTravelMode = TravelMode.driving;
@@ -442,6 +443,7 @@ class SearchScreenState extends State<SearchScreen>
         return;
       }
 
+      // If we reach here, we have permission
       Logger.info('Getting position with extended timeout...');
 
       try {
@@ -456,6 +458,7 @@ class SearchScreenState extends State<SearchScreen>
           _currentPosition = position;
           _isLoading = false;
           _errorMessage = ''; // Clear any error messages
+          _hasLocationPermission = true; // Set permission flag
         });
 
         // Add a marker for the current position
@@ -3158,7 +3161,7 @@ class SearchScreenState extends State<SearchScreen>
                     _currentPosition!.latitude, _currentPosition!.longitude),
                 zoom: 14,
               ),
-              myLocationEnabled: true,
+              myLocationEnabled: _hasLocationPermission,
               myLocationButtonEnabled: false,
               markers: _markers,
               polylines: _polylines,

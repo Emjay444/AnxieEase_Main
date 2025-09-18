@@ -27,6 +27,6 @@
     "runtime": "nodejs18"
   },
   "database": {
-    "rules": "database.rules.json"
+    "rules": "database_rules_iot.json"
   }
 }
