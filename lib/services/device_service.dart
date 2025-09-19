@@ -330,15 +330,15 @@ class DeviceService extends ChangeNotifier {
         worn = _iotSensorService.isDeviceWorn;
       }
 
-  // Collect only when the device is worn and we have a positive HR
-  if (worn && currentHR > 0) {
+      // Collect only when the device is worn and we have a positive HR
+      if (worn && currentHR > 0) {
         _baselineReadings.add(currentHR);
         _heartRateController?.add(currentHR);
         AppLogger.d(
-    'DeviceService: Collected HR reading: ${currentHR.toStringAsFixed(1)} BPM (worn: $worn, live: ${_currentMetrics != null})');
+            'DeviceService: Collected HR reading: ${currentHR.toStringAsFixed(1)} BPM (worn: $worn, live: ${_currentMetrics != null})');
       } else {
         AppLogger.d(
-    'DeviceService: Skipped HR reading (hr: ${currentHR.toStringAsFixed(1)}, worn: $worn)');
+            'DeviceService: Skipped HR reading (hr: ${currentHR.toStringAsFixed(1)}, worn: $worn)');
       }
     } catch (e) {
       AppLogger.w('DeviceService: Error collecting HR reading: $e');
@@ -512,7 +512,8 @@ class DeviceService extends ChangeNotifier {
       final hasBattery = data['battPerc'] != null;
       final isExplicitlyDisconnected =
           rawConn == 'disconnected' || isConnectedFlag == false;
-      var isConnected = !isExplicitlyDisconnected; // accept if not explicitly disconnected
+      var isConnected =
+          !isExplicitlyDisconnected; // accept if not explicitly disconnected
       final isWorn = data['worn'] == true;
 
       // If not worn, treat as not connected for validation purposes
@@ -757,13 +758,14 @@ class DeviceService extends ChangeNotifier {
 
     // Use last 60s of readings while worn and connected, with HR and body temp
     final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
-    final readings = _recentReadings.where((r) =>
-      r.isWorn &&
-      r.isConnected &&
-      r.heartRate != null &&
-      r.bodyTemperature != null &&
-      r.timestamp.isAfter(cutoff)
-    ).toList();
+    final readings = _recentReadings
+        .where((r) =>
+            r.isWorn &&
+            r.isConnected &&
+            r.heartRate != null &&
+            r.bodyTemperature != null &&
+            r.timestamp.isAfter(cutoff))
+        .toList();
 
     if (readings.length < 3) return null; // need enough points
 
@@ -781,15 +783,16 @@ class DeviceService extends ChangeNotifier {
 
       if (passing.length < 3) return false;
       passing.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      final durationSec = passing.last.timestamp
-          .difference(passing.first.timestamp)
-          .inSeconds;
+      final durationSec =
+          passing.last.timestamp.difference(passing.first.timestamp).inSeconds;
       return durationSec >= sustainedSeconds;
     }
 
     // Check from most severe to mild
-    if (sustainedFor('severe', severeHrFactor, severeTempDelta)) return 'severe';
-    if (sustainedFor('moderate', moderateHrFactor, moderateTempDelta)) return 'moderate';
+    if (sustainedFor('severe', severeHrFactor, severeTempDelta))
+      return 'severe';
+    if (sustainedFor('moderate', moderateHrFactor, moderateTempDelta))
+      return 'moderate';
     if (sustainedFor('mild', mildHrFactor, mildTempDelta)) return 'mild';
     return null;
   }
@@ -862,7 +865,7 @@ class DeviceService extends ChangeNotifier {
       final user = _supabaseService.client.auth.currentUser;
       if (user == null) return;
 
-  String alertType = 'unknown';
+      String alertType = 'unknown';
 
       if (metrics.heartRate != null && metrics.heartRate! > 100) {
         alertType = 'high_heart_rate';
@@ -888,8 +891,7 @@ class DeviceService extends ChangeNotifier {
         if (_linkedDevice?.baselineHR != null)
           'baselineHR': _linkedDevice!.baselineHR,
         if (metrics.heartRate != null && _linkedDevice?.baselineHR != null)
-          'hrDelta':
-              (metrics.heartRate! - _linkedDevice!.baselineHR!).round(),
+          'hrDelta': (metrics.heartRate! - _linkedDevice!.baselineHR!).round(),
         'timestamp': timestamp,
         'resolved': false,
       };
@@ -992,16 +994,16 @@ class DeviceService extends ChangeNotifier {
       AppLogger.d(
           'DeviceService: Saving baseline to Supabase: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
 
-    // Prefer explicit find-update-or-insert to avoid ON CONFLICT constraint issues
-    // 1) Try to find the latest existing baseline for this user + device (single canonical row)
+      // Prefer explicit find-update-or-insert to avoid ON CONFLICT constraint issues
+      // 1) Try to find the latest existing baseline for this user + device (single canonical row)
       final existing = await _supabaseService.client
           .from('baseline_heart_rates')
-      .select('id')
-      .eq('user_id', baseline.userId)
-      .eq('device_id', baseline.deviceId)
-      .order('recording_end_time', ascending: false)
-      .limit(1)
-      .maybeSingle();
+          .select('id')
+          .eq('user_id', baseline.userId)
+          .eq('device_id', baseline.deviceId)
+          .order('recording_end_time', ascending: false)
+          .limit(1)
+          .maybeSingle();
 
       final payload = {
         'baseline_hr': baseline.baselineHR,
@@ -1010,7 +1012,8 @@ class DeviceService extends ChangeNotifier {
         'recording_end_time': baseline.recordingEndTime.toIso8601String(),
         'recording_duration_minutes': baseline.recordingDurationMinutes,
         'created_at': baseline.createdAt.toIso8601String(),
-        'is_active': true, // kept for compatibility; single canonical row per device
+        'is_active':
+            true, // kept for compatibility; single canonical row per device
         if (baseline.notes != null) 'notes': baseline.notes,
       };
 
@@ -1061,8 +1064,7 @@ class DeviceService extends ChangeNotifier {
             'recording_start_time':
                 baseline.recordingStartTime.toIso8601String(),
             'recording_end_time': baseline.recordingEndTime.toIso8601String(),
-            'recording_duration_minutes':
-                baseline.recordingDurationMinutes,
+            'recording_duration_minutes': baseline.recordingDurationMinutes,
             'created_at': baseline.createdAt.toIso8601String(),
             'is_active': true,
             if (baseline.notes != null) 'notes': baseline.notes,
@@ -1071,8 +1073,7 @@ class DeviceService extends ChangeNotifier {
               'DeviceService: Baseline saved via deactivate-then-insert fallback');
           return;
         } catch (e2) {
-          AppLogger.e(
-              'DeviceService: Fallback deactivate-then-insert failed',
+          AppLogger.e('DeviceService: Fallback deactivate-then-insert failed',
               e2 as Object?);
         }
       }
