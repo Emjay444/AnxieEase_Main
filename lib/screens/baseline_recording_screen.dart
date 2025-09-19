@@ -1,0 +1,1271 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+import '../services/device_service.dart';
+import '../models/baseline_heart_rate.dart';
+import '../theme/app_theme.dart';
+import 'health_dashboard_screen.dart';
+
+/// Guided resting heart rate recording screen
+///
+/// Provides a beautiful 3-5 minute guided session to collect baseline HR.
+/// Features countdown timer, real-time HR display, and quality feedback.
+class BaselineRecordingScreen extends StatefulWidget {
+  const BaselineRecordingScreen({Key? key}) : super(key: key);
+
+  @override
+  State<BaselineRecordingScreen> createState() =>
+      _BaselineRecordingScreenState();
+}
+
+class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
+    with TickerProviderStateMixin {
+  final DeviceService _deviceService = DeviceService();
+
+  bool _isRecording = false;
+  bool _isComplete = false;
+  bool _isFinishing =
+      false; // when timer hits 0 or stop pressed while finishing
+  int _selectedDuration = 3; // Default 3 minutes
+  String? _errorMessage;
+  BaselineHeartRate? _result;
+
+  // Animation controllers
+  late AnimationController _pulseController;
+  late AnimationController _progressController;
+  late AnimationController _fadeController;
+  late AnimationController _chartController;
+
+  // Animations
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _fadeAnimation;
+
+  // Stream subscriptions
+  StreamSubscription<int>? _countdownSubscription;
+  StreamSubscription<double>? _heartRateSubscription;
+
+  // Real-time data
+  int _remainingSeconds = 0;
+  double _currentHeartRate = 0;
+  List<double> _heartRateHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAnimations();
+    _initializeService();
+  }
+
+  void _initializeAnimations() {
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+
+    _progressController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _chartController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.15,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    ));
+
+    _fadeController.forward();
+  }
+
+  Future<void> _initializeService() async {
+    try {
+      await _deviceService.initialize();
+
+      if (!_deviceService.hasLinkedDevice) {
+        Navigator.pop(context);
+        return;
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to initialize: $e';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _progressController.dispose();
+    _fadeController.dispose();
+    _chartController.dispose();
+    _countdownSubscription?.cancel();
+    _heartRateSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startRecording() async {
+    if (_isRecording) return;
+
+    setState(() {
+      _isRecording = true;
+      _isComplete = false;
+      _errorMessage = null;
+      _heartRateHistory.clear();
+      _remainingSeconds = _selectedDuration * 60;
+    });
+
+    // Start pulse animation
+    _pulseController.repeat(reverse: true);
+    _progressController.forward();
+
+    try {
+      // Ensure streams exist before subscribing
+      _deviceService.prepareBaselineStreams();
+
+      // Set up stream subscriptions
+      print('BaselineScreen: Setting up stream subscriptions');
+      print(
+          'BaselineScreen: Countdown stream available: ${_deviceService.countdownStream != null}');
+      print(
+          'BaselineScreen: HeartRate stream available: ${_deviceService.heartRateStream != null}');
+
+      _countdownSubscription = _deviceService.countdownStream?.listen(
+        (seconds) {
+          print('BaselineScreen: Countdown received: ${seconds}s');
+          setState(() {
+            _remainingSeconds = seconds;
+          });
+        },
+      );
+
+      _heartRateSubscription = _deviceService.heartRateStream?.listen(
+        (heartRate) {
+          print('BaselineScreen: HeartRate received: ${heartRate} BPM');
+          setState(() {
+            _currentHeartRate = heartRate;
+            _heartRateHistory.add(heartRate);
+
+            // Keep only last 30 readings for display
+            if (_heartRateHistory.length > 30) {
+              _heartRateHistory.removeAt(0);
+            }
+          });
+
+          // Animate the chart for each new sample
+          if (mounted) {
+            _chartController.forward(from: 0);
+          }
+        },
+      );
+
+      // Start recording
+      final baseline = await _deviceService.recordRestingHeartRate(
+        durationMinutes: _selectedDuration,
+        notes: 'Recorded via AnxieEase app',
+      );
+
+      setState(() {
+        _result = baseline;
+        _isComplete = true;
+        _isRecording = false;
+        _isFinishing = false;
+      });
+
+      _pulseController.stop();
+      if (_result != null) {
+        _showCompletionAnimation();
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isRecording = false;
+        _isFinishing = false;
+      });
+      _pulseController.stop();
+
+      // Show error dialog for insufficient data
+      _showInsufficientDataDialog(e.toString());
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_isRecording) {
+      // If auto-finished already, try to show completion using last baseline
+      final existing = _deviceService.currentBaseline;
+      if (existing != null && mounted) {
+        setState(() {
+          _result = existing;
+          _isComplete = true;
+          _isRecording = false;
+          _isFinishing = false;
+        });
+        _showCompletionAnimation();
+      }
+      return;
+    }
+
+    try {
+      setState(() {
+        _isFinishing = true;
+      });
+
+      final baseline = await _deviceService.stopBaselineRecording();
+
+      setState(() {
+        _result = baseline;
+        _isComplete = baseline != null;
+        _isRecording = false;
+        _isFinishing = false;
+      });
+
+      _pulseController.stop();
+
+      if (baseline != null) {
+        _showCompletionAnimation();
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isRecording = false;
+        _isFinishing = false;
+      });
+      _pulseController.stop();
+
+      // Show error dialog for insufficient data
+      _showInsufficientDataDialog(e.toString());
+    }
+  }
+
+  void _showCompletionAnimation() {
+    // Haptic feedback for completion
+    HapticFeedback.mediumImpact();
+
+    // Show success animation
+    if (!mounted || _result == null) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _buildCompletionDialog(),
+    );
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  double _getProgress() {
+    if (!_isRecording) return 0.0;
+    final totalSeconds = _selectedDuration * 60;
+    return 1.0 - (_remainingSeconds / totalSeconds);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
+      appBar: AppBar(
+        title: const Text(
+          'Resting Heart Rate Setup',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: AppTheme.primaryColor,
+        elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      ),
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: _isComplete
+                ? _buildCompletionView()
+                : _isRecording
+                    ? _buildRecordingView()
+                    : _buildPreparationView(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreparationView() {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+
+                // Header
+                _buildHeader(),
+                const SizedBox(height: 40),
+
+                // Device status
+                _buildDeviceStatus(),
+                const SizedBox(height: 40),
+
+                // Duration selector
+                _buildDurationSelector(),
+                const SizedBox(height: 40),
+
+                // Instructions
+                _buildInstructions(),
+
+                // Error message
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 24),
+                  _buildErrorMessage(),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        // Start button
+        _buildStartButton(),
+      ],
+    );
+  }
+
+  Widget _buildRecordingView() {
+    return Column(
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Progress indicator
+              _buildProgressIndicator(),
+              const SizedBox(height: 40),
+
+              // Heart rate display
+              _buildHeartRateDisplay(),
+              const SizedBox(height: 40),
+
+              // Timer
+              _buildTimer(),
+              const SizedBox(height: 40),
+
+              // Heart rate chart
+              _buildHeartRateChart(),
+            ],
+          ),
+        ),
+
+        // Stop button
+        _buildStopButton(),
+      ],
+    );
+  }
+
+  Widget _buildCompletionView() {
+    // Fallback to service baseline in case of race
+    _result ??= DeviceService().currentBaseline;
+    if (_result == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Finalizing your baseline…'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Success icon
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.green.withOpacity(0.1),
+                Colors.green.withOpacity(0.05),
+              ],
+            ),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.green.withOpacity(0.2), width: 2),
+          ),
+          child: const Icon(
+            Icons.check_circle,
+            size: 60,
+            color: Colors.green,
+          ),
+        ),
+        const SizedBox(height: 30),
+
+        // Title
+        const Text(
+          'Baseline Set Successfully! 🎉',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textColor,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+
+        // Result summary
+        _buildResultSummary(),
+        const SizedBox(height: 40),
+
+        // Continue button
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HealthDashboardScreen(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: const Text(
+              'Continue to Dashboard',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        const Text(
+          'Let\'s establish your baseline',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textColor,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'We\'ll record your resting heart rate for accurate health monitoring.',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey[600],
+            height: 1.4,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeviceStatus() {
+    final device = _deviceService.linkedDevice;
+    if (device == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.watch,
+              color: AppTheme.primaryColor,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  device.deviceId,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color:
+                            _deviceService.currentMetrics?.isConnected == true
+                                ? Colors.green
+                                : Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _deviceService.currentMetrics?.isConnected == true
+                          ? 'Connected'
+                          : 'Connecting...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationSelector() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Recording Duration',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textColor,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [3, 4, 5].map((minutes) {
+              final isSelected = _selectedDuration == minutes;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: minutes == 5 ? 0 : 8,
+                  ),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedDuration = minutes;
+                      });
+                    },
+                    child: Container(
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppTheme.primaryColor
+                              : Colors.grey[300]!,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$minutes',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color:
+                                  isSelected ? Colors.white : Colors.grey[700],
+                            ),
+                          ),
+                          Text(
+                            'min',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  isSelected ? Colors.white : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructions() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue[100]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue[600]),
+              const SizedBox(width: 8),
+              const Text(
+                'Instructions',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '• Sit comfortably and relax\n'
+            '• Ensure your device is properly worn\n'
+            '• Avoid movement during recording\n'
+            '• Breathe normally and stay calm',
+            style: TextStyle(fontSize: 14, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressIndicator() {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        SizedBox(
+          width: 200,
+          height: 200,
+          child: CircularProgressIndicator(
+            value: _getProgress(),
+            strokeWidth: 8,
+            backgroundColor: Colors.grey[200],
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+          ),
+        ),
+        Column(
+          children: [
+            Text(
+              '${(_getProgress() * 100).toInt()}%',
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+            const Text(
+              'Complete',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeartRateDisplay() {
+    return ScaleTransition(
+      scale: _pulseAnimation,
+      child: Container(
+        width: 150,
+        height: 150,
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            colors: [
+              Colors.red.withOpacity(0.1),
+              Colors.red.withOpacity(0.05),
+              Colors.transparent,
+            ],
+          ),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.red.withOpacity(0.3), width: 2),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.favorite,
+              color: Colors.red,
+              size: 40,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _currentHeartRate > 0
+                  ? _currentHeartRate.toStringAsFixed(0)
+                  : '--',
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            const Text(
+              'BPM',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimer() {
+    return Column(
+      children: [
+        Text(
+          _formatTime(_remainingSeconds),
+          style: const TextStyle(
+            fontSize: 48,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textColor,
+          ),
+        ),
+        const Text(
+          'Remaining',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeartRateChart() {
+    if (_heartRateHistory.isEmpty) {
+      return Container(
+        height: 80,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Text(
+            'Collecting heart rate data...',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 80,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 5,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: AnimatedBuilder(
+        animation: _chartController,
+        builder: (_, __) => CustomPaint(
+          size: const Size.fromHeight(48),
+          painter: HeartRateChartPainter(
+            _heartRateHistory,
+            progress: _chartController.value,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultSummary() {
+    if (_result == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Baseline Heart Rate:'),
+              Text(
+                '${_result!.baselineHR.toStringAsFixed(1)} BPM',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Recording Quality:'),
+              _buildQualityChip(_result!.recordingQuality),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Duration:'),
+              Text(
+                  '${_result!.recordingDurationMinutes.toStringAsFixed(1)} min'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQualityChip(RecordingQuality quality) {
+    Color color;
+    String text;
+
+    switch (quality) {
+      case RecordingQuality.excellent:
+        color = Colors.green;
+        text = 'Excellent';
+        break;
+      case RecordingQuality.good:
+        color = Colors.green;
+        text = 'Good';
+        break;
+      case RecordingQuality.fair:
+        color = Colors.orange;
+        text = 'Fair';
+        break;
+      default:
+        color = Colors.red;
+        text = 'Poor';
+    }
+
+    return Chip(
+      label: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      backgroundColor: color.withOpacity(0.1),
+      side: BorderSide(color: color.withOpacity(0.3)),
+    );
+  }
+
+  Widget _buildErrorMessage() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStartButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: _isRecording ? null : _startRecording,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.play_arrow, color: Colors.white),
+            SizedBox(width: 8),
+            Text(
+              'Start Recording',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStopButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed:
+            (_remainingSeconds <= 0 || _isFinishing) ? null : _stopRecording,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_remainingSeconds <= 0 || _isFinishing) ...[
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Finishing…',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ] else ...[
+              const Icon(Icons.stop, color: Colors.white),
+              const SizedBox(width: 8),
+              const Text(
+                'Stop Recording',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletionDialog() {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.check_circle,
+            size: 64,
+            color: Colors.green,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Baseline Recorded!',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your resting heart rate: ${_result?.baselineHR.toStringAsFixed(1)} BPM',
+            style: const TextStyle(fontSize: 16),
+          ),
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context); // Close dialog
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text(
+            'Continue',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showInsufficientDataDialog(String errorMessage) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.warning,
+              size: 64,
+              color: Colors.orange,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Recording Incomplete',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage,
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          // Cancel button: abort any ongoing recording and return to preparation UI
+          OutlinedButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await _deviceService.abortBaselineRecording();
+              if (!mounted) return;
+              setState(() {
+                _errorMessage = null;
+                _isRecording = false;
+                _isFinishing = false;
+                _isComplete = false;
+                _heartRateHistory.clear();
+                _remainingSeconds = 0;
+              });
+            },
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.grey.shade300),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          // Try Again button: just dismiss the dialog and keep user on the selection UI
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await _deviceService.abortBaselineRecording();
+              if (!mounted) return;
+              setState(() {
+                _errorMessage = null;
+                _isRecording = false;
+                _isFinishing = false;
+                _isComplete = false;
+                _heartRateHistory.clear();
+                _remainingSeconds = 0;
+              });
+              // User can now press Start again manually; no hidden auto-retry
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Try Again',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Custom painter for heart rate chart
+class HeartRateChartPainter extends CustomPainter {
+  final List<double> heartRateData;
+  final double progress; // 0..1 for animated reveal
+
+  HeartRateChartPainter(this.heartRateData, {this.progress = 1.0});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (heartRateData.isEmpty) return;
+
+    // Gradient stroke
+    final gradient = LinearGradient(
+      colors: [Colors.redAccent, Colors.red],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+    );
+    final rect = Offset.zero & size;
+
+    final strokePaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    // Glow effect under the line
+    final glowPaint = Paint()
+      ..color = Colors.redAccent.withOpacity(0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final path = Path();
+    final maxHR = heartRateData.reduce((a, b) => a > b ? a : b);
+    final minHR = heartRateData.reduce((a, b) => a < b ? a : b);
+    final hrRange = maxHR - minHR;
+
+    final visibleCount = (heartRateData.length * progress)
+        .clamp(0, heartRateData.length)
+        .toInt();
+    final count =
+        visibleCount > 1 ? visibleCount : (heartRateData.isNotEmpty ? 1 : 0);
+
+    // Smooth with simple Catmull-Rom-like segments
+    Offset? prevPoint;
+    for (int i = 0; i < count; i++) {
+      final x = (i / (heartRateData.length - 1)) * size.width;
+      final normalizedHR =
+          hrRange > 0 ? (heartRateData[i] - minHR) / hrRange : 0.5;
+      final y = size.height - (normalizedHR * size.height);
+
+      final point = Offset(x, y);
+      if (prevPoint == null) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        // Quadratic bezier to smooth the line
+        final control = Offset((prevPoint.dx + point.dx) / 2, prevPoint.dy);
+        path.quadraticBezierTo(control.dx, control.dy, point.dx, point.dy);
+      }
+      prevPoint = point;
+    }
+
+    // Draw glow then main stroke
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, strokePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}

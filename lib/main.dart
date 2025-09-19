@@ -24,6 +24,10 @@ import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
 import 'grounding_screen.dart';
+import 'screens/device_linking_screen.dart';
+import 'screens/device_setup_wizard_screen.dart';
+import 'screens/baseline_recording_screen.dart';
+import 'screens/health_dashboard_screen.dart';
 
 // Global completer to signal when services finish initialization (replaces polling bool)
 final Completer<void> servicesInitializedCompleter = Completer<void>();
@@ -481,6 +485,10 @@ class _MyAppState extends State<MyApp> {
         '/notifications': (context) => const NotificationsScreen(),
         '/breathing': (context) => const BreathingScreen(),
         '/grounding': (context) => const GroundingScreen(),
+        '/device-linking': (context) => const DeviceLinkingScreen(),
+        '/device-setup-wizard': (context) => const DeviceSetupWizardScreen(),
+        '/baseline-recording': (context) => const BaselineRecordingScreen(),
+        '/health-dashboard': (context) => const HealthDashboardScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/verify-reset-code') {

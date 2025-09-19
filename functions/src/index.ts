@@ -4,6 +4,13 @@ import * as admin from "firebase-admin";
 // Initialize Firebase Admin SDK
 admin.initializeApp();
 
+// Import and export data cleanup functions
+export {
+  cleanupHealthData,
+  aggregateHealthDataHourly,
+  monitorFirebaseUsage,
+} from "./dataCleanup";
+
 // Interface for anxiety data structure
 interface AnxietyData {
   severity: string;

@@ -295,6 +295,183 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _showHealthMonitoringOptions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.6,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3AA772).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.favorite,
+                            color: Color(0xFF3AA772),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Health Monitoring',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Connect and monitor your health metrics',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Options
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  children: [
+                    _buildHealthOption(
+                      title: 'Link Device',
+                      subtitle: 'Connect your wearable device',
+                      icon: Icons.link,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/device-linking');
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHealthOption(
+                      title: 'Health Dashboard',
+                      subtitle: 'View real-time health metrics',
+                      icon: Icons.dashboard,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/health-dashboard');
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHealthOption(
+                      title: 'Record Baseline',
+                      subtitle: 'Set your resting heart rate baseline',
+                      icon: Icons.monitor_heart,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/baseline-recording');
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHealthOption({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3AA772).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: const Color(0xFF3AA772),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.grey[400],
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showMoodTracker() {
     showModalBottomSheet(
       context: context,
@@ -1910,11 +2087,138 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildHealthMonitoringCard(bool isActive) {
+    return GestureDetector(
+      onTap: _showHealthMonitoringOptions,
+      child: _buildHealthMonitoringCardContent(isActive: isActive),
+    );
+  }
+
+  Widget _buildHealthMonitoringCardContent({required bool isActive}) {
+    return Container(
+      padding: EdgeInsets.all(screenWidth * 0.05),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF3AA772), // AnxieEase primary green
+            const Color(0xFF2E8B57), // Darker green
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(screenWidth * 0.05),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF3AA772).withOpacity(isActive ? 0.35 : 0.18),
+            blurRadius: isActive ? 22 : 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.03,
+                    vertical: screenHeight * 0.008,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.05),
+                  ),
+                  child: Text(
+                    'Monitor',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: screenWidth * 0.035,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.015),
+                Text(
+                  'Health Tracking',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.055,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.01),
+                Text(
+                  'Connect your wearable device',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: screenWidth * 0.035,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedBuilder(
+            animation:
+                _breathingController ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, _) {
+              final v = _breathingController?.value ?? 0.0;
+              final ringScale = isActive ? (0.92 + 0.16 * v) : 1.0;
+              final circleScale = isActive ? (0.98 + 0.04 * v) : 1.0;
+              final dy = isActive ? ((v * 2 - 1) * -3) : 0.0;
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: ringScale,
+                    child: Container(
+                      width: screenWidth * 0.22,
+                      height: screenWidth * 0.22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color:
+                              Colors.white.withOpacity(isActive ? 0.35 : 0.0),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Transform.translate(
+                    offset: Offset(0, dy),
+                    child: Transform.scale(
+                      scale: circleScale,
+                      child: Container(
+                        width: screenWidth * 0.2,
+                        height: screenWidth * 0.2,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.favorite,
+                          color: Colors.white,
+                          size: screenWidth * 0.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTechniqueCarousel() {
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setCarouselState) {
         // Number of technique cards
-        const int techniquesCount = 2;
+        const int techniquesCount = 3;
 
         return Column(
           children: [
@@ -2000,7 +2304,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           EdgeInsets.symmetric(horizontal: screenWidth * 0.02),
                       child: index == 0
                           ? _buildBreathingCard(isCurrentPage)
-                          : _buildGroundingCard(isCurrentPage),
+                          : index == 1
+                              ? _buildGroundingCard(isCurrentPage)
+                              : _buildHealthMonitoringCard(isCurrentPage),
                     ),
                   );
                 },

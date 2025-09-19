@@ -135,8 +135,14 @@ class _WatchScreenState extends State<WatchScreen>
               _showSuccess('Monitoring active - Firebase data connected!');
             }
 
+            // If not worn, clear vitals to avoid misleading UI
+            if (!isDeviceWorn) {
+              heartRateValue = null;
+              spo2Value = null;
+            }
+
             debugPrint(
-                '📊 Wearable: Updated IoT data - HR: $heartRateValue, SpO2: $spo2Value, Battery: $batteryPercentage, Worn: $isDeviceWorn');
+                '📊 Wearable: Updated IoT data - HR: ${heartRateValue ?? '-'} , SpO2: ${spo2Value ?? '-'}, Battery: $batteryPercentage, Worn: $isDeviceWorn');
           });
           // Update pulse speed based on latest values
           _updateHeartbeatAnimation();

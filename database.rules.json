@@ -1,6 +1,41 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    "health_metrics": {
+      "$userId": {
+        "$deviceId": {
+          "current": {
+            ".write": "auth != null && auth.uid == $userId",
+            ".read": "auth != null && auth.uid == $userId"
+          },
+          "history": {
+            "$timestamp": {
+              ".write": "auth != null && auth.uid == $userId && now - parseInt($timestamp) < 86400000",
+              ".read": "auth != null && auth.uid == $userId",
+              ".validate": "now - parseInt($timestamp) < 86400000"
+            }
+          },
+          "hourly_summary": {
+            "$hour": {
+              ".write": "auth != null && auth.uid == $userId",
+              ".read": "auth != null && auth.uid == $userId",
+              ".validate": "now - parseInt($hour) < 604800000"
+            }
+          },
+          "alerts": {
+            "$timestamp": {
+              ".write": "auth != null && auth.uid == $userId",
+              ".read": "auth != null && auth.uid == $userId",
+              ".validate": "now - parseInt($timestamp) < 2592000000"
+            }
+          }
+        }
+      }
+    },
+    "device_status": {
+      "$deviceId": {
+        ".write": "auth != null",
+        ".read": "auth != null"
+      }
+    }
   }
 }
