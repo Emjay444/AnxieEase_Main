@@ -4,7 +4,13 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'services/notification_service.dart';
 import 'services/iot_sensor_service.dart';
+import 'providers/auth_provider.dart';
+import 'services/supabase_service.dart';
 
+/// Real-time health metrics dashboard integrated as wearable screen
+///
+/// Displays live HR, baseline HR, temperature, SpO2, and movement data
+/// with beautiful modern UI components and real-time updates.
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
 
@@ -13,32 +19,39 @@ class WatchScreen extends StatefulWidget {
 }
 
 class _WatchScreenState extends State<WatchScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  bool isDeviceWorn = false;
-  late NotificationService _notificationService;
+    with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _fadeController;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _fadeAnimation;
 
-  // IoT Sensor Data - Current readings
+  Timer? _refreshTimer;
+  bool _isInitialized = false;
+  String? _errorMessage;
+
+  // Legacy IoT service integration
+  late NotificationService _notificationService;
+  late IoTSensorService _iotSensorService;
+  
+  // Health metrics data
   double? spo2Value;
   double? bodyTempValue;
   double? ambientTempValue;
   double? heartRateValue;
+  double? baselineHR;
   double batteryPercentage = 85.0;
+  bool isDeviceWorn = false;
   bool isConnected = false;
   bool _hasRealtimeData = false;
+  bool _isMonitoringActive = false;
+  bool _isDeviceSetup = false;
 
-  // Connection states: 'disconnected', 'connecting', 'connected', 'no_connection'
+  // Connection states
   String _connectionState = 'disconnected';
 
   // Firebase references and listeners
   StreamSubscription? _iotDataSubscription;
   late DatabaseReference _currentDataRef;
-
-  // IoT Sensor Service
-  late IoTSensorService _iotSensorService;
-
-  // Monitoring state
-  bool _isMonitoringActive = false;
 
   // Firebase validation timer
   Timer? _firebaseValidationTimer;
@@ -64,133 +77,187 @@ class _WatchScreenState extends State<WatchScreen>
   @override
   void initState() {
     super.initState();
-
-    // Get services from Provider
-    _notificationService =
-        Provider.of<NotificationService>(context, listen: false);
-    _iotSensorService = Provider.of<IoTSensorService>(context, listen: false);
-
-    // Listen to IoT Sensor Service changes
-    _iotSensorService.addListener(_onIoTSensorChanged);
-
-    // Initialize IoT service
-    _initializeIoTService();
-
-    // Heartbeat animation controller (speed adapts to BPM)
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 900),
-      vsync: this,
-    );
-    _controller.repeat(reverse: true);
-
-    // Initialize Firebase references
-    _currentDataRef =
-        FirebaseDatabase.instance.ref().child('devices/AnxieEase001/current');
-
-    // Listen to real-time current data updates
-    _iotDataSubscription = _currentDataRef.onValue.listen((event) {
-      if (event.snapshot.value != null) {
-        try {
-          final data = event.snapshot.value as Map<dynamic, dynamic>;
-          setState(() {
-            // Extract sensor data
-            final spo2Parsed = _asDouble(data['spo2']);
-            if (spo2Parsed != null) spo2Value = spo2Parsed;
-
-            final bodyTempParsed = _asDouble(data['bodyTemp']);
-            if (bodyTempParsed != null) bodyTempValue = bodyTempParsed;
-
-            final ambientTempParsed = _asDouble(data['ambientTemp']);
-            if (ambientTempParsed != null) ambientTempValue = ambientTempParsed;
-
-            final hrParsed = _asDouble(data['heartRate']);
-            if (hrParsed != null) heartRateValue = hrParsed;
-
-            // Extract device status and battery data
-            final battParsed = _asDouble(data['battPerc']);
-            if (battParsed != null) {
-              batteryPercentage = battParsed;
-            }
-
-            final wornParsed = _asBool(data['worn']);
-            if (wornParsed != null) {
-              isDeviceWorn =
-                  wornParsed; // Always use actual worn state from Firebase
-            }
-
-            // Update connection status
-            isConnected = _iotSensorService.isConnected;
-
-            // Mark that we have received live data
-            final wasFirstData = !_hasRealtimeData;
-            _hasRealtimeData = (hrParsed != null) ||
-                (spo2Parsed != null) ||
-                (bodyTempParsed != null) ||
-                (battParsed != null);
-
-            // If this is the first data and monitoring is active, show success and update connection state
-            if (wasFirstData && _hasRealtimeData && _isMonitoringActive) {
-              _firebaseValidationTimer?.cancel();
-              _connectionState = 'connected';
-              _showSuccess('Monitoring active - Firebase data connected!');
-            }
-
-            // If not worn, clear vitals to avoid misleading UI
-            if (!isDeviceWorn) {
-              heartRateValue = null;
-              spo2Value = null;
-            }
-
-            debugPrint(
-                '📊 Wearable: Updated IoT data - HR: ${heartRateValue ?? '-'} , SpO2: ${spo2Value ?? '-'}, Battery: $batteryPercentage, Worn: $isDeviceWorn');
-          });
-          // Update pulse speed based on latest values
-          _updateHeartbeatAnimation();
-        } catch (e) {
-          debugPrint('Error parsing IoT data: $e');
-        }
-      }
-    });
-
-    // Listen to NotificationService changes for heart rate updates
-    _notificationService.addListener(_updateUI);
+    _initializeAnimations();
+    _initializeService();
+    _startPeriodicRefresh();
   }
 
-  // Update the heartbeat animation speed based on current BPM and state
-  void _updateHeartbeatAnimation() {
-    final worn = isDeviceWorn;
-    final connected = isConnected;
-    final hr = (heartRateValue ?? 0).toDouble();
+  void _initializeAnimations() {
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
 
-    if (!connected || !worn || hr <= 0) {
-      if (_controller.isAnimating) {
-        _controller.stop();
-        _controller.value = 0.0;
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.1,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    ));
+
+    _fadeController.forward();
+  }
+
+  Future<void> _initializeService() async {
+    try {
+      // Get services from Provider
+      _notificationService =
+          Provider.of<NotificationService>(context, listen: false);
+      _iotSensorService = Provider.of<IoTSensorService>(context, listen: false);
+
+      // Check if device is setup (you can modify this logic based on your app's requirements)
+      await _checkDeviceSetup();
+
+      // Listen to IoT Sensor Service changes
+      _iotSensorService.addListener(_onIoTSensorChanged);
+
+      // Initialize IoT service
+      await _initializeIoTService();
+
+      // Initialize Firebase references
+      _currentDataRef =
+          FirebaseDatabase.instance.ref().child('devices/AnxieEase001/current');
+
+      // Listen to real-time current data updates
+      _iotDataSubscription = _currentDataRef.onValue.listen((event) {
+        if (event.snapshot.value != null) {
+          try {
+            final data = event.snapshot.value as Map<dynamic, dynamic>;
+            setState(() {
+              // Extract sensor data
+              final spo2Parsed = _asDouble(data['spo2']);
+              if (spo2Parsed != null) spo2Value = spo2Parsed;
+
+              final bodyTempParsed = _asDouble(data['bodyTemp']);
+              if (bodyTempParsed != null) bodyTempValue = bodyTempParsed;
+
+              final ambientTempParsed = _asDouble(data['ambientTemp']);
+              if (ambientTempParsed != null) ambientTempValue = ambientTempParsed;
+
+              final hrParsed = _asDouble(data['heartRate']);
+              if (hrParsed != null) heartRateValue = hrParsed;
+
+              // Extract device status and battery data
+              final battParsed = _asDouble(data['battPerc']);
+              if (battParsed != null) {
+                batteryPercentage = battParsed;
+              }
+
+              final wornParsed = _asBool(data['worn']);
+              if (wornParsed != null) {
+                isDeviceWorn = wornParsed;
+              }
+
+              // Update connection status
+              isConnected = _iotSensorService.isConnected;
+
+              // Mark that we have received live data
+              final wasFirstData = !_hasRealtimeData;
+              _hasRealtimeData = (hrParsed != null) ||
+                  (spo2Parsed != null) ||
+                  (bodyTempParsed != null) ||
+                  (battParsed != null);
+
+              // If this is the first data and monitoring is active, show success and update connection state
+              if (wasFirstData && _hasRealtimeData && _isMonitoringActive) {
+                _firebaseValidationTimer?.cancel();
+                _connectionState = 'connected';
+              }
+
+              // If not worn, clear vitals to avoid misleading UI
+              if (!isDeviceWorn) {
+                heartRateValue = null;
+                spo2Value = null;
+              }
+            });
+            // Update pulse speed based on latest values
+            _updatePulseAnimation();
+          } catch (e) {
+            debugPrint('Error parsing IoT data: $e');
+          }
+        }
+      });
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      // Start pulse animation if heart rate is available
+      _updatePulseAnimation();
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to initialize: $e';
+      });
+    }
+  }
+
+  void _updatePulseAnimation() {
+    if (heartRateValue != null && heartRateValue! > 0) {
+      if (!_pulseController.isAnimating) {
+        _pulseController.repeat(reverse: true);
       }
-      return;
+    } else {
+      _pulseController.stop();
+      _pulseController.reset();
     }
+  }
 
-    // Compute cycle duration: one full beat per heartbeat; clamp for UX
-    final bpm = hr.clamp(40, 160);
-    final cycleMs = (60000 / bpm).clamp(350, 1200).toInt();
-    final halfCycle = Duration(milliseconds: cycleMs ~/ 2);
+  /// Check if device is properly setup
+  Future<void> _checkDeviceSetup() async {
+    try {
+      // Check if user has any linked devices in Supabase
+      final user = Provider.of<AuthProvider>(context, listen: false).currentUser;
+      if (user != null) {
+        final supabaseService = SupabaseService();
+        final response = await supabaseService.client
+            .from('wearable_devices')
+            .select('device_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true);
+        
+        // Device is setup if user has at least one active device
+        _isDeviceSetup = response.isNotEmpty;
+        debugPrint('Device setup check: ${_isDeviceSetup ? "Device linked" : "No device linked"}');
+      } else {
+        _isDeviceSetup = false;
+        debugPrint('Device setup check: No user authenticated');
+      }
+    } catch (e) {
+      // Fallback to IoT service check if database query fails
+      _isDeviceSetup = _iotSensorService.deviceId.isNotEmpty && 
+                       _iotSensorService.deviceId != 'Unknown';
+      debugPrint('Device setup check fallback: $_isDeviceSetup (error: $e)');
+    }
+  }
 
-    if (_controller.duration != halfCycle) {
-      _controller.duration = halfCycle;
-    }
-    if (!_controller.isAnimating) {
-      _controller.repeat(reverse: true);
-    }
+  void _startPeriodicRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) {
+        setState(() {}); // Refresh UI
+      }
+    });
   }
 
   /// Initialize IoT Sensor Service
   Future<void> _initializeIoTService() async {
-    debugPrint('🔧 Wearable: Initializing IoT Sensor Service...');
-
     try {
       await _iotSensorService.initialize();
       // Ensure initial animation reflects current state
-      _updateHeartbeatAnimation();
+      _updatePulseAnimation();
 
       // Update monitoring state
       setState(() {
@@ -200,8 +267,6 @@ class _WatchScreenState extends State<WatchScreen>
           _hasRealtimeData = false;
         }
       });
-
-      debugPrint('✅ Wearable: IoT Sensor Service initialized');
     } catch (e) {
       debugPrint('❌ Wearable: Error initializing IoT service: $e');
     }
@@ -228,34 +293,22 @@ class _WatchScreenState extends State<WatchScreen>
       });
     }
     // Ensure animation reflects any state changes
-    _updateHeartbeatAnimation();
-  }
-
-  void _updateUI() {
-    if (mounted) {
-      setState(() {
-        // This will trigger a rebuild when heart rate changes
-      });
-    }
+    _updatePulseAnimation();
   }
 
   /// Start IoT sensor monitoring
   Future<void> _startIoTMonitoring() async {
-    debugPrint('🚀 Wearable: Starting IoT monitoring...');
-
     try {
       setState(() {
-        _hasRealtimeData = false; // reset until first RTDB event arrives
-        _connectionState = 'connecting'; // show connecting state immediately
-        _isMonitoringActive = true; // set monitoring active immediately
+        _hasRealtimeData = false;
+        _connectionState = 'connecting';
+        _isMonitoringActive = true;
       });
       await _iotSensorService.startSensors();
-      debugPrint('🚀 Wearable: IoT monitoring started successfully');
 
       // Start validation timer to check if Firebase data arrives
       _startFirebaseValidation();
     } catch (e) {
-      debugPrint('❌ Wearable: Error starting IoT monitoring: $e');
       setState(() {
         _connectionState = 'disconnected';
       });
@@ -275,22 +328,17 @@ class _WatchScreenState extends State<WatchScreen>
         setState(() {
           _connectionState = 'no_connection';
         });
-        _showWarning(
-            'Monitoring started but no Firebase data detected. Check connection.');
       } else if (_hasRealtimeData) {
         // Firebase data flowing - show connected state
         setState(() {
           _connectionState = 'connected';
         });
-        _showSuccess('Monitoring active - Firebase data connected!');
       }
     });
   }
 
   /// Stop IoT sensor monitoring
   Future<void> _stopIoTMonitoring() async {
-    debugPrint('🛑 Wearable: Stopping IoT monitoring...');
-
     try {
       // Cancel any pending validation
       _firebaseValidationTimer?.cancel();
@@ -303,12 +351,7 @@ class _WatchScreenState extends State<WatchScreen>
         _hasRealtimeData = false;
         _isMonitoringActive = false;
       });
-
-      debugPrint('🛑 Wearable: IoT monitoring stopped successfully');
-
-      _showSuccess('IoT monitoring stopped');
     } catch (e) {
-      debugPrint('❌ Wearable: Error stopping IoT monitoring: $e');
       setState(() {
         _connectionState = 'disconnected';
         _isMonitoringActive = false;
@@ -316,8 +359,6 @@ class _WatchScreenState extends State<WatchScreen>
       _showError('Failed to stop IoT monitoring: $e');
     }
   }
-
-  // Simulate stress event method removed per user request
 
   // Connection status helper methods
   IconData _getConnectionIcon() {
@@ -359,8 +400,6 @@ class _WatchScreenState extends State<WatchScreen>
     }
   }
 
-  // History features removed per request
-
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -385,24 +424,13 @@ class _WatchScreenState extends State<WatchScreen>
     }
   }
 
-  void _showWarning(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
-  }
-
   @override
   void dispose() {
-    _controller.dispose();
+    _pulseController.dispose();
+    _fadeController.dispose();
+    _refreshTimer?.cancel();
     _iotDataSubscription?.cancel();
     _firebaseValidationTimer?.cancel();
-    _notificationService.removeListener(_updateUI);
     _iotSensorService.removeListener(_onIoTSensorChanged);
     super.dispose();
   }
@@ -410,587 +438,344 @@ class _WatchScreenState extends State<WatchScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wearable'),
-        centerTitle: true,
+      backgroundColor: Colors.grey[50],
+      appBar: _buildAppBar(),
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: _isInitialized ? _buildDashboard() : _buildLoadingView(),
       ),
-      body: _buildLiveDataTab(),
     );
   }
 
-  /// Build the live data tab with current sensor readings
-  Widget _buildLiveDataTab() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.teal.shade50,
-            Colors.white,
-            Colors.teal.shade50,
-          ],
-          stops: const [0.0, 0.3, 1.0],
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: const Text(
+        'Health Dashboard',
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
         ),
       ),
-      child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildEnhancedTopStatus(),
-                  const SizedBox(height: 12),
-                  _buildResponsiveHeartDialSection(constraints),
-                  const SizedBox(height: 12),
-                  _buildEnhancedStatsGrid(context),
-                  const SizedBox(height: 12),
-                  _buildEnhancedControlsBar(context),
-                  const SizedBox(height: 16),
-                  _buildEnhancedDeviceStatus(),
-                  const SizedBox(height: 16),
-                ],
+      backgroundColor: const Color(0xFF3AA772),
+      elevation: 0,
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 16),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  // Ensure the heart dial is sized responsively to avoid vertical overflow
-  Widget _buildResponsiveHeartDialSection(BoxConstraints constraints) {
-    final width = constraints.maxWidth;
-    // Choose a size that fits on small screens but looks great on larger ones
-    double size = width * 0.9; // 90% of width
-    if (size > 340) size = 340; // slightly smaller max to free vertical space
-    if (size < 200) size = 200; // allow a bit smaller on tiny screens
-
-    return Center(
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: _buildEnhancedHeartDial(context),
-      ),
-    );
-  }
-
-  // History tab removed per request
-
-  // Removed legacy _buildTopStatus (superseded by _buildEnhancedTopStatus)
-
-  /// Enhanced top status with modern design and animations
-  Widget _buildEnhancedTopStatus() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            Colors.teal.shade50,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.teal.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Connection Status
-          Expanded(
-            child: _buildEnhancedStatusCard(
-              icon: _getConnectionIcon(),
-              label: _getConnectionLabel(),
-              color: _getConnectionColor(),
-              isActive: _connectionState != 'disconnected',
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Worn Status
-          Expanded(
-            child: _buildEnhancedStatusCard(
-              icon: isDeviceWorn ? Icons.watch : Icons.watch_off,
-              label: isDeviceWorn ? 'Worn' : 'Not Worn',
-              color: isDeviceWorn ? Colors.blue : Colors.grey,
-              isActive: isDeviceWorn,
-            ),
-          ),
-          // Battery card removed (redundant with stats below)
-        ],
-      ),
-    );
-  }
-
-  /// Enhanced status card widget
-  Widget _buildEnhancedStatusCard({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required bool isActive,
-  }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isActive
-              ? [color.withOpacity(0.1), color.withOpacity(0.05)]
-              : [Colors.grey.withOpacity(0.1), Colors.grey.withOpacity(0.05)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color:
-              isActive ? color.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? color.withOpacity(0.15)
-                  : Colors.grey.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: isActive ? color : Colors.grey,
-              size: 20,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.grey[800] : Colors.grey[600],
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Battery top card removed as redundant
-
-  /// Enhanced heart rate dial with pulse animation and zone indicators
-  Widget _buildEnhancedHeartDial(BuildContext context) {
-    final connected = _connectionState == 'connected';
-    final worn = isDeviceWorn;
-    final hr =
-        (connected && worn && _hasRealtimeData) ? (heartRateValue ?? 0) : 0;
-    final display =
-        (connected && worn && _hasRealtimeData && heartRateValue != null)
-            ? heartRateValue!.round().toString()
-            : '--';
-    final color = (connected && worn && _hasRealtimeData)
-        ? _hrColor(hr.toDouble())
-        : Colors.grey;
-    final normalized = (hr.clamp(40, 160) - 40) / (160 - 40);
-
-    // Heart rate zones based on connection state
-    final zone = _connectionState == 'disconnected'
-        ? 'Disconnected'
-        : _connectionState == 'connecting'
-            ? 'Connecting'
-            : _connectionState == 'no_connection'
-                ? 'No Connection'
-                : !_hasRealtimeData
-                    ? 'No Data Yet'
-                    : !worn
-                        ? 'Not Worn'
-                        : hr <= 60
-                            ? 'Resting'
-                            : hr <= 85
-                                ? 'Normal'
-                                : hr <= 120
-                                    ? 'Elevated'
-                                    : 'High';
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          colors: [
-            Colors.white,
-            color.withOpacity(0.05),
-          ],
-        ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.2),
-            blurRadius: 20,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (ctx, c) {
-          final size = c.maxWidth * 0.8;
-          return Center(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer ring with pulse animation
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    final pulseScale = 1.0 + (_controller.value * 0.06);
-                    return Transform.scale(
-                      scale: (connected && worn && _hasRealtimeData && hr > 0)
-                          ? pulseScale
-                          : 1.0,
-                      child: SizedBox(
-                        width: size,
-                        height: size,
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: normalized.toDouble()),
-                          duration: const Duration(milliseconds: 1200),
-                          curve: Curves.easeOutCubic,
-                          builder: (context, value, _) =>
-                              CircularProgressIndicator(
-                            value: value.isNaN ? 0 : value,
-                            strokeWidth: 16,
-                            backgroundColor: Colors.grey.withOpacity(0.1),
-                            valueColor: AlwaysStoppedAnimation<Color>(color),
-                            strokeCap: StrokeCap.round,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                // Inner content
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Pulsing heart icon
-                    AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        final heartScale = 1.0 + (_controller.value * 0.12);
-                        return Transform.scale(
-                          scale:
-                              (connected && worn && _hasRealtimeData && hr > 0)
-                                  ? heartScale
-                                  : 1.0,
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.favorite,
-                              color: color,
-                              size: 32,
-                            ),
-                          ),
-                        );
-                      },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isConnected ? Colors.green : Colors.orange,
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(height: 12),
-                    // Heart rate value (beats with the heart)
-                    AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        final beatScale = 1.0 + (_controller.value * 0.06);
-                        return Transform.scale(
-                          scale:
-                              (connected && worn && _hasRealtimeData && hr > 0)
-                                  ? beatScale
-                                  : 1.0,
-                          child: Text(
-                            display,
-                            style: Theme.of(context)
-                                .textTheme
-                                .displayLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: color,
-                                  fontSize: 48,
-                                ),
-                          ),
-                        );
-                      },
-                    ),
-                    // BPM label
+                  ),
+                  if (_isDeviceSetup && _iotSensorService.deviceId.isNotEmpty) ...[
+                    const SizedBox(width: 6),
                     Text(
-                      'BPM',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Heart rate zone
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: color.withOpacity(0.3)),
-                      ),
-                      child: Text(
-                        zone,
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
+                      _iotSensorService.deviceId,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
-                ),
-              ],
+                ],
+              ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  /// Enhanced stats grid with modern card design
-  Widget _buildEnhancedStatsGrid(BuildContext context) {
-    final width =
-        MediaQuery.of(context).size.width - 32; // account for page padding
-    final itemWidth = (width - (12 * 2)) / 3; // two gaps between three columns
-    // Height tuned to fit icon, value, label comfortably on small devices
-    final mainExtent = (itemWidth * 1.35).clamp(124.0, 160.0);
-
-    return GridView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        mainAxisExtent: mainExtent,
-      ),
-      children: [
-        _buildEnhancedStatCard(
-          label: 'SpO2',
-          value: (isConnected &&
-                  _hasRealtimeData &&
-                  isDeviceWorn &&
-                  spo2Value != null &&
-                  spo2Value! > 0)
-              ? '${spo2Value!.round()}%'
-              : '--',
-          icon: Icons.air,
-          color: (isConnected && _hasRealtimeData && isDeviceWorn)
-              ? Colors.blue
-              : Colors.grey,
-          active: (isConnected && _hasRealtimeData && isDeviceWorn),
-        ),
-        _buildEnhancedStatCard(
-          label: 'Body Temp',
-          value: (isConnected &&
-                  _hasRealtimeData &&
-                  isDeviceWorn &&
-                  bodyTempValue != null &&
-                  bodyTempValue! > 0)
-              ? '${bodyTempValue!.toStringAsFixed(1)}°C'
-              : '--',
-          icon: Icons.thermostat,
-          color: (isConnected && _hasRealtimeData && isDeviceWorn)
-              ? Colors.orange
-              : Colors.grey,
-          active: (isConnected && _hasRealtimeData && isDeviceWorn),
-        ),
-        _buildEnhancedStatCard(
-          label: 'Battery',
-          value: (isConnected && _hasRealtimeData && isDeviceWorn)
-              ? '${batteryPercentage.round()}%'
-              : '--',
-          icon: Icons.battery_full,
-          color: (isConnected && _hasRealtimeData && isDeviceWorn)
-              ? Colors.green
-              : Colors.grey,
-          active: (isConnected && _hasRealtimeData && isDeviceWorn),
+          ),
         ),
       ],
     );
   }
 
-  /// Enhanced stat card with gradient and animations
-  Widget _buildEnhancedStatCard({
-    required String label,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required bool active,
-  }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+  Widget _buildLoadingView() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3AA772)),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Initializing health dashboard...',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboard() {
+    if (_errorMessage != null) {
+      return _buildErrorView();
+    }
+
+    if (!_isDeviceSetup) {
+      return _buildDeviceSetupView();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      color: const Color(0xFF3AA772),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Device status card
+            _buildDeviceStatusCard(),
+            const SizedBox(height: 24),
+
+            // Main metrics grid
+            _buildMainMetricsGrid(),
+            const SizedBox(height: 24),
+
+            // Heart rate section
+            _buildHeartRateSection(),
+            const SizedBox(height: 24),
+
+            // Control buttons
+            _buildControlButtons(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red[400],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Something went wrong',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage!,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _errorMessage = null;
+                });
+                _initializeService();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeviceSetupView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.watch,
+                size: 80,
+                color: Colors.blue.shade600,
+              ),
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Device Setup Required',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Connect your wearable device to start tracking your health metrics in real-time.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.black54,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Setup Steps:',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSetupStep(1, 'Turn on your wearable device'),
+                  _buildSetupStep(2, 'Enable Bluetooth on your phone'),
+                  _buildSetupStep(3, 'Tap "Setup Device" to connect'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  // Navigate to device setup or pairing screen
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Device setup not implemented yet'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Setup Device',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isDeviceSetup = true; // Temporary skip for testing
+                });
+              },
+              child: Text(
+                'Skip for now',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSetupStep(int number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade600,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceStatusCard() {
+    return Container(
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: active
-              ? [Colors.white, color.withOpacity(0.05)]
-              : [Colors.grey[50]!, Colors.grey[100]!],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: active ? color.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
-          width: 1.5,
-        ),
-        boxShadow: active
-            ? [
-                BoxShadow(
-                  color: color.withOpacity(0.15),
-                  blurRadius: 15,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Icon container with background
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: active
-                      ? [color.withOpacity(0.2), color.withOpacity(0.1)]
-                      : [
-                          Colors.grey.withOpacity(0.2),
-                          Colors.grey.withOpacity(0.1)
-                        ],
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: active ? color : Colors.grey,
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Value
-            Text(
-              value,
-              style: TextStyle(
-                color: active ? color : Colors.grey,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            // Label
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? Colors.grey[700] : Colors.grey[500],
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Enhanced controls bar with modern button design
-  Widget _buildEnhancedControlsBar(BuildContext context) {
-    return Row(
-      children: [
-        // Primary action button (Start/Stop)
-        Expanded(
-          flex: 2,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: _isMonitoringActive
-                  ? _stopIoTMonitoring
-                  : _startIoTMonitoring,
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isMonitoringActive ? Icons.stop : Icons.play_arrow,
-                  size: 20,
-                ),
-              ),
-              label: Text(
-                _isMonitoringActive ? 'Stop Monitoring' : 'Start Monitoring',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isMonitoringActive ? Colors.red : Colors.teal,
-                foregroundColor: Colors.white,
-                elevation: _isMonitoringActive ? 8 : 4,
-                shadowColor: (_isMonitoringActive ? Colors.red : Colors.teal)
-                    .withOpacity(0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Simulator button removed per user request
-      ],
-    );
-  }
-
-  /// Enhanced device status with modern design and real-time indicators
-  Widget _buildEnhancedDeviceStatus() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
           colors: [
-            Colors.white,
-            Colors.grey.shade50,
+            const Color(0xFF3AA772),
+            const Color(0xFF3AA772).withOpacity(0.8),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
+            color: const Color(0xFF3AA772).withOpacity(0.3),
+            spreadRadius: 2,
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -1001,127 +786,405 @@ class _WatchScreenState extends State<WatchScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.teal.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(
-                  Icons.devices,
-                  color: Colors.teal,
-                  size: 20,
+                child: const Icon(
+                  Icons.watch,
+                  color: Colors.white,
+                  size: 32,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AnxieEase001',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _getConnectionStatusColor(),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _getConnectionStatusText(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatusItem(
+                  'Battery',
+                  '${batteryPercentage.toStringAsFixed(0)}%',
+                  Icons.battery_full,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 50,
+                color: Colors.white.withOpacity(0.3),
+              ),
+              Expanded(
+                child: _buildStatusItem(
+                  'Worn',
+                  isDeviceWorn ? 'Yes' : 'No',
+                  Icons.accessibility,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainMetricsGrid() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = (constraints.maxWidth - 16) / 2; // Account for gap
+        final cardHeight = cardWidth * 1.0; // Square aspect ratio for more space
+        
+        return GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: cardWidth / cardHeight,
+          children: [
+            _buildMetricCard(
+              title: 'Heart Rate',
+              value: heartRateValue?.toStringAsFixed(0) ?? '--',
+              unit: 'BPM',
+              icon: Icons.favorite,
+              color: Colors.red,
+              isAnimated: heartRateValue != null && heartRateValue! > 0,
+            ),
+            _buildMetricCard(
+              title: 'Baseline HR',
+              value: baselineHR?.toStringAsFixed(0) ?? '70',
+              unit: 'BPM',
+              icon: Icons.trending_flat,
+              color: const Color(0xFF3AA772),
+            ),
+            _buildMetricCard(
+              title: 'SpO₂',
+              value: spo2Value?.toStringAsFixed(0) ?? '--',
+              unit: '%',
+              icon: Icons.air,
+              color: Colors.blue,
+            ),
+            _buildMetricCard(
+              title: 'Temperature',
+              value: bodyTempValue?.toStringAsFixed(1) ?? '--',
+              unit: '°C',
+              icon: Icons.thermostat,
+              color: Colors.orange,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricCard({
+    required String title,
+    required String value,
+    required String unit,
+    required IconData icon,
+    required Color color,
+    bool isAnimated = false,
+  }) {
+    Widget cardContent = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                'Device Status',
+                value,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (isAnimated) {
+      return ScaleTransition(
+        scale: _pulseAnimation,
+        child: cardContent,
+      );
+    }
+
+    return cardContent;
+  }
+
+  Widget _buildHeartRateSection() {
+    if (heartRateValue == null || baselineHR == null) {
+      return const SizedBox.shrink();
+    }
+
+    final difference = heartRateValue! - (baselineHR ?? 70);
+    final status = _getHeartRateStatus(heartRateValue!);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.analytics, color: Color(0xFF3AA772)),
+              const SizedBox(width: 8),
+              const Text(
+                'Heart Rate Analysis',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _buildEnhancedStatusRow(
-            'Device ID',
-            _iotSensorService.deviceId,
-            Icons.fingerprint,
-            Colors.blue,
-          ),
-          _buildEnhancedStatusRow(
-            'Connection',
-            isConnected ? 'Connected' : 'Disconnected',
-            isConnected ? Icons.wifi : Icons.wifi_off,
-            isConnected ? Colors.green : Colors.red,
-          ),
-          _buildEnhancedStatusRow(
-            'Monitoring',
-            _isMonitoringActive ? 'Active' : 'Inactive',
-            _isMonitoringActive
-                ? Icons.radio_button_checked
-                : Icons.radio_button_unchecked,
-            _isMonitoringActive ? Colors.green : Colors.grey,
-          ),
-          _buildEnhancedStatusRow(
-            'Device Worn',
-            isDeviceWorn ? 'Yes' : 'No',
-            isDeviceWorn ? Icons.check_circle : Icons.cancel,
-            isDeviceWorn ? Colors.green : Colors.orange,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Current vs Baseline'),
+                  Text(
+                    '${difference > 0 ? '+' : ''}${difference.toStringAsFixed(0)} BPM',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: _getHeartRateStatusColor(status),
+                    ),
+                  ),
+                ],
+              ),
+              _buildHeartRateStatusChip(status),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// Enhanced status row with icon and color indicators
-  Widget _buildEnhancedStatusRow(
-      String label, String value, IconData icon, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
+  Widget _buildControlButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: _isMonitoringActive
+                ? _stopIoTMonitoring
+                : _startIoTMonitoring,
+            icon: Icon(
+              _isMonitoringActive ? Icons.stop : Icons.play_arrow,
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 16,
+            label: Text(
+              _isMonitoringActive ? 'Stop Monitoring' : 'Start Monitoring',
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isMonitoringActive ? Colors.red : const Color(0xFF3AA772),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: color,
-              ),
-            ),
-          ),
-        ],
+        ),
+      ],
+    );
+  }
+
+
+
+  Widget _buildHeartRateStatusChip(String status) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _getHeartRateStatusColor(status).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _getHeartRateStatusColor(status).withOpacity(0.3),
+        ),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: _getHeartRateStatusColor(status),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
 
-  Color _hrColor(double hr) {
-    if (!isDeviceWorn) return Colors.grey;
-    if (hr >= 120) return Colors.red;
-    if (hr >= 100) return Colors.orange;
-    if (hr >= 85) return Colors.amber;
+  Future<void> _refreshData() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Color _getConnectionStatusColor() {
+    if (!isConnected) return Colors.red;
+    if (!isDeviceWorn) return Colors.orange;
     return Colors.green;
   }
 
-  // Removed legacy _buildHeartDial (superseded by _buildEnhancedHeartDial)
+  String _getConnectionStatusText() {
+    if (!isConnected) return 'Disconnected';
+    if (!isDeviceWorn) return 'Not Worn';
+    return 'Active';
+  }
 
-  // Removed legacy _buildMiniStatsRow (superseded by _buildEnhancedStatsGrid)
+  String _getHeartRateStatus(double hr) {
+    if (hr >= 120) return 'Very High';
+    if (hr >= 100) return 'High';
+    if (hr >= 85) return 'Elevated';
+    if (hr >= 60) return 'Normal';
+    if (hr >= 40) return 'Low';
+    return 'Very Low';
+  }
 
-  // Removed legacy _buildMiniStat (replaced by enhanced stat cards)
+  Color _getHeartRateStatusColor(String status) {
+    switch (status) {
+      case 'Normal':
+        return Colors.green;
+      case 'Elevated':
+        return Colors.orange;
+      case 'High':
+      case 'Very High':
+        return Colors.red;
+      case 'Low':
+      case 'Very Low':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
 
-  // Removed legacy _buildControlsBar (superseded by _buildEnhancedControlsBar)
 
-  // Removed legacy _buildDeviceStatus (superseded by _buildEnhancedDeviceStatus)
 
-  // Removed legacy _buildStatusRow (replaced by _buildEnhancedStatusRow)
 }

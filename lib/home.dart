@@ -386,7 +386,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       icon: Icons.dashboard,
                       onTap: () {
                         Navigator.pop(context);
-                        Navigator.pushNamed(context, '/health-dashboard');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const WatchScreen(),
+                          ),
+                        );
                       },
                     ),
                     const SizedBox(height: 16),
@@ -2237,8 +2242,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   SizedBox(width: screenWidth * 0.02),
-                  Text(
-                    'Coping Techniques',
+                    Text(
+                      'Health & Coping',
                     style: TextStyle(
                       fontSize: screenWidth * 0.045,
                       fontWeight: FontWeight.bold,
@@ -2303,10 +2308,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       padding:
                           EdgeInsets.symmetric(horizontal: screenWidth * 0.02),
                       child: index == 0
-                          ? _buildBreathingCard(isCurrentPage)
+                          ? _buildHealthMonitoringCard(isCurrentPage)
                           : index == 1
-                              ? _buildGroundingCard(isCurrentPage)
-                              : _buildHealthMonitoringCard(isCurrentPage),
+                              ? _buildBreathingCard(isCurrentPage)
+                              : _buildGroundingCard(isCurrentPage),
                     ),
                   );
                 },
