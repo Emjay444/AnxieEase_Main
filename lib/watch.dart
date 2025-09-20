@@ -32,7 +32,7 @@ class _WatchScreenState extends State<WatchScreen>
   // Legacy IoT service integration
   late NotificationService _notificationService;
   late IoTSensorService _iotSensorService;
-  
+
   // Health metrics data
   double? spo2Value;
   double? bodyTempValue;
@@ -146,7 +146,8 @@ class _WatchScreenState extends State<WatchScreen>
               if (bodyTempParsed != null) bodyTempValue = bodyTempParsed;
 
               final ambientTempParsed = _asDouble(data['ambientTemp']);
-              if (ambientTempParsed != null) ambientTempValue = ambientTempParsed;
+              if (ambientTempParsed != null)
+                ambientTempValue = ambientTempParsed;
 
               final hrParsed = _asDouble(data['heartRate']);
               if (hrParsed != null) heartRateValue = hrParsed;
@@ -220,7 +221,8 @@ class _WatchScreenState extends State<WatchScreen>
   Future<void> _checkDeviceSetup() async {
     try {
       // Check if user has any linked devices in Supabase
-      final user = Provider.of<AuthProvider>(context, listen: false).currentUser;
+      final user =
+          Provider.of<AuthProvider>(context, listen: false).currentUser;
       if (user != null) {
         final supabaseService = SupabaseService();
         final response = await supabaseService.client
@@ -228,18 +230,19 @@ class _WatchScreenState extends State<WatchScreen>
             .select('device_id')
             .eq('user_id', user.id)
             .eq('is_active', true);
-        
+
         // Device is setup if user has at least one active device
         _isDeviceSetup = response.isNotEmpty;
-        debugPrint('Device setup check: ${_isDeviceSetup ? "Device linked" : "No device linked"}');
+        debugPrint(
+            'Device setup check: ${_isDeviceSetup ? "Device linked" : "No device linked"}');
       } else {
         _isDeviceSetup = false;
         debugPrint('Device setup check: No user authenticated');
       }
     } catch (e) {
       // Fallback to IoT service check if database query fails
-      _isDeviceSetup = _iotSensorService.deviceId.isNotEmpty && 
-                       _iotSensorService.deviceId != 'Unknown';
+      _isDeviceSetup = _iotSensorService.deviceId.isNotEmpty &&
+          _iotSensorService.deviceId != 'Unknown';
       debugPrint('Device setup check fallback: $_isDeviceSetup (error: $e)');
     }
   }
@@ -479,7 +482,8 @@ class _WatchScreenState extends State<WatchScreen>
                       shape: BoxShape.circle,
                     ),
                   ),
-                  if (_isDeviceSetup && _iotSensorService.deviceId.isNotEmpty) ...[
+                  if (_isDeviceSetup &&
+                      _iotSensorService.deviceId.isNotEmpty) ...[
                     const SizedBox(width: 6),
                     Text(
                       _iotSensorService.deviceId,
@@ -894,8 +898,9 @@ class _WatchScreenState extends State<WatchScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final cardWidth = (constraints.maxWidth - 16) / 2; // Account for gap
-        final cardHeight = cardWidth * 1.0; // Square aspect ratio for more space
-        
+        final cardHeight =
+            cardWidth * 1.0; // Square aspect ratio for more space
+
         return GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -1094,9 +1099,8 @@ class _WatchScreenState extends State<WatchScreen>
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: _isMonitoringActive
-                ? _stopIoTMonitoring
-                : _startIoTMonitoring,
+            onPressed:
+                _isMonitoringActive ? _stopIoTMonitoring : _startIoTMonitoring,
             icon: Icon(
               _isMonitoringActive ? Icons.stop : Icons.play_arrow,
             ),
@@ -1104,7 +1108,8 @@ class _WatchScreenState extends State<WatchScreen>
               _isMonitoringActive ? 'Stop Monitoring' : 'Start Monitoring',
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isMonitoringActive ? Colors.red : const Color(0xFF3AA772),
+              backgroundColor:
+                  _isMonitoringActive ? Colors.red : const Color(0xFF3AA772),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -1116,8 +1121,6 @@ class _WatchScreenState extends State<WatchScreen>
       ],
     );
   }
-
-
 
   Widget _buildHeartRateStatusChip(String status) {
     return Container(
@@ -1184,7 +1187,4 @@ class _WatchScreenState extends State<WatchScreen>
         return Colors.grey;
     }
   }
-
-
-
 }

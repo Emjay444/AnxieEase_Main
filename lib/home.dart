@@ -2242,8 +2242,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   SizedBox(width: screenWidth * 0.02),
-                    Text(
-                      'Health & Coping',
+                  Text(
+                    'Health & Coping',
                     style: TextStyle(
                       fontSize: screenWidth * 0.045,
                       fontWeight: FontWeight.bold,
