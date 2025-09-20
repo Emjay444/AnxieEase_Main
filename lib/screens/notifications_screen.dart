@@ -35,7 +35,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Color utilities for nicer gradients/contrast
   Color _lighten(Color c, [double amount = 0.08]) {
     final hsl = HSLColor.fromColor(c);
-    final hslLight = hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
+    final hslLight =
+        hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
     return hslLight.toColor();
   }
 
@@ -101,10 +102,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     // Check if this is an anxiety detection notification requiring user confirmation
     final title = notification['title'] ?? '';
-    if (title.contains('Anxiety Detection - Confirmation Needed') || 
-        title.contains('Anxiety Alert') || 
+    if (title.contains('Anxiety Detection - Confirmation Needed') ||
+        title.contains('Anxiety Alert') ||
         title.contains('anxiety detected')) {
-      
       // Show anxiety confirmation dialog
       await _showAnxietyConfirmationDialog(notification);
     } else {
@@ -119,11 +119,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _showAnxietyConfirmationDialog(Map<String, dynamic> notification) async {
+  Future<void> _showAnxietyConfirmationDialog(
+      Map<String, dynamic> notification) async {
     // Extract detection data from notification message or create mock data
     final message = notification['message'] ?? '';
     final title = notification['title'] ?? '';
-    
+
     // Parse confidence level from message if available
     double confidenceLevel = 0.7; // default
     final RegExp confidenceRegex = RegExp(r'(\d+(?:\.\d+)?)\%');
@@ -158,18 +159,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (result != null && mounted) {
       final confirmed = result['confirmed'] as bool? ?? false;
       final severity = result['severity'] as String?;
-      
+
       if (confirmed) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Thank you for confirming. ${severity != null ? "We've noted the severity as $severity." : ""}'),
+            content: Text(
+                'Thank you for confirming. ${severity != null ? "We've noted the severity as $severity." : ""}'),
             backgroundColor: Colors.blue,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Thank you for the feedback. We\'ll adjust our detection.'),
+            content: Text(
+                'Thank you for the feedback. We\'ll adjust our detection.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -218,7 +221,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     }
 
-  // (Removed unused severity label helper)
+    // (Removed unused severity label helper)
 
     String getRecommendation() {
       if (title.contains('Mood Pattern')) {
@@ -355,7 +358,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [
-                                    const Icon(Icons.access_time, size: 14, color: Colors.white70),
+                                    const Icon(Icons.access_time,
+                                        size: 14, color: Colors.white70),
                                     const SizedBox(width: 6),
                                     Text(
                                       time,
@@ -368,20 +372,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     const SizedBox(width: 10),
                                     if (type.isNotEmpty)
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: Colors.white.withOpacity(0.14),
-                                          borderRadius: BorderRadius.circular(28),
-                                          border: Border.all(color: Colors.white.withOpacity(0.35)),
+                                          borderRadius:
+                                              BorderRadius.circular(28),
+                                          border: Border.all(
+                                              color: Colors.white
+                                                  .withOpacity(0.35)),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Icon(Icons.circle, size: 8, color: Colors.white),
+                                            const Icon(Icons.circle,
+                                                size: 8, color: Colors.white),
                                             const SizedBox(width: 6),
                                             Text(
-                                              type[0].toUpperCase() + type.substring(1),
-                                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                                              type[0].toUpperCase() +
+                                                  type.substring(1),
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700),
                                             ),
                                           ],
                                         ),
@@ -419,10 +432,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 icon: const Icon(Icons.copy_rounded, size: 18),
                                 color: Colors.grey[700],
                                 onPressed: () {
-                                  Clipboard.setData(ClipboardData(text: message));
+                                  Clipboard.setData(
+                                      ClipboardData(text: message));
                                   HapticFeedback.lightImpact();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Message copied to clipboard')),
+                                    const SnackBar(
+                                        content: Text(
+                                            'Message copied to clipboard')),
                                   );
                                 },
                               ),
@@ -463,7 +479,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             decoration: BoxDecoration(
                               color: accent.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: accent.withOpacity(0.2)),
+                              border:
+                                  Border.all(color: accent.withOpacity(0.2)),
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,7 +521,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             spacing: 8,
                             runSpacing: 8,
                             children: getActionItems()
-                                .map((action) => _buildActionChip(action, _darken(accent, 0.1)))
+                                .map((action) => _buildActionChip(
+                                    action, _darken(accent, 0.1)))
                                 .toList(),
                           ),
 
@@ -537,14 +555,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isSevere ? Colors.red.shade700 : _darken(accent, 0.05),
+                            backgroundColor: isSevere
+                                ? Colors.red.shade700
+                                : _darken(accent, 0.05),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
-                            isSevere ? 'Find Nearby Clinics' : 'Try Breathing Exercise',
+                            isSevere
+                                ? 'Find Nearby Clinics'
+                                : 'Try Breathing Exercise',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -616,7 +638,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             children: [
               const Icon(Icons.call, color: Colors.red),
               const SizedBox(width: 8),
-              Text('$label: $number', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('$label: $number',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -846,115 +869,119 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isRead ? Colors.white : Colors.teal.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isRead
-                    ? Colors.grey.withOpacity(0.15)
-                    : accent.withOpacity(0.5),
-                width: 1,
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isRead ? Colors.white : Colors.teal.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isRead
+                  ? Colors.grey.withOpacity(0.15)
+                  : accent.withOpacity(0.5),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Leading icon with subtle background
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Leading icon with subtle background
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Center(child: _getNotificationIcon(type, accent)),
-                      if (!isRead)
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: Container(
-                            width: 14,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              color: accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Center(child: _getNotificationIcon(type, accent)),
+                    if (!isRead)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification['title'],
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight:
+                                  isRead ? FontWeight.w600 : FontWeight.bold,
+                              color: const Color(0xFF1E2432),
+                              height: 1.25,
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              notification['title'],
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
-                                color: const Color(0xFF1E2432),
-                                height: 1.25,
-                              ),
-                            ),
+                        if (!isReminder)
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 12,
+                            color: Colors.grey[400],
                           ),
-                          if (!isReminder)
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              size: 12,
-                              color: Colors.grey[400],
-                            ),
-                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      notification['message'],
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: Colors.grey[700],
+                        height: 1.4,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        notification['message'],
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          color: Colors.grey[700],
-                          height: 1.4,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time,
+                            size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(
+                          timeAgo,
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.grey[600]),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time, size: 12, color: Colors.grey[500]),
-                          const SizedBox(width: 4),
-                          Text(
-                            timeAgo,
-                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            formattedDate,
-                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 8),
+                        Text(
+                          formattedDate,
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1028,7 +1055,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               label: Text(
                 f == 'all'
                     ? 'All'
-                    : f[0].toUpperCase() + f.substring(1) + (f == 'log' ? 's' : ''),
+                    : f[0].toUpperCase() +
+                        f.substring(1) +
+                        (f == 'log' ? 's' : ''),
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
@@ -1102,7 +1131,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: Column(
         children: [
           const SizedBox(height: 8),
-            _buildFilterChips(),
+          _buildFilterChips(),
           const SizedBox(height: 4),
           Expanded(
             child: RefreshIndicator(
@@ -1122,7 +1151,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Padding(
-                                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(20, 20, 20, 4),
                                   child: Text(
                                     groupLabel,
                                     style: TextStyle(
@@ -1188,7 +1218,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
     );
   }
-
 }
 
 // Curved header clipper to remove flat white top and add modern curve
@@ -1199,8 +1228,10 @@ class _HeaderClipper extends CustomClipper<Path> {
     path.lineTo(0, size.height - 24);
     // Smooth curve at the bottom of header
     path.quadraticBezierTo(
-      size.width * 0.5, size.height,
-      size.width, size.height - 24,
+      size.width * 0.5,
+      size.height,
+      size.width,
+      size.height - 24,
     );
     path.lineTo(size.width, 0);
     path.close();

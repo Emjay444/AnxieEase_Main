@@ -7,7 +7,7 @@ import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 
 /// Simplified and user-friendly device setup screen
-/// 
+///
 /// Features:
 /// - Progressive disclosure of setup steps
 /// - Visual feedback and animations
@@ -18,7 +18,8 @@ class EnhancedDeviceSetupScreen extends StatefulWidget {
   const EnhancedDeviceSetupScreen({Key? key}) : super(key: key);
 
   @override
-  State<EnhancedDeviceSetupScreen> createState() => _EnhancedDeviceSetupScreenState();
+  State<EnhancedDeviceSetupScreen> createState() =>
+      _EnhancedDeviceSetupScreenState();
 }
 
 class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
@@ -32,11 +33,11 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
   int _currentStep = 0;
   bool _isLoading = false;
   String? _errorMessage;
-  
+
   // Device detection state
   bool _isScanning = false;
   List<String> _detectedDevices = [];
-  
+
   // Animation controllers
   late AnimationController _pulseController;
   late AnimationController _fadeController;
@@ -55,7 +56,7 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -64,7 +65,7 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
     );
@@ -75,7 +76,7 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
   Future<void> _initializeServices() async {
     await _deviceService.initialize();
     await _multiDeviceManager.loadUserDevices();
-    
+
     // If user has devices, show device manager instead
     if (_multiDeviceManager.userDevices.isNotEmpty) {
       setState(() {
@@ -105,16 +106,16 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
     try {
       // Simulate device scanning (in real implementation, scan Firebase for active devices)
       await Future.delayed(const Duration(seconds: 3));
-      
+
       // Mock detected devices - in reality, query Firebase for devices with recent data
       _detectedDevices = ['AnxieEase001', 'AnxieEase002', 'AnxieEase003'];
-      
+
       setState(() {
         _isScanning = false;
       });
-      
+
       _pulseController.stop();
-      
+
       if (_detectedDevices.isNotEmpty) {
         _showDetectedDevicesDialog();
       } else {
@@ -145,16 +146,19 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
           children: [
             const Text('Select your AnxieEase device:'),
             const SizedBox(height: 16),
-            ..._detectedDevices.map((deviceId) => ListTile(
-              leading: const Icon(Icons.watch, color: AppTheme.primaryColor),
-              title: Text(deviceId),
-              subtitle: const Text('Ready to connect'),
-              onTap: () {
-                _deviceIdController.text = deviceId;
-                Navigator.pop(context);
-                _connectToDevice();
-              },
-            )).toList(),
+            ..._detectedDevices
+                .map((deviceId) => ListTile(
+                      leading:
+                          const Icon(Icons.watch, color: AppTheme.primaryColor),
+                      title: Text(deviceId),
+                      subtitle: const Text('Ready to connect'),
+                      onTap: () {
+                        _deviceIdController.text = deviceId;
+                        Navigator.pop(context);
+                        _connectToDevice();
+                      },
+                    ))
+                .toList(),
           ],
         ),
         actions: [
@@ -312,17 +316,19 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
               child: Container(
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: _isScanning 
+                  color: _isScanning
                       ? AppTheme.primaryColor.withOpacity(0.2)
                       : AppTheme.primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
-                  boxShadow: _isScanning ? [
-                    BoxShadow(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ] : null,
+                  boxShadow: _isScanning
+                      ? [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Icon(
                   _isScanning ? Icons.radar : Icons.search,
@@ -343,7 +349,7 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
           ),
           const SizedBox(height: 16),
           Text(
-            _isScanning 
+            _isScanning
                 ? 'Looking for AnxieEase devices nearby'
                 : 'We\'ll automatically detect your device when it\'s ready',
             style: TextStyle(
@@ -602,20 +608,22 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
             child: Consumer<MultiDeviceManager>(
               builder: (context, multiDeviceManager, child) {
                 final devices = multiDeviceManager.userDevices;
-                
+
                 if (devices.isEmpty) {
                   return const Center(
                     child: Text('No devices found'),
                   );
                 }
-                
+
                 return ListView.builder(
                   itemCount: devices.length,
                   itemBuilder: (context, index) {
                     final device = devices[index];
-                    final isPrimary = device.deviceId == multiDeviceManager.primaryDevice?.deviceId;
-                    final thresholds = multiDeviceManager.getThresholds(device.deviceId);
-                    
+                    final isPrimary = device.deviceId ==
+                        multiDeviceManager.primaryDevice?.deviceId;
+                    final thresholds =
+                        multiDeviceManager.getThresholds(device.deviceId);
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(
@@ -626,24 +634,32 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
                         leading: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isPrimary ? AppTheme.primaryColor.withOpacity(0.1) : Colors.grey[100],
+                            color: isPrimary
+                                ? AppTheme.primaryColor.withOpacity(0.1)
+                                : Colors.grey[100],
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.watch,
-                            color: isPrimary ? AppTheme.primaryColor : Colors.grey,
+                            color:
+                                isPrimary ? AppTheme.primaryColor : Colors.grey,
                           ),
                         ),
                         title: Text(device.deviceId),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (isPrimary) 
-                              const Text('Primary Device', style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)),
+                            if (isPrimary)
+                              const Text('Primary Device',
+                                  style: TextStyle(
+                                      color: AppTheme.primaryColor,
+                                      fontWeight: FontWeight.bold)),
                             if (device.baselineHR != null)
-                              Text('Baseline: ${device.baselineHR!.toStringAsFixed(0)} BPM'),
+                              Text(
+                                  'Baseline: ${device.baselineHR!.toStringAsFixed(0)} BPM'),
                             if (thresholds != null)
-                              Text('Thresholds: ${thresholds.mild.toStringAsFixed(0)}/${thresholds.moderate.toStringAsFixed(0)}/${thresholds.severe.toStringAsFixed(0)} BPM'),
+                              Text(
+                                  'Thresholds: ${thresholds.mild.toStringAsFixed(0)}/${thresholds.moderate.toStringAsFixed(0)}/${thresholds.severe.toStringAsFixed(0)} BPM'),
                           ],
                         ),
                         trailing: PopupMenuButton(
@@ -665,13 +681,16 @@ class _EnhancedDeviceSetupScreenState extends State<EnhancedDeviceSetupScreen>
                           onSelected: (value) async {
                             switch (value) {
                               case 'primary':
-                                await multiDeviceManager.setPrimaryDevice(device.deviceId);
+                                await multiDeviceManager
+                                    .setPrimaryDevice(device.deviceId);
                                 break;
                               case 'baseline':
-                                Navigator.pushNamed(context, '/baseline-recording');
+                                Navigator.pushNamed(
+                                    context, '/baseline-recording');
                                 break;
                               case 'remove':
-                                await multiDeviceManager.removeDevice(device.deviceId);
+                                await multiDeviceManager
+                                    .removeDevice(device.deviceId);
                                 break;
                             }
                           },

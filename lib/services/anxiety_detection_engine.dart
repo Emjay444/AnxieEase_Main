@@ -21,14 +21,14 @@ class AnxietyDetectionResult {
   });
 
   Map<String, dynamic> toJson() => {
-    'triggered': triggered,
-    'reason': reason,
-    'confidenceLevel': confidenceLevel,
-    'requiresUserConfirmation': requiresUserConfirmation,
-    'metrics': metrics,
-    'abnormalMetrics': abnormalMetrics,
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'triggered': triggered,
+        'reason': reason,
+        'confidenceLevel': confidenceLevel,
+        'requiresUserConfirmation': requiresUserConfirmation,
+        'metrics': metrics,
+        'abnormalMetrics': abnormalMetrics,
+        'timestamp': timestamp.toIso8601String(),
+      };
 }
 
 /// Heart rate analysis result
@@ -50,7 +50,7 @@ class HeartRateAnalysis {
   });
 }
 
-/// SpO2 analysis result  
+/// SpO2 analysis result
 class SpO2Analysis {
   final bool isAbnormal;
   final String severity; // 'normal', 'low', 'critical'
@@ -88,13 +88,13 @@ class AnxietyDetectionEngine {
   static const double _spo2LowThreshold = 94.0; // %
   static const double _spo2CriticalThreshold = 90.0; // %
   static const int _sustainedDurationSeconds = 30;
-  
+
   // Historical data for sustained detection
   final List<double> _recentHeartRates = [];
   final List<double> _recentSpO2Values = [];
   final List<double> _recentMovementLevels = [];
   final List<DateTime> _timestamps = [];
-  
+
   // Keep 2 minutes of data for sustained analysis
   static const int _maxHistoryLength = 120; // 2 minutes at 1-second intervals
 
@@ -107,14 +107,9 @@ class AnxietyDetectionEngine {
     double? bodyTemperature,
   }) {
     final now = DateTime.now();
-    
+
     // Update historical data
-    _updateHistoricalData(
-      currentHeartRate, 
-      currentSpO2, 
-      currentMovement, 
-      now
-    );
+    _updateHistoricalData(currentHeartRate, currentSpO2, currentMovement, now);
 
     // Analyze each parameter
     final hrAnalysis = _analyzeHeartRate(currentHeartRate, restingHeartRate);
@@ -127,9 +122,9 @@ class AnxietyDetectionEngine {
       'spO2': spo2Analysis.isAbnormal,
       'movement': movementAnalysis.hasSpikes,
     };
-    
+
     final abnormalCount = abnormalMetrics.values.where((v) => v).length;
-    
+
     // Apply trigger logic
     return _applyTriggerLogic(
       hrAnalysis: hrAnalysis,
@@ -143,7 +138,8 @@ class AnxietyDetectionEngine {
   }
 
   /// Update historical data for sustained detection
-  void _updateHistoricalData(double hr, double spo2, double movement, DateTime timestamp) {
+  void _updateHistoricalData(
+      double hr, double spo2, double movement, DateTime timestamp) {
     _recentHeartRates.add(hr);
     _recentSpO2Values.add(spo2);
     _recentMovementLevels.add(movement);
@@ -164,12 +160,10 @@ class AnxietyDetectionEngine {
     final isHigh = percentageAbove >= _highHRThresholdMin;
     final isLow = currentHR < _lowHRThreshold;
     final isAbnormal = isHigh || isLow;
-    
+
     // Check if sustained for 30 seconds
-    final sustainedFor30Seconds = _isHeartRateSustained(
-      isHigh ? 'high' : 'low', 
-      restingHR
-    );
+    final sustainedFor30Seconds =
+        _isHeartRateSustained(isHigh ? 'high' : 'low', restingHR);
 
     return HeartRateAnalysis(
       isAbnormal: isAbnormal && sustainedFor30Seconds,
@@ -189,8 +183,7 @@ class AnxietyDetectionEngine {
 
     // Check last 30 seconds of data
     final recentData = _recentHeartRates.sublist(
-      math.max(0, _recentHeartRates.length - _sustainedDurationSeconds)
-    );
+        math.max(0, _recentHeartRates.length - _sustainedDurationSeconds));
 
     return recentData.every((hr) {
       if (type == 'high') {
@@ -207,10 +200,10 @@ class AnxietyDetectionEngine {
     final isCritical = currentSpO2 < _spo2CriticalThreshold;
     final isLow = currentSpO2 < _spo2LowThreshold;
     final isAbnormal = isLow || isCritical;
-    
+
     String severity;
     bool requiresConfirmation;
-    
+
     if (isCritical) {
       severity = 'critical';
       requiresConfirmation = false; // Auto-flag critical levels
@@ -235,7 +228,7 @@ class AnxietyDetectionEngine {
     // Detect sudden spikes in movement (potential tremors/shaking)
     final hasSpikes = _detectMovementSpikes(currentMovement);
     final indicatesAnxiety = _detectAnxietyMovementPatterns();
-    
+
     return MovementAnalysis(
       hasSpikes: hasSpikes,
       movementIntensity: currentMovement,
@@ -250,8 +243,9 @@ class AnxietyDetectionEngine {
 
     // Calculate recent average movement
     final recentAverage = _recentMovementLevels
-        .sublist(math.max(0, _recentMovementLevels.length - 10))
-        .reduce((a, b) => a + b) / 10;
+            .sublist(math.max(0, _recentMovementLevels.length - 10))
+            .reduce((a, b) => a + b) /
+        10;
 
     // Spike if current movement is significantly higher than recent average
     return currentMovement > (recentAverage * 2.0) && currentMovement > 30.0;
@@ -261,9 +255,8 @@ class AnxietyDetectionEngine {
   bool _detectAnxietyMovementPatterns() {
     if (_recentMovementLevels.length < 20) return false;
 
-    final recent20 = _recentMovementLevels.sublist(
-      math.max(0, _recentMovementLevels.length - 20)
-    );
+    final recent20 = _recentMovementLevels
+        .sublist(math.max(0, _recentMovementLevels.length - 20));
 
     // Check for sustained elevated movement (restlessness)
     final sustainedHighMovement = recent20.where((m) => m > 40.0).length > 15;
@@ -285,7 +278,8 @@ class AnxietyDetectionEngine {
       final current = movementData[i];
 
       // Check for direction change (peak or valley)
-      if ((prev1 > prev2 && prev1 > current) || (prev1 < prev2 && prev1 < current)) {
+      if ((prev1 > prev2 && prev1 > current) ||
+          (prev1 < prev2 && prev1 < current)) {
         directionChanges++;
       }
     }
@@ -320,7 +314,7 @@ class AnxietyDetectionEngine {
     else if (abnormalCount >= 2) {
       triggered = true;
       confidenceLevel = 0.85 + (abnormalCount - 2) * 0.1; // 0.85-1.0
-      
+
       if (hrAnalysis.isAbnormal && movementAnalysis.hasSpikes) {
         reason = 'combinedHRMovement';
       } else if (hrAnalysis.isAbnormal && spo2Analysis.isAbnormal) {
@@ -330,7 +324,7 @@ class AnxietyDetectionEngine {
       } else {
         reason = 'multipleMetrics';
       }
-      
+
       requiresUserConfirmation = false;
     }
     // Single metric abnormal - Request confirmation
@@ -338,7 +332,7 @@ class AnxietyDetectionEngine {
       triggered = true;
       confidenceLevel = 0.6; // Lower confidence for single metric
       requiresUserConfirmation = true;
-      
+
       if (hrAnalysis.isAbnormal) {
         reason = hrAnalysis.type == 'high' ? 'highHR' : 'lowHR';
       } else if (spo2Analysis.isAbnormal) {
@@ -347,7 +341,7 @@ class AnxietyDetectionEngine {
         reason = 'movementSpikes';
       }
     }
-    
+
     // Adjust confidence based on movement patterns
     if (movementAnalysis.indicatesAnxiety && triggered) {
       confidenceLevel = math.min(1.0, confidenceLevel + 0.1);
@@ -389,12 +383,14 @@ class AnxietyDetectionEngine {
   Map<String, dynamic> getDetectionStatus() {
     return {
       'historicalDataPoints': _recentHeartRates.length,
-      'canDetectSustained': _recentHeartRates.length >= _sustainedDurationSeconds,
-      'recentHRAverage': _recentHeartRates.isNotEmpty 
-          ? _recentHeartRates.reduce((a, b) => a + b) / _recentHeartRates.length 
+      'canDetectSustained':
+          _recentHeartRates.length >= _sustainedDurationSeconds,
+      'recentHRAverage': _recentHeartRates.isNotEmpty
+          ? _recentHeartRates.reduce((a, b) => a + b) / _recentHeartRates.length
           : 0.0,
       'recentMovementAverage': _recentMovementLevels.isNotEmpty
-          ? _recentMovementLevels.reduce((a, b) => a + b) / _recentMovementLevels.length
+          ? _recentMovementLevels.reduce((a, b) => a + b) /
+              _recentMovementLevels.length
           : 0.0,
     };
   }

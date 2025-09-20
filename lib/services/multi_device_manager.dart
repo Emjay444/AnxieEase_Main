@@ -5,7 +5,7 @@ import '../services/supabase_service.dart';
 import '../utils/logger.dart';
 
 /// Enhanced Device Manager for Multiple Wearable Support
-/// 
+///
 /// Features:
 /// - Multi-device support per user
 /// - Primary device selection
@@ -17,7 +17,7 @@ class MultiDeviceManager extends ChangeNotifier {
   MultiDeviceManager._internal();
 
   final SupabaseService _supabaseService = SupabaseService();
-  
+
   List<WearableDevice> _userDevices = [];
   WearableDevice? _primaryDevice;
   Map<String, PersonalizedThresholds> _deviceThresholds = {};
@@ -40,8 +40,9 @@ class MultiDeviceManager extends ChangeNotifier {
           .eq('is_active', true)
           .order('linked_at', ascending: false);
 
-      _userDevices = response.map<WearableDevice>((data) => 
-          WearableDevice.fromSupabase(data)).toList();
+      _userDevices = response
+          .map<WearableDevice>((data) => WearableDevice.fromSupabase(data))
+          .toList();
 
       // Set primary device (most recently linked or explicitly marked)
       _primaryDevice = _userDevices.isNotEmpty ? _userDevices.first : null;
@@ -78,7 +79,7 @@ class MultiDeviceManager extends ChangeNotifier {
     );
 
     _primaryDevice = device;
-    
+
     // Update in database
     await _supabaseService.client
         .from('wearable_devices')
@@ -109,12 +110,12 @@ class MultiDeviceManager extends ChangeNotifier {
   /// Add a new device
   Future<void> addDevice(WearableDevice device) async {
     _userDevices.add(device);
-    
+
     // If this is the first device, make it primary
     if (_userDevices.length == 1) {
       _primaryDevice = device;
     }
-    
+
     notifyListeners();
   }
 
@@ -122,12 +123,12 @@ class MultiDeviceManager extends ChangeNotifier {
   Future<void> removeDevice(String deviceId) async {
     _userDevices.removeWhere((d) => d.deviceId == deviceId);
     _deviceThresholds.remove(deviceId);
-    
+
     // If removed device was primary, set new primary
     if (_primaryDevice?.deviceId == deviceId && _userDevices.isNotEmpty) {
       _primaryDevice = _userDevices.first;
     }
-    
+
     notifyListeners();
   }
 }
@@ -160,12 +161,13 @@ class PersonalizedThresholds {
   }
 
   Map<String, dynamic> toJson() => {
-    'baseline': baseline,
-    'mild': mild,
-    'moderate': moderate,
-    'severe': severe,
-  };
+        'baseline': baseline,
+        'mild': mild,
+        'moderate': moderate,
+        'severe': severe,
+      };
 
   @override
-  String toString() => 'Thresholds(baseline: $baseline, mild: $mild, moderate: $moderate, severe: $severe)';
+  String toString() =>
+      'Thresholds(baseline: $baseline, mild: $mild, moderate: $moderate, severe: $severe)';
 }

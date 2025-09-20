@@ -18,16 +18,18 @@ class AnxietyConfirmationDialog extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<AnxietyConfirmationDialog> createState() => _AnxietyConfirmationDialogState();
+  State<AnxietyConfirmationDialog> createState() =>
+      _AnxietyConfirmationDialogState();
 }
 
-class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> with SingleTickerProviderStateMixin {
+class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   String? _selectedResponse;
   String? _selectedSeverity;
   bool _isSubmitting = false;
-  
+
   final SupabaseService _supabaseService = SupabaseService();
 
   @override
@@ -78,7 +80,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
       }
       return;
     }
-    
+
     setState(() => _isSubmitting = true);
     HapticFeedback.lightImpact();
 
@@ -99,7 +101,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
           'severity': _selectedSeverity,
           'response': _selectedResponse,
         });
-        
+
         // Navigate to appropriate help screen based on response
         if (_selectedResponse == 'yes') {
           _showHelpOptions();
@@ -134,8 +136,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
           ],
         ),
         content: const Text(
-          'Thank you for confirming. Would you like to try some techniques to help manage your anxiety?'
-        ),
+            'Thank you for confirming. Would you like to try some techniques to help manage your anxiety?'),
         actions: [
           TextButton(
             onPressed: () {
@@ -163,7 +164,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
   void _showThankYouMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Thank you for the feedback! We\'ll continue monitoring.'),
+        content:
+            Text('Thank you for the feedback! We\'ll continue monitoring.'),
         backgroundColor: Colors.green,
         duration: Duration(seconds: 3),
       ),
@@ -240,7 +242,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                     ),
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: confidenceColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
@@ -268,7 +271,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                   ],
                 ),
               ),
-              
+
               // Content
               Padding(
                 padding: const EdgeInsets.all(20),
@@ -280,7 +283,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
-                    
+
                     // Main question
                     const Text(
                       'Are you currently feeling anxious or stressed?',
@@ -291,7 +294,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Yes/No buttons
                     Row(
                       children: [
@@ -314,7 +317,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                         ),
                       ],
                     ),
-                    
+
                     // Severity selection (only if yes selected)
                     if (_selectedResponse == 'yes') ...[
                       const SizedBox(height: 20),
@@ -360,7 +363,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                   ],
                 ),
               ),
-              
+
               // Action buttons
               Container(
                 padding: const EdgeInsets.all(20),
@@ -375,19 +378,21 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Later'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: (
-                                  _selectedResponse != null &&
-                                  !(_selectedResponse == 'yes' && _selectedSeverity == null) &&
-                                  !_isSubmitting)
-                              ? _submitResponse
-                              : null,
+                        onPressed: (_selectedResponse != null &&
+                                !(_selectedResponse == 'yes' &&
+                                    _selectedSeverity == null) &&
+                                !_isSubmitting)
+                            ? _submitResponse
+                            : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: confidenceColor,
                           foregroundColor: Colors.white,
@@ -401,7 +406,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : const Text('Submit'),
@@ -417,7 +423,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog> w
     );
   }
 
-  Widget _buildResponseButton(String label, String value, Color color, IconData icon) {
+  Widget _buildResponseButton(
+      String label, String value, Color color, IconData icon) {
     final isSelected = _selectedResponse == value;
     return GestureDetector(
       onTap: () {

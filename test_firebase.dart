@@ -22,7 +22,7 @@ void main() async {
     // Test 2: Firebase Realtime Database Connection
     print("\n📡 Test 2: Testing Realtime Database connection...");
     final database = FirebaseDatabase.instance;
-    
+
     // Test write capability
     print("  📝 Testing write capability...");
     final testRef = database.ref('test/connectivity');
@@ -47,11 +47,11 @@ void main() async {
     print("\n🎯 Test 3: Checking AnxieEase device data structure...");
     final deviceRef = database.ref('devices/AnxieEase001');
     final deviceSnapshot = await deviceRef.get();
-    
+
     if (deviceSnapshot.exists) {
       print("  ✅ Device AnxieEase001 found in Firebase");
       final deviceData = deviceSnapshot.value as Map<dynamic, dynamic>;
-      
+
       // Check for current data
       if (deviceData.containsKey('current')) {
         print("  📊 Current sensor data structure found");
@@ -59,14 +59,15 @@ void main() async {
         if (currentData != null) {
           print("    - Heart Rate: ${currentData['heartRate'] ?? 'N/A'}");
           print("    - SpO2: ${currentData['spO2'] ?? 'N/A'}");
-          print("    - Temperature: ${currentData['bodyTemperature'] ?? 'N/A'}");
+          print(
+              "    - Temperature: ${currentData['bodyTemperature'] ?? 'N/A'}");
           print("    - Movement: ${currentData['movement'] ?? 'N/A'}");
           print("    - Timestamp: ${currentData['timestamp'] ?? 'N/A'}");
         }
       } else {
         print("  ⚠️  No 'current' data found for device");
       }
-      
+
       // Check for user association
       if (deviceData.containsKey('userId')) {
         print("  👤 Device is associated with user: ${deviceData['userId']}");
@@ -81,7 +82,7 @@ void main() async {
     // Test 4: Real-time listening capability
     print("\n🔄 Test 4: Testing real-time listeners...");
     bool listenerTriggered = false;
-    
+
     final listenerRef = database.ref('test/listener_test');
     final subscription = listenerRef.onValue.listen((event) {
       listenerTriggered = true;
@@ -96,11 +97,11 @@ void main() async {
 
     // Wait a moment for listener to trigger
     await Future.delayed(const Duration(seconds: 2));
-    
+
     if (!listenerTriggered) {
       print("  ⚠️  Real-time listener did not trigger");
     }
-    
+
     subscription.cancel();
 
     // Test 5: Firebase Rules (read-only for unauthenticated)
@@ -141,19 +142,20 @@ void main() async {
     print("  ✅ Realtime Database: Connected");
     print("  ✅ Read/Write operations: Functional");
     print("  ✅ Real-time listeners: Working");
-    
+
     print("\n💡 Next steps:");
     print("  1. Your Firebase backend is functional");
-    print("  2. Connect your IoT device to send data to 'devices/AnxieEase001/current'");
+    print(
+        "  2. Connect your IoT device to send data to 'devices/AnxieEase001/current'");
     print("  3. Deploy Cloud Functions: 'firebase deploy --only functions'");
     print("  4. Test anxiety detection with real sensor data");
-
   } catch (e, stackTrace) {
     print("❌ Firebase test failed: $e");
     print("Stack trace: $stackTrace");
     print("\n🔧 Troubleshooting steps:");
     print("  1. Check internet connection");
-    print("  2. Verify Firebase project configuration in firebase_options.dart");
+    print(
+        "  2. Verify Firebase project configuration in firebase_options.dart");
     print("  3. Ensure Firebase project 'anxieease-sensors' is active");
     print("  4. Check Firebase console for any project issues");
     print("  5. Verify database rules in Firebase console");

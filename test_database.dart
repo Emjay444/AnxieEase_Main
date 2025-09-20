@@ -20,7 +20,7 @@ void main() async {
     print("\n🔍 Running database connectivity test...");
     await quickDatabaseTest();
 
-  print("\n$separator");
+    print("\n$separator");
     print("🎉 Test completed! Check results above.");
     print("💡 To run a comprehensive test:");
     print("   1. Copy comprehensive_database_test.sql");

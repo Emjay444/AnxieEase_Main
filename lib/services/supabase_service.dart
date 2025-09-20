@@ -291,7 +291,7 @@ class SupabaseService {
       print('Requesting password reset for email: $email');
 
       // Set a longer expiration for the reset token
-    await client.auth.resetPasswordForEmail(email,
+      await client.auth.resetPasswordForEmail(email,
           redirectTo: null // Let Supabase handle the redirect
           );
 
@@ -555,16 +555,18 @@ class SupabaseService {
       final recordToSave = <String, dynamic>{
         'user_id': user.id,
         'severity_level': record['severity_level'] ?? 'unknown',
-        'timestamp': record['timestamp'], // Keep user-provided timestamp or now()
+        'timestamp':
+            record['timestamp'], // Keep user-provided timestamp or now()
         'is_manual': record['is_manual'] ?? false,
-        'source': (record['source'] ?? 'app').toString().substring(0, 
-            (record['source'] ?? 'app').toString().length > 50 ? 50 : (record['source'] ?? 'app').toString().length),
+        'source': (record['source'] ?? 'app').toString().substring(
+            0,
+            (record['source'] ?? 'app').toString().length > 50
+                ? 50
+                : (record['source'] ?? 'app').toString().length),
         'details': record['details']?.toString() ?? '',
       };
-      
-      // heart_rate removed from schema per product decision; do not include
-      
 
+      // heart_rate removed from schema per product decision; do not include
 
       // Save to anxiety_records table and return the inserted row for verification
       final inserted = await client
@@ -573,9 +575,11 @@ class SupabaseService {
           .select()
           .single();
 
-      debugPrint('Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
-      debugPrint('🆔 anxiety_records inserted id: ${inserted['id']} at ${inserted['created_at']}');
-      
+      debugPrint(
+          'Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
+      debugPrint(
+          '🆔 anxiety_records inserted id: ${inserted['id']} at ${inserted['created_at']}');
+
       // Double-check: Immediately query back the record to confirm it's visible
       try {
         final verification = await client
@@ -583,11 +587,13 @@ class SupabaseService {
             .select()
             .eq('id', inserted['id'])
             .maybeSingle();
-        
+
         if (verification != null) {
-          debugPrint('✅ Verification: Record ${inserted['id']} found in anxiety_records with severity: ${verification['severity_level']}');
+          debugPrint(
+              '✅ Verification: Record ${inserted['id']} found in anxiety_records with severity: ${verification['severity_level']}');
         } else {
-          debugPrint('❌ Verification failed: Record ${inserted['id']} not found in anxiety_records (possible RLS/visibility issue)');
+          debugPrint(
+              '❌ Verification failed: Record ${inserted['id']} not found in anxiety_records (possible RLS/visibility issue)');
         }
       } catch (verifyError) {
         debugPrint('❌ Verification query failed: $verifyError');
@@ -1190,7 +1196,7 @@ class SupabaseService {
             .eq('user_id', user.id)
             .order('appointment_date', ascending: false);
 
-  return List<Map<String, dynamic>>.from(response);
+        return List<Map<String, dynamic>>.from(response);
       } catch (e) {
         final errorMsg = e.toString().toLowerCase();
         if (errorMsg.contains('does not exist') ||
@@ -1481,12 +1487,12 @@ class SupabaseService {
     }
 
     try {
-      final inserted = await client
-          .from('notifications')
-          .insert(row)
-          .select()
-          .single();
-      debugPrint('💾 createNotification inserted id: ' + (inserted['id']?.toString() ?? 'unknown') + ' type: ' + type);
+      final inserted =
+          await client.from('notifications').insert(row).select().single();
+      debugPrint('💾 createNotification inserted id: ' +
+          (inserted['id']?.toString() ?? 'unknown') +
+          ' type: ' +
+          type);
     } catch (e) {
       debugPrint('❌ createNotification insert failed: ' + e.toString());
       rethrow;
@@ -1592,8 +1598,7 @@ class SupabaseService {
       final filePath = 'psychologists/$fileName';
 
       // Upload file to Supabase Storage
-    await client.storage.from('profile_pictures').upload(
-          filePath, imageFile,
+      await client.storage.from('profile_pictures').upload(filePath, imageFile,
           fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
 
       // Get public URL
@@ -1851,7 +1856,8 @@ class SupabaseService {
       if (!userConfirmed) {
         await createNotification(
           title: 'Anxiety Detection Dismissed',
-          message: 'User indicated they are not anxious at this time. Detection confidence: ${(confidenceLevel * 100).toStringAsFixed(0)}%',
+          message:
+              'User indicated they are not anxious at this time. Detection confidence: ${(confidenceLevel * 100).toStringAsFixed(0)}%',
           type: 'anxiety_log',
         );
         return;
@@ -1870,14 +1876,17 @@ class SupabaseService {
       // Extract trigger source from detection data
       final String triggerSource = (() {
         final source = detectionData['source']?.toString() ?? 'app_detection';
-        if (detectionData['reasons']?.toString().contains('Movement') == true) return 'movement_pattern';
-        if (detectionData['reasons']?.toString().contains('SpO2') == true) return 'oxygen_level';
+        if (detectionData['reasons']?.toString().contains('Movement') == true)
+          return 'movement_pattern';
+        if (detectionData['reasons']?.toString().contains('SpO2') == true)
+          return 'oxygen_level';
         return source;
       })();
 
-      final String details = detectionData['details']?.toString().isNotEmpty == true
-          ? detectionData['details'].toString()
-          : 'User confirmed ${severity} anxiety episode';
+      final String details =
+          detectionData['details']?.toString().isNotEmpty == true
+              ? detectionData['details'].toString()
+              : 'User confirmed ${severity} anxiety episode';
 
       await saveAnxietyRecord({
         'severity_level': severity,

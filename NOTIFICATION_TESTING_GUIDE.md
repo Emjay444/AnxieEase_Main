@@ -1,9 +1,11 @@
 ## 🧪 **TESTING YOUR ANXIETY DETECTION NOTIFICATIONS**
 
-### **The Issue:** 
+### **The Issue:**
+
 You're clicking "Simulate 30s HR" but not receiving notifications, only the "Test Notification" button works.
 
 ### **What I Fixed:**
+
 1. ✅ **Connected sustained HR detection to notification system**
 2. ✅ **Made sure anxiety detection triggers real notifications**
 3. ✅ **Fixed the 30-second simulation to call notification system**
@@ -27,14 +29,17 @@ You're clicking "Simulate 30s HR" but not receiving notifications, only the "Tes
 #### **🎯 Method 2: Using Preset Buttons (Recommended)**
 
 **Test Mild Anxiety:**
+
 - Tap **"Mild Anxiety"** preset button
 - Should trigger: Confirmation-type notification (60-79% confidence)
 
 **Test Panic Attack:**
-- Tap **"Panic Attack"** preset button  
+
+- Tap **"Panic Attack"** preset button
 - Should trigger: Immediate alert notification (80%+ confidence)
 
 **Test Critical SpO2:**
+
 - Tap **"Critical SpO2"** preset button
 - Should trigger: Emergency notification (100% confidence)
 
@@ -43,7 +48,7 @@ You're clicking "Simulate 30s HR" but not receiving notifications, only the "Tes
 1. **Set these values manually:**
    ```
    For High Anxiety Detection:
-   Heart Rate: 105 bpm  
+   Heart Rate: 105 bpm
    Baseline HR: 70 bpm (105 is 50% above 70)
    SpO2: 94%
    Movement: 0.7
@@ -54,6 +59,7 @@ You're clicking "Simulate 30s HR" but not receiving notifications, only the "Tes
 ### **📱 What to Look For:**
 
 **After triggering anxiety detection, you should see:**
+
 1. **In the test log:** "🔔 Anxiety detected... sending notification"
 2. **Device notification:** Pull down notification panel to see alert
 3. **Notification sound/vibration** (if enabled)
@@ -61,15 +67,18 @@ You're clicking "Simulate 30s HR" but not receiving notifications, only the "Tes
 ### **🔍 Troubleshooting If Still No Notifications:**
 
 **Check App Permissions:**
+
 1. Go to Android Settings → Apps → AnxieEase
 2. Check "Notifications" are enabled
 3. Ensure "Anxiety Alerts" channel is enabled
 
 **Check "Do Not Disturb":**
+
 - Make sure Do Not Disturb mode is OFF
 - Check if sound/vibration is enabled
 
 **Verify Anxiety Detection:**
+
 - HR must be **20%+ above baseline** to trigger
 - For 70 bpm baseline: need 84+ bpm to trigger anxiety
 - Use values like: HR=90, Baseline=70 (28% increase)
@@ -77,8 +86,9 @@ You're clicking "Simulate 30s HR" but not receiving notifications, only the "Tes
 ### **✅ Expected Behavior:**
 
 **The notifications should now work because:**
+
 1. 🔄 Sustained HR simulation → Calls anxiety detection → Sends notification
-2. 📋 Preset buttons → Run sustained simulation → Sends notification  
+2. 📋 Preset buttons → Run sustained simulation → Sends notification
 3. 🔍 Manual detection → If anxiety detected → Sends notification
 
 **Try the "Panic Attack" preset button first - it should definitely send a notification!** 🚨

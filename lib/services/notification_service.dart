@@ -410,14 +410,14 @@ class NotificationService extends ChangeNotifier {
     try {
       debugPrint('📊 Saving anxiety level record to Supabase: $severity');
 
-  final anxietyRecord = {
+      final anxietyRecord = {
         'severity_level': severity,
         'timestamp': DateTime.now().toIso8601String(),
         'is_manual': isManual,
         'source': 'app',
         'details': isManual
             ? 'Manually triggered alert'
-    : 'Automatically detected alert',
+            : 'Automatically detected alert',
       };
 
       await _supabaseService.saveAnxietyRecord(anxietyRecord);

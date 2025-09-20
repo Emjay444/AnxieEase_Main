@@ -23,14 +23,14 @@ void main() async {
     // Test 2: Database connection (READ-ONLY)
     print("\n📖 Test 2: Testing database read access...");
     final database = FirebaseDatabase.instance;
-    
+
     // Try to read from root to test basic connectivity
     print("  📡 Testing database connectivity...");
     try {
       final rootRef = database.ref();
       final rootSnapshot = await rootRef.get();
       print("  ✅ Database connection successful");
-      
+
       if (rootSnapshot.exists) {
         final data = rootSnapshot.value;
         if (data is Map) {
@@ -54,14 +54,14 @@ void main() async {
     try {
       final deviceRef = database.ref('devices/AnxieEase001');
       final deviceSnapshot = await deviceRef.get();
-      
+
       if (deviceSnapshot.exists) {
         print("  ✅ AnxieEase001 device found");
         final deviceData = deviceSnapshot.value;
-        
+
         if (deviceData is Map) {
           print("    📊 Device data structure:");
-          
+
           if (deviceData.containsKey('current')) {
             print("      - 'current' sensor data ✅");
             final currentData = deviceData['current'];
@@ -73,11 +73,11 @@ void main() async {
           } else {
             print("      - 'current' sensor data ❌ (no real-time data)");
           }
-          
+
           if (deviceData.containsKey('metadata')) {
             print("      - 'metadata' ✅");
           }
-          
+
           if (deviceData.containsKey('userId')) {
             print("      - 'userId': ${deviceData['userId']} ✅");
           }
@@ -105,13 +105,13 @@ void main() async {
     print("    - devices/\$deviceId: read=true, write=true");
     print("    - users/\$userId: read=true, write=true");
     print("  📡 Database URL: ${database.databaseURL}");
-    
+
     // Test 6: Real-time Listener (READ-ONLY)
     print("\n🔄 Test 6: Testing real-time listeners...");
     try {
       bool listenerWorked = false;
       final testRef = database.ref('devices/AnxieEase001/current');
-      
+
       // Set up listener
       final subscription = testRef.onValue.listen((event) {
         listenerWorked = true;
@@ -125,14 +125,13 @@ void main() async {
 
       // Wait for potential data
       await Future.delayed(const Duration(seconds: 2));
-      
+
       if (!listenerWorked) {
         print("  📡 Listener setup successful (waiting for IoT data)");
       }
-      
+
       subscription.cancel();
       print("  ✅ Real-time functionality verified");
-      
     } catch (e) {
       print("  ❌ Real-time listener failed: $e");
     }
@@ -145,7 +144,7 @@ void main() async {
     print("  ✅ Cloud Functions: Deployed (10 functions active)");
     print("  ✅ Database Rules: Deployed");
     print("  ✅ Real-time Listeners: Functional");
-    
+
     print("\n🚨 WRITE PERMISSION ISSUE DETECTED");
     print("💡 SOLUTION STEPS:");
     print("  1. Your Firebase backend IS WORKING");
@@ -153,19 +152,19 @@ void main() async {
     print("  3. Your IoT device should write to Firebase directly");
     print("  4. The Flutter app should primarily READ from Firebase");
     print("  5. Cloud Functions handle server-side operations");
-    
+
     print("\n🔧 NEXT STEPS:");
     print("  1. ✅ Firebase backend is ready");
     print("  2. 📱 Connect your IoT wearable device to send data");
     print("  3. 🔔 Test notifications with real sensor data");
     print("  4. 📊 Monitor data in Firebase Console");
     print("  5. 🧪 Use Developer Test Screen for manual testing");
-
   } catch (e, stackTrace) {
     print("❌ Firebase test failed: $e");
     print("\n🔧 Troubleshooting:");
     print("  - Check internet connection");
     print("  - Verify Firebase project is active");
-    print("  - Check Firebase Console: https://console.firebase.google.com/project/anxieease-sensors");
+    print(
+        "  - Check Firebase Console: https://console.firebase.google.com/project/anxieease-sensors");
   }
 }

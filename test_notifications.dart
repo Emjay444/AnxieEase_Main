@@ -11,7 +11,7 @@ void main() async {
   try {
     // Initialize AwesomeNotifications
     print("🚀 Initializing notification system...");
-    
+
     await AwesomeNotifications().initialize(
       'resource://drawable/res_app_icon', // App icon
       [
@@ -31,11 +31,11 @@ void main() async {
     // Request permission
     print("📋 Requesting notification permissions...");
     final isAllowed = await AwesomeNotifications().isNotificationAllowed();
-    
+
     if (!isAllowed) {
       print("❌ Notifications not allowed - requesting permission...");
       await AwesomeNotifications().requestPermissionToSendNotifications();
-      
+
       final isNowAllowed = await AwesomeNotifications().isNotificationAllowed();
       if (!isNowAllowed) {
         print("❌ User denied notification permission");
@@ -49,7 +49,7 @@ void main() async {
 
     // Send test notifications
     print("\n📱 Sending test notifications...");
-    
+
     // Test 1: Normal notification
     print("  📤 Sending normal anxiety alert...");
     await AwesomeNotifications().createNotification(
@@ -57,7 +57,8 @@ void main() async {
         id: 1,
         channelKey: 'test_alerts',
         title: '🟡 Mild Anxiety Detected',
-        body: 'Heart rate slightly elevated (75% confidence). Tap to confirm if you\'re feeling anxious.',
+        body:
+            'Heart rate slightly elevated (75% confidence). Tap to confirm if you\'re feeling anxious.',
         notificationLayout: NotificationLayout.Default,
         category: NotificationCategory.Reminder,
         wakeUpScreen: false,
@@ -67,7 +68,7 @@ void main() async {
 
     // Wait 2 seconds
     await Future.delayed(const Duration(seconds: 2));
-    
+
     // Test 2: High priority notification
     print("  📤 Sending high priority alert...");
     await AwesomeNotifications().createNotification(
@@ -75,7 +76,8 @@ void main() async {
         id: 2,
         channelKey: 'test_alerts',
         title: '🔴 High Anxiety Alert',
-        body: 'Significant anxiety detected (95% confidence). Heart rate: 125 bpm, SpO2: 92%',
+        body:
+            'Significant anxiety detected (95% confidence). Heart rate: 125 bpm, SpO2: 92%',
         notificationLayout: NotificationLayout.Default,
         category: NotificationCategory.Alarm,
         wakeUpScreen: true,
@@ -106,7 +108,8 @@ void main() async {
         id: 3,
         channelKey: 'test_alerts',
         title: '🚨 EMERGENCY: Critical SpO2',
-        body: 'Blood oxygen level critically low: 88%. Seek immediate medical attention!',
+        body:
+            'Blood oxygen level critically low: 88%. Seek immediate medical attention!',
         notificationLayout: NotificationLayout.Default,
         category: NotificationCategory.Alarm,
         wakeUpScreen: true,
@@ -139,7 +142,6 @@ void main() async {
     print("   2. Ensure 'Do Not Disturb' is off");
     print("   3. Check notification sound is enabled");
     print("   4. Try pulling down notification panel");
-
   } catch (e) {
     print("❌ Notification test failed: $e");
     print("\n🔧 Troubleshooting:");

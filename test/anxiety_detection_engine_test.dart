@@ -17,7 +17,7 @@ void main() {
       test('should detect high heart rate (20% above baseline)', () {
         const restingHR = 70.0;
         const currentHR = 84.0; // 20% above baseline
-        
+
         final result = engine.detectAnxiety(
           currentHeartRate: currentHR,
           restingHeartRate: restingHR,
@@ -35,7 +35,7 @@ void main() {
       test('should detect very high heart rate (30% above baseline)', () {
         const restingHR = 70.0;
         const currentHR = 91.0; // 30% above baseline
-        
+
         // Build up sustained high HR over 30 readings
         for (int i = 0; i < 30; i++) {
           engine.detectAnxiety(
@@ -61,7 +61,7 @@ void main() {
       test('should detect unusually low heart rate', () {
         const restingHR = 70.0;
         const currentHR = 45.0; // Below 50 BPM threshold
-        
+
         // Build up sustained low HR
         for (int i = 0; i < 30; i++) {
           engine.detectAnxiety(
@@ -139,7 +139,8 @@ void main() {
     });
 
     group('Multi-Parameter Detection', () {
-      test('should trigger without confirmation for multiple abnormal metrics', () {
+      test('should trigger without confirmation for multiple abnormal metrics',
+          () {
         // Build sustained abnormal readings
         for (int i = 0; i < 30; i++) {
           engine.detectAnxiety(
@@ -160,11 +161,8 @@ void main() {
         expect(result.triggered, true);
         expect(result.requiresUserConfirmation, false);
         expect(result.confidenceLevel, greaterThan(0.8));
-        expect(result.reason, anyOf([
-          'combinedHRSpO2',
-          'combinedHRMovement', 
-          'multipleMetrics'
-        ]));
+        expect(result.reason,
+            anyOf(['combinedHRSpO2', 'combinedHRMovement', 'multipleMetrics']));
       });
 
       test('should have highest confidence for HR + Movement combination', () {
@@ -244,7 +242,8 @@ void main() {
     });
 
     group('Confidence Levels', () {
-      test('should have appropriate confidence levels for different scenarios', () {
+      test('should have appropriate confidence levels for different scenarios',
+          () {
         // Single metric abnormal
         var result = engine.detectAnxiety(
           currentHeartRate: 90.0,
