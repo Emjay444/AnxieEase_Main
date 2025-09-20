@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../search.dart';
+import '../widgets/anxiety_confirmation_dialog.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -98,14 +99,82 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (!mounted) return;
 
-    // Show notification details modal instead of just navigating
-    _showNotificationDetails(
-      notification['title'],
-      notification['message'],
-      _getDisplayTime(notification['created_at']),
-      notification['type'] ?? 'info',
-      notification,
+    // Check if this is an anxiety detection notification requiring user confirmation
+    final title = notification['title'] ?? '';
+    if (title.contains('Anxiety Detection - Confirmation Needed') || 
+        title.contains('Anxiety Alert') || 
+        title.contains('anxiety detected')) {
+      
+      // Show anxiety confirmation dialog
+      await _showAnxietyConfirmationDialog(notification);
+    } else {
+      // Show normal notification details modal
+      _showNotificationDetails(
+        notification['title'],
+        notification['message'],
+        _getDisplayTime(notification['created_at']),
+        notification['type'] ?? 'info',
+        notification,
+      );
+    }
+  }
+
+  Future<void> _showAnxietyConfirmationDialog(Map<String, dynamic> notification) async {
+    // Extract detection data from notification message or create mock data
+    final message = notification['message'] ?? '';
+    final title = notification['title'] ?? '';
+    
+    // Parse confidence level from message if available
+    double confidenceLevel = 0.7; // default
+    final RegExp confidenceRegex = RegExp(r'(\d+(?:\.\d+)?)\%');
+    final match = confidenceRegex.firstMatch(message);
+    if (match != null) {
+      confidenceLevel = double.parse(match.group(1)!) / 100.0;
+    }
+
+    // Create detection data from notification
+    final detectionData = {
+      'timestamp': notification['created_at'],
+      'notification_id': notification['id'],
+      'title': title,
+      'message': message,
+      'type': notification['type'] ?? 'anxiety_detection',
+    };
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AnxietyConfirmationDialog(
+          title: title,
+          message: message,
+          detectionData: detectionData,
+          confidenceLevel: confidenceLevel,
+        );
+      },
     );
+
+    // Handle the response after dialog is dismissed
+    if (result != null && mounted) {
+      final confirmed = result['confirmed'] as bool? ?? false;
+      final severity = result['severity'] as String?;
+      
+      if (confirmed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Thank you for confirming. ${severity != null ? "We've noted the severity as $severity." : ""}'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thank you for the feedback. We\'ll adjust our detection.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
   }
 
   String _getDisplayTime(String createdAt) {

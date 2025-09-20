@@ -161,10 +161,10 @@ BEGIN
         RAISE NOTICE '❌ user_profiles: INSERT failed - %', SQLERRM;
     END;
     
-    -- Test 2: Insert anxiety_record
+    -- Test 2: Insert anxiety_record (no heart_rate column)
     BEGIN
-        INSERT INTO anxiety_records (user_id, severity_level, heart_rate)
-        VALUES (test_user_id, 'mild', 75)
+        INSERT INTO anxiety_records (user_id, severity_level)
+        VALUES (test_user_id, 'mild')
         RETURNING id INTO test_record_id;
         
         RAISE NOTICE '✅ anxiety_records: INSERT successful (ID: %)', test_record_id;

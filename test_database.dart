@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'services/supabase_service.dart';
-import 'database_test.dart';
+import 'package:anxiease/services/supabase_service.dart';
+import 'package:anxiease/database_test.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   print("🚀 Starting AnxieEase Database Backend Test...");
-  print("=" * 50);
+  const separator = '==================================================';
+  print(separator);
 
   try {
     // Initialize Supabase
@@ -19,7 +20,7 @@ void main() async {
     print("\n🔍 Running database connectivity test...");
     await quickDatabaseTest();
 
-    print("\n${"=" * 50}");
+  print("\n$separator");
     print("🎉 Test completed! Check results above.");
     print("💡 To run a comprehensive test:");
     print("   1. Copy comprehensive_database_test.sql");

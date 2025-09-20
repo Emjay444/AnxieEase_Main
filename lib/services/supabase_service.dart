@@ -86,6 +86,8 @@ class SupabaseService {
   }
 
   Future<void> _initializeSupabase() async {
+    // Diagnostics: Log which Supabase project URL we're targeting
+    debugPrint('🔗 Initializing Supabase with URL: ' + supabaseUrl);
     await Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
@@ -289,7 +291,7 @@ class SupabaseService {
       print('Requesting password reset for email: $email');
 
       // Set a longer expiration for the reset token
-      final response = await client.auth.resetPasswordForEmail(email,
+    await client.auth.resetPasswordForEmail(email,
           redirectTo: null // Let Supabase handle the redirect
           );
 
@@ -549,23 +551,47 @@ class SupabaseService {
         record['timestamp'] = DateTime.now().toIso8601String();
       }
 
-      // Add additional fields for analytics
-      final recordToSave = {
+      // Map to exact anxiety_records table schema
+      final recordToSave = <String, dynamic>{
         'user_id': user.id,
         'severity_level': record['severity_level'] ?? 'unknown',
-        'timestamp': record['timestamp'],
-        'created_at': DateTime.now().toIso8601String(),
+        'timestamp': record['timestamp'], // Keep user-provided timestamp or now()
         'is_manual': record['is_manual'] ?? false,
-        'source': record['source'] ?? 'app',
-        'details': record['details'] ?? '',
-        'heart_rate': record['heart_rate'] ?? 0,
+        'source': (record['source'] ?? 'app').toString().substring(0, 
+            (record['source'] ?? 'app').toString().length > 50 ? 50 : (record['source'] ?? 'app').toString().length),
+        'details': record['details']?.toString() ?? '',
       };
+      
+      // heart_rate removed from schema per product decision; do not include
+      
 
-      // Save to anxiety_records table
-      await client.from('anxiety_records').insert(recordToSave);
 
-      debugPrint(
-          'Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
+      // Save to anxiety_records table and return the inserted row for verification
+      final inserted = await client
+          .from('anxiety_records')
+          .insert(recordToSave)
+          .select()
+          .single();
+
+      debugPrint('Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
+      debugPrint('🆔 anxiety_records inserted id: ${inserted['id']} at ${inserted['created_at']}');
+      
+      // Double-check: Immediately query back the record to confirm it's visible
+      try {
+        final verification = await client
+            .from('anxiety_records')
+            .select()
+            .eq('id', inserted['id'])
+            .maybeSingle();
+        
+        if (verification != null) {
+          debugPrint('✅ Verification: Record ${inserted['id']} found in anxiety_records with severity: ${verification['severity_level']}');
+        } else {
+          debugPrint('❌ Verification failed: Record ${inserted['id']} not found in anxiety_records (possible RLS/visibility issue)');
+        }
+      } catch (verifyError) {
+        debugPrint('❌ Verification query failed: $verifyError');
+      }
     } catch (e) {
       debugPrint('Error saving anxiety record: $e');
       throw Exception('Failed to save anxiety record: $e');
@@ -1164,10 +1190,7 @@ class SupabaseService {
             .eq('user_id', user.id)
             .order('appointment_date', ascending: false);
 
-        return List<Map<String, dynamic>>.from(response);
-
-        // If no appointments found, return empty list
-        return [];
+  return List<Map<String, dynamic>>.from(response);
       } catch (e) {
         final errorMsg = e.toString().toLowerCase();
         if (errorMsg.contains('does not exist') ||
@@ -1184,8 +1207,6 @@ class SupabaseService {
             // Convert notifications to appointment format
             return notifications.map<Map<String, dynamic>>((notification) {
               // Parse the message to extract details
-              final createdAt = DateTime.parse(notification['created_at']);
-
               return {
                 'id': notification['id'] ?? 'temp-id',
                 'psychologist_id': notification['related_id'] ?? 'unknown',
@@ -1253,7 +1274,7 @@ class SupabaseService {
             errorMsg.contains('relation "appointments" does not exist')) {
           // Table doesn't exist, create it using SQL
           Logger.info('Creating appointments table...');
-          final response = await client.rpc('create_appointments_table');
+          await client.rpc('create_appointments_table');
           Logger.info('Appointments table created successfully');
           return true;
         } else {
@@ -1434,15 +1455,42 @@ class SupabaseService {
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
+    final nowIso = DateTime.now().toIso8601String();
+    bool _isValidUuid(String s) {
+      final regex = RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\$');
+      return regex.hasMatch(s);
+    }
 
-    await client.from('notifications').insert({
+    final Map<String, dynamic> row = {
       'user_id': user.id,
       'title': title,
       'message': message,
       'type': type,
       'related_screen': relatedScreen,
-      'related_id': relatedId,
-    });
+      'read': false,
+      'created_at': nowIso,
+    };
+
+    if (relatedId != null) {
+      if (_isValidUuid(relatedId)) {
+        row['related_id'] = relatedId;
+      } else {
+        debugPrint('ℹ️ Skipping non-UUID relatedId: ' + relatedId);
+      }
+    }
+
+    try {
+      final inserted = await client
+          .from('notifications')
+          .insert(row)
+          .select()
+          .single();
+      debugPrint('💾 createNotification inserted id: ' + (inserted['id']?.toString() ?? 'unknown') + ' type: ' + type);
+    } catch (e) {
+      debugPrint('❌ createNotification insert failed: ' + e.toString());
+      rethrow;
+    }
   }
 
   // Additional psychologist methods
@@ -1544,7 +1592,7 @@ class SupabaseService {
       final filePath = 'psychologists/$fileName';
 
       // Upload file to Supabase Storage
-      final response = await client.storage.from('profile_pictures').upload(
+    await client.storage.from('profile_pictures').upload(
           filePath, imageFile,
           fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
 
@@ -1784,6 +1832,70 @@ class SupabaseService {
     } catch (e) {
       Logger.error('Error auto-archiving old appointments', e);
       return 0;
+    }
+  }
+
+  // Record anxiety detection response from user
+  Future<void> recordAnxietyResponse({
+    required Map<String, dynamic> detectionData,
+    required bool userConfirmed,
+    String? reportedSeverity,
+    required double confidenceLevel,
+    String? responseTime,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // If user denied the detection, skip inserting into anxiety_records and just log
+      if (!userConfirmed) {
+        await createNotification(
+          title: 'Anxiety Detection Dismissed',
+          message: 'User indicated they are not anxious at this time. Detection confidence: ${(confidenceLevel * 100).toStringAsFixed(0)}%',
+          type: 'anxiety_log',
+        );
+        return;
+      }
+
+      // Map response into existing anxiety_records schema
+      final String severity = (reportedSeverity ??
+              detectionData['severity'] ??
+              detectionData['severity_level'] ??
+              'unknown')
+          .toString()
+          .toLowerCase();
+
+      // Heart rate is not stored in anxiety_records
+
+      // Extract trigger source from detection data
+      final String triggerSource = (() {
+        final source = detectionData['source']?.toString() ?? 'app_detection';
+        if (detectionData['reasons']?.toString().contains('Movement') == true) return 'movement_pattern';
+        if (detectionData['reasons']?.toString().contains('SpO2') == true) return 'oxygen_level';
+        return source;
+      })();
+
+      final String details = detectionData['details']?.toString().isNotEmpty == true
+          ? detectionData['details'].toString()
+          : 'User confirmed ${severity} anxiety episode';
+
+      await saveAnxietyRecord({
+        'severity_level': severity,
+        'timestamp': responseTime ?? DateTime.now().toIso8601String(),
+        'is_manual': false,
+        'source': triggerSource,
+        'details': details,
+      });
+    } catch (e) {
+      Logger.error('Error recording anxiety response', e);
+      // Fall back to creating a notification log if the table doesn't exist
+      await createNotification(
+        title: 'Anxiety Response Logged',
+        message:
+            'User ${userConfirmed ? 'confirmed' : 'denied'} anxiety detection'
+            '${reportedSeverity != null ? ' (Severity: $reportedSeverity)' : ''}',
+        type: 'anxiety_log',
+      );
     }
   }
 }

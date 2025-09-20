@@ -333,7 +333,7 @@ class NotificationService extends ChangeNotifier {
           _lastLocalSeverityTimeMs = nowMs;
           _showSeverityNotification(title, body, channelKey, severity);
           _saveNotificationToSupabase(title, body, notificationType, severity);
-          _saveAnxietyLevelRecord(severity, false, heartRate);
+          _saveAnxietyLevelRecord(severity, false);
         } else {
           debugPrint(
               '🛑 Skipping duplicate $severity within ${cooldownMs ~/ 1000}s (client-side)');
@@ -406,20 +406,18 @@ class NotificationService extends ChangeNotifier {
   }
 
   // Method to save anxiety level record to Supabase
-  Future<void> _saveAnxietyLevelRecord(String severity, bool isManual,
-      [int? heartRate]) async {
+  Future<void> _saveAnxietyLevelRecord(String severity, bool isManual) async {
     try {
       debugPrint('📊 Saving anxiety level record to Supabase: $severity');
 
-      final anxietyRecord = {
+  final anxietyRecord = {
         'severity_level': severity,
         'timestamp': DateTime.now().toIso8601String(),
         'is_manual': isManual,
         'source': 'app',
         'details': isManual
             ? 'Manually triggered alert'
-            : 'Automatically detected alert',
-        'heart_rate': heartRate ?? 0, // Use provided heart rate or default to 0
+    : 'Automatically detected alert',
       };
 
       await _supabaseService.saveAnxietyRecord(anxietyRecord);
@@ -444,6 +442,28 @@ class NotificationService extends ChangeNotifier {
       _onNotificationAdded?.call();
     } catch (e) {
       debugPrint('❌ Error saving notification to Supabase: $e');
+    }
+  }
+
+  // Public helper to add a notification record and notify UI
+  Future<void> addNotification({
+    required String title,
+    required String message,
+    required String type,
+    String? relatedScreen,
+    String? relatedId,
+  }) async {
+    try {
+      await _supabaseService.createNotification(
+        title: title,
+        message: message,
+        type: type,
+        relatedScreen: relatedScreen,
+        relatedId: relatedId,
+      );
+      _onNotificationAdded?.call();
+    } catch (e) {
+      debugPrint('❌ Error adding notification: $e');
     }
   }
 

@@ -6,6 +6,7 @@ import '../models/health_metrics.dart';
 import '../models/baseline_heart_rate.dart';
 import '../services/supabase_service.dart';
 import '../services/iot_sensor_service.dart';
+import '../services/anxiety_detection_engine.dart';
 import '../utils/logger.dart';
 
 /// Comprehensive device service for wearable device integration
@@ -22,6 +23,7 @@ class DeviceService extends ChangeNotifier {
 
   final SupabaseService _supabaseService = SupabaseService();
   final IoTSensorService _iotSensorService = IoTSensorService();
+  final AnxietyDetectionEngine _anxietyDetectionEngine = AnxietyDetectionEngine();
 
   // Firebase references
   FirebaseDatabase get _realtimeDb => FirebaseDatabase.instance;
@@ -52,6 +54,10 @@ class DeviceService extends ChangeNotifier {
   bool get isRecordingBaseline => _isRecordingBaseline;
   bool get hasLinkedDevice => _linkedDevice != null;
   bool get hasBaseline => _currentBaseline != null;
+  
+  // Anxiety detection getters
+  bool get canDetectAnxiety => hasBaseline && hasLinkedDevice;
+  Map<String, dynamic> get anxietyDetectionStatus => _anxietyDetectionEngine.getDetectionStatus();
 
   // Streams for real-time updates
   Stream<int>? get countdownStream => _countdownController?.stream;
@@ -146,6 +152,10 @@ class DeviceService extends ChangeNotifier {
       await _setupRealtimeStreaming(normalizedDeviceId);
 
       _linkedDevice = device;
+      
+      // Reset anxiety detection engine for new device
+      _anxietyDetectionEngine.reset();
+      
       notifyListeners();
 
       AppLogger.d(
@@ -395,17 +405,21 @@ class DeviceService extends ChangeNotifier {
       );
       _linkedDevice = updatedDevice;
 
-      // Save to Supabase (best effort, don't block UI completion)
+      // Save to Supabase and Firebase (best effort, don't block UI completion)
       AppLogger.d(
-          'DeviceService: Saving baseline to Supabase: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
+          'DeviceService: Saving baseline to databases: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
       try {
         await _saveBaselineToDatabase(baseline);
         await _saveDeviceToDatabase(updatedDevice);
+        
+        // Also save baseline to Firebase for Cloud Functions access
+        await _saveBaselineToFirebase(baseline);
+        
         AppLogger.d(
-            'DeviceService: Baseline and device saved to Supabase successfully');
+            'DeviceService: Baseline and device saved to all databases successfully');
       } catch (e) {
         AppLogger.w(
-            'DeviceService: Supabase save failed, baseline available locally: $e');
+            'DeviceService: Database save failed, baseline available locally: $e');
         // Don't rethrow - allow completion with local baseline
       }
 
@@ -638,6 +652,15 @@ class DeviceService extends ChangeNotifier {
         _recentReadings.removeAt(0);
       }
 
+      // Run anxiety detection if we have valid data and baseline
+      if (metrics.isWorn && 
+          metrics.heartRate != null && 
+          metrics.spo2 != null && 
+          metrics.movementLevel != null &&
+          _currentBaseline != null) {
+        _runAnxietyDetection(metrics);
+      }
+
       notifyListeners();
 
       // Smart data storage: only store if significant change or time interval
@@ -855,6 +878,245 @@ class DeviceService extends ChangeNotifier {
     }
   }
 
+  /// Run comprehensive anxiety detection on current metrics
+  void _runAnxietyDetection(HealthMetrics metrics) {
+    try {
+      if (_currentBaseline == null) {
+        AppLogger.d('DeviceService: No baseline available for anxiety detection');
+        return;
+      }
+
+      // Run the comprehensive anxiety detection
+      final result = _anxietyDetectionEngine.detectAnxiety(
+        currentHeartRate: metrics.heartRate!,
+        restingHeartRate: _currentBaseline!.baselineHR,
+        currentSpO2: metrics.spo2!,
+        currentMovement: metrics.movementLevel!,
+        bodyTemperature: metrics.bodyTemperature,
+      );
+
+      // Log detection result
+      AppLogger.d(
+        'DeviceService: Anxiety detection - '
+        'Triggered: ${result.triggered}, '
+        'Reason: ${result.reason}, '
+        'Confidence: ${result.confidenceLevel.toStringAsFixed(2)}, '
+        'Needs confirmation: ${result.requiresUserConfirmation}'
+      );
+
+      // Handle the detection result
+      if (result.triggered) {
+        _handleAnxietyDetectionResult(result, metrics);
+      }
+    } catch (e) {
+      AppLogger.e('DeviceService: Error in anxiety detection', e as Object?);
+    }
+  }
+
+  /// Handle anxiety detection results
+  Future<void> _handleAnxietyDetectionResult(
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics
+  ) async {
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      
+      // Store the detection result
+      await _storeAnxietyAlert(result, metrics, timestamp);
+
+      // Send notification based on confidence level and confirmation requirement
+      if (!result.requiresUserConfirmation || result.confidenceLevel >= 0.8) {
+        await _sendAnxietyNotification(result, metrics);
+      } else {
+        // For lower confidence detections, we might want to request user confirmation
+        await _requestUserConfirmation(result, metrics);
+      }
+
+    } catch (e) {
+      AppLogger.e('DeviceService: Error handling anxiety detection result', e as Object?);
+    }
+  }
+
+  /// Store anxiety alert in Firebase
+  Future<void> _storeAnxietyAlert(
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics, 
+    int timestamp
+  ) async {
+    if (!_enableClientFirebaseWrites) return;
+    if (_linkedDevice == null) return;
+
+    try {
+      final user = _supabaseService.client.auth.currentUser;
+      if (user == null) return;
+
+      final alertRef = _realtimeDb.ref(
+        'anxiety_alerts/${user.id}/${_linkedDevice!.deviceId}/$timestamp'
+      );
+
+      await alertRef.set({
+        'triggered': result.triggered,
+        'reason': result.reason,
+        'confidenceLevel': result.confidenceLevel,
+        'requiresUserConfirmation': result.requiresUserConfirmation,
+        'metrics': result.metrics,
+        'abnormalMetrics': result.abnormalMetrics,
+        'timestamp': timestamp,
+        'deviceId': _linkedDevice!.deviceId,
+        'baseline': _currentBaseline!.baselineHR,
+        'resolved': false,
+      });
+
+      AppLogger.d('DeviceService: Anxiety alert stored - ${result.reason}');
+    } catch (e) {
+      AppLogger.e('DeviceService: Failed to store anxiety alert', e as Object?);
+    }
+  }
+
+  /// Send anxiety notification with enhanced content
+  Future<void> _sendAnxietyNotification(
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics
+  ) async {
+    try {
+      // Generate notification content based on detection reason
+      final notificationContent = _generateNotificationContent(result, metrics);
+      
+      AppLogger.d(
+        'DeviceService: ANXIETY NOTIFICATION - '
+        'Reason: ${result.reason}, '
+        'Confidence: ${(result.confidenceLevel * 100).toStringAsFixed(0)}%, '
+        'HR: ${metrics.heartRate}, '
+        'SpO2: ${metrics.spo2}, '
+        'Movement: ${metrics.movementLevel}'
+      );
+
+      // Store notification for analytics
+      await _storeNotificationEvent('anxiety_alert', result, metrics);
+
+      // TODO: Integrate with your notification service here
+      // Examples based on detection type:
+      // - Push notification to user's device
+      // - Send to emergency contacts for critical alerts
+      // - Log to health monitoring dashboard
+      // NotificationService.sendAnxietyAlert(notificationContent, result.confidenceLevel);
+      
+    } catch (e) {
+      AppLogger.e('DeviceService: Failed to send anxiety notification', e as Object?);
+    }
+  }
+
+  /// Request user confirmation for low-confidence detections
+  Future<void> _requestUserConfirmation(
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics
+  ) async {
+    try {
+      AppLogger.d(
+        'DeviceService: REQUESTING USER CONFIRMATION - '
+        'Reason: ${result.reason}, '
+        'Confidence: ${(result.confidenceLevel * 100).toStringAsFixed(0)}%'
+      );
+
+      // Store confirmation request for analytics
+      await _storeNotificationEvent('confirmation_request', result, metrics);
+
+      // TODO: Show user prompt or notification asking for confirmation
+      // This could be:
+      // - In-app dialog with "Are you feeling anxious?" 
+      // - Push notification with yes/no actions
+      // - Gentle vibration pattern with app prompt
+      // NotificationService.requestAnxietyConfirmation(result, metrics);
+      
+    } catch (e) {
+      AppLogger.e('DeviceService: Failed to request user confirmation', e as Object?);
+    }
+  }
+
+  /// Generate notification content based on detection result
+  Map<String, String> _generateNotificationContent(
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics
+  ) {
+    switch (result.reason) {
+      case 'criticalSpO2':
+        return {
+          'title': 'Critical Alert: Low Oxygen',
+          'body': 'Your blood oxygen level is critically low (${metrics.spo2?.toStringAsFixed(0)}%). Please seek immediate medical attention if you feel unwell.',
+        };
+      case 'combinedHRMovement':
+        return {
+          'title': 'Anxiety Alert: Heart Rate + Movement',
+          'body': 'Elevated heart rate (${metrics.heartRate?.toStringAsFixed(0)} BPM) and unusual movement detected. Try your breathing exercises.',
+        };
+      case 'combinedHRSpO2':
+        return {
+          'title': 'Anxiety Alert: Heart Rate + Oxygen',
+          'body': 'High heart rate (${metrics.heartRate?.toStringAsFixed(0)} BPM) and low oxygen (${metrics.spo2?.toStringAsFixed(0)}%) detected.',
+        };
+      case 'highHR':
+        final baselineHR = _currentBaseline?.baselineHR ?? 70;
+        final percentAbove = ((metrics.heartRate! - baselineHR) / baselineHR * 100).round();
+        return {
+          'title': 'High Heart Rate Detected',
+          'body': 'Your heart rate is elevated (${metrics.heartRate?.toStringAsFixed(0)} BPM, ${percentAbove}% above baseline). Consider using relaxation techniques.',
+        };
+      case 'lowSpO2':
+        return {
+          'title': 'Low Oxygen Levels',
+          'body': 'Your oxygen levels are below normal (${metrics.spo2?.toStringAsFixed(0)}%). Are you feeling okay?',
+        };
+      case 'movementSpikes':
+        return {
+          'title': 'Unusual Movement Detected',
+          'body': 'We detected some unusual movement patterns. Are you experiencing anxiety or restlessness?',
+        };
+      default:
+        return {
+          'title': 'Anxiety Alert',
+          'body': 'We detected some changes that might indicate anxiety. Take a moment to check in with yourself.',
+        };
+    }
+  }
+
+  /// Store notification event for analytics and history
+  Future<void> _storeNotificationEvent(
+    String eventType, 
+    AnxietyDetectionResult result, 
+    HealthMetrics metrics
+  ) async {
+    if (!_enableClientFirebaseWrites) return;
+    if (_linkedDevice == null) return;
+
+    try {
+      final user = _supabaseService.client.auth.currentUser;
+      if (user == null) return;
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final eventRef = _realtimeDb.ref(
+        'notification_events/${user.id}/${_linkedDevice!.deviceId}/$timestamp'
+      );
+
+      await eventRef.set({
+        'eventType': eventType,
+        'reason': result.reason,
+        'confidenceLevel': result.confidenceLevel,
+        'requiresUserConfirmation': result.requiresUserConfirmation,
+        'heartRate': metrics.heartRate,
+        'spO2': metrics.spo2,
+        'movementLevel': metrics.movementLevel,
+        'bodyTemperature': metrics.bodyTemperature,
+        'baselineHR': _currentBaseline?.baselineHR,
+        'timestamp': timestamp,
+        'deviceId': _linkedDevice!.deviceId,
+      });
+
+      AppLogger.d('DeviceService: Notification event stored - $eventType');
+    } catch (e) {
+      AppLogger.e('DeviceService: Failed to store notification event', e as Object?);
+    }
+  }
+
   /// Store alert data
   Future<void> _storeAlert(HealthMetrics metrics, int timestamp,
       {String? severity}) async {
@@ -985,6 +1247,37 @@ class DeviceService extends ChangeNotifier {
       AppLogger.e(
           'DeviceService: Error saving device to database', e as Object?);
       rethrow;
+    }
+  }
+
+  /// Save baseline heart rate to Firebase for Cloud Functions access
+  Future<void> _saveBaselineToFirebase(BaselineHeartRate baseline) async {
+    if (!_enableClientFirebaseWrites) return;
+    
+    try {
+      final user = _supabaseService.client.auth.currentUser;
+      if (user == null) return;
+
+      // Store baseline in Firebase format that Cloud Functions expect
+      final baselineRef = _realtimeDb.ref('baselines/${user.id}/${baseline.deviceId}');
+      
+      await baselineRef.set({
+        'baselineHR': baseline.baselineHR,
+        'userId': baseline.userId,
+        'deviceId': baseline.deviceId,
+        'recordedReadings': baseline.recordedReadings,
+        'recordingStartTime': baseline.recordingStartTime.millisecondsSinceEpoch,
+        'recordingEndTime': baseline.recordingEndTime.millisecondsSinceEpoch,
+        'recordingDurationMinutes': baseline.recordingDurationMinutes,
+        'createdAt': baseline.createdAt.millisecondsSinceEpoch,
+        'isActive': true,
+        'notes': baseline.notes,
+      });
+
+      AppLogger.d('DeviceService: Baseline saved to Firebase for Cloud Functions');
+    } catch (e) {
+      AppLogger.e('DeviceService: Failed to save baseline to Firebase', e as Object?);
+      // Don't rethrow - this is best effort for Cloud Functions
     }
   }
 

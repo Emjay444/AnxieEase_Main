@@ -7,6 +7,7 @@ import 'providers/auth_provider.dart';
 import 'utils/settings_helper.dart';
 import 'auth.dart'; // Import for AuthScreen
 import 'services/notification_service.dart';
+import 'screens/developer_test_screen.dart';
 // Import for logout navigation
 
 class SettingsScreen extends StatefulWidget {
@@ -302,6 +303,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         // Add anxiety prevention reminder settings
                         _buildAnxietyReminderTile(),
+                        _buildSettingsTile(
+                          icon: Icons.developer_mode,
+                          title: 'Developer Test',
+                          subtitle: 'Test anxiety detection system',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const DeveloperTestScreen(),
+                              ),
+                            );
+                          },
+                        ),
                         _buildSettingsTile(
                           icon: Icons.info_outline,
                           title: 'About',

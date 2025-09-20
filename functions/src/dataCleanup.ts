@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin if not already initialized
@@ -36,7 +36,7 @@ export const cleanupHealthData = functions.pubsub
         return null;
       }
       
-      const deletionPromises = [];
+      const deletionPromises: Promise<void>[] = [];
       
       // Process each user's data
       snapshot.forEach((userSnapshot) => {
@@ -50,7 +50,7 @@ export const cleanupHealthData = functions.pubsub
           const historyRef = deviceSnapshot.child('history');
           if (historyRef.exists()) {
             historyRef.forEach((timestampSnapshot) => {
-              const timestamp = parseInt(timestampSnapshot.key);
+              const timestamp = parseInt(timestampSnapshot.key || '0');
               if (timestamp < (now - retentionPeriods.history)) {
                 deletionPromises.push(
                   timestampSnapshot.ref.remove().then(() => {
@@ -66,7 +66,7 @@ export const cleanupHealthData = functions.pubsub
           const hourlySummaryRef = deviceSnapshot.child('hourly_summary');
           if (hourlySummaryRef.exists()) {
             hourlySummaryRef.forEach((hourSnapshot) => {
-              const hourTimestamp = parseInt(hourSnapshot.key);
+              const hourTimestamp = parseInt(hourSnapshot.key || '0');
               if (hourTimestamp < (now - retentionPeriods.hourly_summary)) {
                 deletionPromises.push(
                   hourSnapshot.ref.remove().then(() => {
@@ -82,7 +82,7 @@ export const cleanupHealthData = functions.pubsub
           const alertsRef = deviceSnapshot.child('alerts');
           if (alertsRef.exists()) {
             alertsRef.forEach((alertSnapshot) => {
-              const alertTimestamp = parseInt(alertSnapshot.key);
+              const alertTimestamp = parseInt(alertSnapshot.key || '0');
               if (alertTimestamp < (now - retentionPeriods.alerts)) {
                 deletionPromises.push(
                   alertSnapshot.ref.remove().then(() => {
@@ -135,7 +135,7 @@ export const aggregateHealthDataHourly = functions.pubsub
         return null;
       }
       
-      const aggregationPromises = [];
+      const aggregationPromises: Promise<void>[] = [];
       
       snapshot.forEach((userSnapshot) => {
         const userId = userSnapshot.key;
@@ -145,11 +145,11 @@ export const aggregateHealthDataHourly = functions.pubsub
           const historyRef = deviceSnapshot.child('history');
           
           if (historyRef.exists()) {
-            const hourlyReadings = [];
+            const hourlyReadings: any[] = [];
             
             // Collect readings from the previous hour
             historyRef.forEach((timestampSnapshot) => {
-              const timestamp = parseInt(timestampSnapshot.key);
+              const timestamp = parseInt(timestampSnapshot.key || '0');
               if (timestamp >= previousHour && timestamp < currentHour) {
                 const reading = timestampSnapshot.val();
                 if (reading && reading.heartRate) {

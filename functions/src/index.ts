@@ -1,4 +1,4 @@
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 
 // Initialize Firebase Admin SDK
@@ -593,3 +593,162 @@ function getRandomWellnessMessage(
 
   return selectedMessage;
 }
+
+// Multi-parameter anxiety detection Cloud Function
+export const detectAnxietyMultiParameter = functions.database
+  .ref('/devices/{deviceId}/current')
+  .onUpdate(async (change, context) => {
+    const deviceId = context.params.deviceId;
+    const afterData = change.after.val();
+
+    console.log(`Processing metrics update for device ${deviceId}`);
+
+    // Validate required data
+    if (!afterData || !afterData.heartRate || !afterData.spo2) {
+      console.log('Missing required metrics data, skipping');
+      return null;
+    }
+
+    try {
+      // Get device info to find user
+      const deviceRef = admin.database().ref(`/devices/${deviceId}/metadata`);
+      const deviceSnapshot = await deviceRef.once('value');
+      const deviceInfo = deviceSnapshot.val();
+      
+      if (!deviceInfo || !deviceInfo.userId) {
+        console.log('Device info or userId not found');
+        return null;
+      }
+
+      // Get user's baseline HR from Supabase
+      const userRef = admin.database().ref(`/users/${deviceInfo.userId}/baseline`);
+      const baselineSnapshot = await userRef.once('value');
+      const baseline = baselineSnapshot.val();
+      
+      if (!baseline || !baseline.baselineHR) {
+        console.log(`No baseline found for user ${deviceInfo.userId}`);
+        return null;
+      }
+
+      // Analyze heart rate (20-30% above baseline)
+      const currentHR = afterData.heartRate;
+      const restingHR = baseline.baselineHR;
+      const hrThreshold = restingHR * 1.2; // 20% above
+      const severityThreshold = restingHR * 1.3; // 30% above
+      
+      let hrAnalysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+      if (currentHR > severityThreshold) {
+        hrAnalysis = { abnormal: true, severity: 'high', confidence: 0.8 };
+      } else if (currentHR > hrThreshold) {
+        hrAnalysis = { abnormal: true, severity: 'elevated', confidence: 0.7 };
+      }
+
+      // Analyze SpO2 levels
+      const currentSpO2 = afterData.spo2;
+      let spo2Analysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+      if (currentSpO2 < 90) {
+        spo2Analysis = { abnormal: true, severity: 'critical', confidence: 1.0 };
+      } else if (currentSpO2 < 94) {
+        spo2Analysis = { abnormal: true, severity: 'low', confidence: 0.8 };
+      }
+
+      // Analyze movement (simple spike detection)
+      const currentMovement = afterData.movementLevel || 0;
+      let movementAnalysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+      if (currentMovement > 80) {
+        movementAnalysis = { abnormal: true, severity: 'high', confidence: 0.7 };
+      }
+
+      // Count abnormal metrics
+      const abnormalMetrics = [hrAnalysis, spo2Analysis, movementAnalysis].filter(a => a.abnormal);
+      const abnormalCount = abnormalMetrics.length;
+
+      // Apply trigger logic
+      let triggered = false;
+      let requiresUserConfirmation = true;
+      let overallConfidence = 0.6;
+      let reason = 'normal';
+
+      if (spo2Analysis.abnormal && spo2Analysis.severity === 'critical') {
+        // Critical SpO2 always triggers immediately
+        triggered = true;
+        requiresUserConfirmation = false;
+        overallConfidence = 1.0;
+        reason = 'criticalSpO2';
+      } else if (abnormalCount >= 2) {
+        // Multiple abnormal metrics - auto-trigger
+        triggered = true;
+        requiresUserConfirmation = false;
+        overallConfidence = 0.85;
+        reason = 'multipleAbnormal';
+      } else if (abnormalCount === 1) {
+        // Single abnormal metric - request user confirmation
+        triggered = true;
+        requiresUserConfirmation = true;
+        overallConfidence = 0.65;
+        reason = abnormalMetrics[0].severity === 'critical' ? 'singleCritical' : 'singleAbnormal';
+      }
+
+      if (triggered) {
+        console.log(`Anxiety detected: ${reason} (confidence: ${overallConfidence})`);
+        
+        // Store alert
+        const alertData = {
+          deviceId,
+          userId: deviceInfo.userId,
+          timestamp: Date.now(),
+          reason,
+          confidence: overallConfidence,
+          requiresUserConfirmation,
+          metrics: {
+            heartRate: currentHR,
+            baselineHR: restingHR,
+            spO2: currentSpO2,
+            movement: currentMovement
+          },
+          analysis: {
+            heartRate: hrAnalysis,
+            spO2: spo2Analysis,
+            movement: movementAnalysis
+          }
+        };
+
+        await admin.database().ref(`/devices/${deviceId}/anxiety_alerts`).push(alertData);
+
+        // Send notification
+        const notificationTitle = requiresUserConfirmation 
+          ? "Are you feeling anxious?" 
+          : "Anxiety Alert Detected";
+        
+        const notificationBody = requiresUserConfirmation
+          ? `We detected some changes in your metrics. HR: ${currentHR} BPM, SpO2: ${currentSpO2}%`
+          : `Multiple concerning metrics detected. Please check your wellbeing.`;
+
+        const message = {
+          data: {
+            type: 'anxiety_detection',
+            reason,
+            confidence: overallConfidence.toString(),
+            requiresConfirmation: requiresUserConfirmation.toString(),
+            heartRate: currentHR.toString(),
+            spO2: currentSpO2.toString(),
+            deviceId,
+            timestamp: Date.now().toString()
+          },
+          notification: {
+            title: notificationTitle,
+            body: notificationBody
+          },
+          topic: `user_${deviceInfo.userId}_anxiety_alerts`
+        };
+
+        await admin.messaging().send(message);
+        console.log('Notification sent successfully');
+      }
+
+      return { processed: true, triggered, reason, confidence: overallConfidence };
+    } catch (error) {
+      console.error('Error in anxiety detection:', error);
+      return null;
+    }
+  });
