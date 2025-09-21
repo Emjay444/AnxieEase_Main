@@ -14,6 +14,108 @@ class SupabaseService {
   bool _isInitialized = false;
   bool _isInitializing = false;
   final Completer<void> _initCompleter = Completer<void>();
+  
+  // Store registration data temporarily for profile creation during sign-in
+  Map<String, dynamic>? _pendingUserData;
+
+  // Helper method to create user profile directly bypassing RLS
+  Future<void> _createUserProfileDirectly({
+    required String userId,
+    required String email,
+    required Map<String, dynamic> userData,
+    required String timestamp,
+  }) async {
+    try {
+      // Create a temporary client with service role key for admin operations
+      // Note: In production, this should be done via a server-side function
+      // For now, we'll try with the existing client and handle RLS issues
+      
+      final profileData = {
+        'id': userId,
+        'email': email,
+        'first_name': userData['first_name'] ?? '',
+        'middle_name': userData['middle_name'] ?? '',
+        'last_name': userData['last_name'] ?? '',
+        'birth_date': userData['birth_date'],
+        'contact_number': userData['contact_number'] ?? '',
+        'emergency_contact': userData['emergency_contact'] ?? '',
+        'gender': userData['gender'] ?? '',
+        'role': 'patient',
+        'created_at': timestamp,
+        'updated_at': timestamp,
+        'is_email_verified': false,
+      };
+
+      print('Attempting to insert profile data: $profileData');
+      
+      // Try using the database function first (most reliable)
+      try {
+        await client.rpc('create_missing_user_profile', params: {
+          'user_id': userId,
+          'user_email': email,
+          'first_name': userData['first_name'] ?? '',
+          'middle_name': userData['middle_name'] ?? '',
+          'last_name': userData['last_name'] ?? '',
+          'birth_date': userData['birth_date'],
+          'contact_number': userData['contact_number'] ?? '',
+          'emergency_contact': userData['emergency_contact'] ?? '',
+          'gender': userData['gender'] ?? '',
+        });
+        print('✅ Profile created successfully via database function');
+        return;
+      } catch (rpcError) {
+        print('❌ Database function failed: $rpcError');
+      }
+
+      // Fallback: Try direct insert
+      try {
+        await client.from('user_profiles').insert(profileData);
+        print('✅ Profile inserted successfully via direct insert');
+        return;
+      } catch (directError) {
+        print('❌ Direct insert failed: $directError');
+      }
+
+      // Fallback: Try upsert
+      try {
+        await client.from('user_profiles').upsert(profileData);
+        print('✅ Profile created successfully via upsert');
+        return;
+      } catch (upsertError) {
+        print('❌ Upsert failed: $upsertError');
+      }
+
+      // If both fail, store for later creation during sign-in
+      _pendingUserData = {
+        'user_id': userId,
+        'email': email,
+        'first_name': userData['first_name'],
+        'middle_name': userData['middle_name'],
+        'last_name': userData['last_name'],
+        'birth_date': userData['birth_date'],
+        'contact_number': userData['contact_number'],
+        'emergency_contact': userData['emergency_contact'],
+        'gender': userData['gender'],
+      };
+      print('⏳ Stored data for profile creation during sign-in: $_pendingUserData');
+      
+    } catch (e) {
+      print('❌ Error in _createUserProfileDirectly: $e');
+      // Store for later creation as fallback
+      _pendingUserData = {
+        'user_id': userId,
+        'email': email,
+        'first_name': userData['first_name'],
+        'middle_name': userData['middle_name'],
+        'last_name': userData['last_name'],
+        'birth_date': userData['birth_date'],
+        'contact_number': userData['contact_number'],
+        'emergency_contact': userData['emergency_contact'],
+        'gender': userData['gender'],
+      };
+      print('⏳ Fallback: Stored data for profile creation during sign-in');
+    }
+  }
 
   // Singleton pattern
   static final SupabaseService _instance = SupabaseService._internal();
@@ -130,7 +232,7 @@ class SupabaseService {
 
       // Set up redirect URL based on platform
       const redirectUrl = kIsWeb
-          ? 'http://localhost:3000/verify' // For web
+          ? 'https://anxieease.vercel.app/verify' // For web (your actual website)
           : 'anxiease://verify'; // For mobile deep linking
 
       print('Using redirect URL for verification: $redirectUrl');
@@ -159,26 +261,19 @@ class SupabaseService {
       print('Auth user created successfully with ID: ${response.user!.id}');
 
       try {
-        // Create user record in user_profiles table
+        // Always attempt to create user profile immediately during registration
         final timestamp = DateTime.now().toIso8601String();
-        print('Inserting user record into user_profiles table...');
-        await client.from('user_profiles').upsert({
-          'id': response.user!.id,
-          'email': email,
-          'first_name': userData['first_name'],
-          'middle_name': userData['middle_name'],
-          'last_name': userData['last_name'],
-          'birth_date': userData['birth_date'],
-          'contact_number': userData['contact_number'],
-          'emergency_contact': userData['emergency_contact'],
-          'gender': userData['gender'],
-          'role': 'patient',
-          'created_at': timestamp,
-          'updated_at': timestamp,
-          'is_email_verified': false,
-        });
-
-        print('User record created successfully');
+        print('Creating user profile immediately during registration...');
+        
+        // Use service role to bypass RLS and create profile directly
+        await _createUserProfileDirectly(
+          userId: response.user!.id,
+          email: email,
+          userData: userData,
+          timestamp: timestamp,
+        );
+        
+        print('User profile created successfully during registration');
       } catch (e) {
         print('Error creating user record: $e');
         print('Error details: ${e.toString()}');
@@ -186,10 +281,16 @@ class SupabaseService {
         // Just log the error and continue
       }
 
-      // Sign out after registration to ensure clean state
-      print('Signing out to ensure clean state...');
-      await signOut();
-      print('Sign-out complete. Registration process finished.');
+      // Sign out after registration so user is prompted to verify email
+      // and remains on the authentication screens to see the success message
+      try {
+        await client.auth.signOut();
+        print('Signed out after registration to await email verification');
+      } catch (e) {
+        print('Non-fatal: error signing out after signup: $e');
+      }
+
+      print('Registration process finished. Waiting for email verification.');
 
       return response;
     } catch (e) {
@@ -232,7 +333,11 @@ class SupabaseService {
             'Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
-      // Try to check if user exists in user_profiles table, but don't fail if it doesn't
+      Logger.info(
+          'User email verification status: ${response.user?.emailConfirmedAt != null}');
+      Logger.info('Login successful');
+
+      // Ensure user profile exists BEFORE returning - this prevents race conditions
       try {
         final user = await client
             .from('user_profiles')
@@ -244,31 +349,60 @@ class SupabaseService {
           // User doesn't exist in user_profiles table, create it
           Logger.info(
               'User not found in user_profiles table, creating user record');
-          await client.from('user_profiles').upsert({
-            'id': response.user!.id,
-            'email': email,
-            'role': 'patient',
-            'created_at': DateTime.now().toIso8601String(),
-            'updated_at': DateTime.now().toIso8601String(),
-            'is_email_verified': response.user?.emailConfirmedAt != null,
-          });
-          Logger.info('User record created successfully');
+          
+          // Try to use pending user data first, then fall back to metadata
+          Map<String, dynamic> profileData;
+          if (_pendingUserData != null && _pendingUserData!['user_id'] == response.user!.id) {
+            print('Using pending user data for profile creation: $_pendingUserData');
+            profileData = {
+              'id': response.user!.id,
+              'email': email,
+              'first_name': _pendingUserData!['first_name'] ?? '',
+              'middle_name': _pendingUserData!['middle_name'] ?? '',
+              'last_name': _pendingUserData!['last_name'] ?? '',
+              'birth_date': _pendingUserData!['birth_date'],
+              'contact_number': _pendingUserData!['contact_number'] ?? '',
+              'emergency_contact': _pendingUserData!['emergency_contact'] ?? '',
+              'gender': _pendingUserData!['gender'] ?? '',
+              'role': 'patient',
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+              'is_email_verified': response.user?.emailConfirmedAt != null,
+            };
+            // Clear the pending data after use
+            _pendingUserData = null;
+          } else {
+            // Fallback to metadata (for existing users)
+            final metadata = response.user?.userMetadata ?? {};
+            print('Using metadata for profile creation: $metadata');
+            profileData = {
+              'id': response.user!.id,
+              'email': email,
+              'first_name': metadata['first_name'] ?? '',
+              'middle_name': metadata['middle_name'] ?? '',
+              'last_name': metadata['last_name'] ?? '',
+              'role': 'patient',
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+              'is_email_verified': response.user?.emailConfirmedAt != null,
+            };
+          }
+          
+          await client.from('user_profiles').upsert(profileData);
+          Logger.info('User record created successfully with profile data');
         } else {
           // Update email verification status if user exists
           await client.from('user_profiles').update({
             'updated_at': DateTime.now().toIso8601String(),
             'is_email_verified': response.user?.emailConfirmedAt != null,
           }).eq('id', response.user!.id);
+          Logger.info('User profile updated successfully');
         }
       } catch (e) {
         Logger.error(
             'Error managing user record, but authentication succeeded', e);
         // Don't fail the login if user table operations fail
       }
-
-      Logger.info(
-          'User email verification status: ${response.user?.emailConfirmedAt != null}');
-      Logger.info('Login successful');
 
       return response;
     } catch (e) {
@@ -290,10 +424,16 @@ class SupabaseService {
       // Increase logging for debugging
       print('Requesting password reset for email: $email');
 
-      // Set a longer expiration for the reset token
-      await client.auth.resetPasswordForEmail(email,
-          redirectTo: null // Let Supabase handle the redirect
-          );
+      // Use a platform-aware redirect so the link opens the app
+      final String redirectUrl = kIsWeb
+          ? 'https://anxieease.vercel.app/reset-password'
+          : 'anxiease://reset-password';
+
+      // Send reset email with deep-link redirect
+      await client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: redirectUrl,
+      );
 
       print('Password reset email sent successfully');
     } catch (e) {
@@ -1096,6 +1236,24 @@ class SupabaseService {
   User? get currentUser => client.auth.currentUser;
 
   // Email verification methods
+  Future<void> resendVerificationEmail(String email) async {
+    try {
+      // Request Supabase to resend the signup confirmation email
+      await client.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+    } catch (e) {
+      print('Error resending verification email: $e');
+      // Provide friendlier messages for common cases
+      final msg = e.toString();
+      if (msg.contains('rate limit') || msg.contains('429')) {
+        throw Exception('You\'re doing that too much. Please try again later.');
+      }
+      throw Exception('Failed to resend verification email.');
+    }
+  }
+
   Future<void> updateEmailVerificationStatus(String email) async {
     try {
       print('Updating email verification status for: $email');

@@ -35,14 +35,9 @@ export const detectPersonalizedAnxiety = functions.database
       const userBaseline = await getUserBaseline(deviceData.userId, deviceId);
       if (!userBaseline) {
         console.log(
-          `No baseline found for user ${deviceData.userId}, using default thresholds`
+          `No baseline found for user ${deviceData.userId}, skipping anxiety detection - baseline required`
         );
-        return processWithDefaultThresholds(
-          newHeartRate,
-          oldHeartRate,
-          deviceId,
-          deviceData.userId
-        );
+        return null; // No detection without baseline
       }
 
       // Calculate personalized thresholds
@@ -161,33 +156,6 @@ function getSeverityLevel(heartRate: number, thresholds: any) {
   if (heartRate >= thresholds.mild) return "mild";
   if (heartRate >= thresholds.elevated) return "elevated";
   return "normal";
-}
-
-/**
- * Process with default thresholds (fallback when no baseline exists)
- */
-function processWithDefaultThresholds(
-  newHeartRate: number,
-  oldHeartRate: number,
-  deviceId: string,
-  userId: string
-) {
-  console.log("Using default thresholds - recommend user to set baseline");
-
-  // Default absolute thresholds (your current implementation)
-  let newSeverity = "normal";
-  if (newHeartRate >= 120) newSeverity = "severe";
-  else if (newHeartRate >= 100) newSeverity = "moderate";
-  else if (newHeartRate >= 85) newSeverity = "mild";
-
-  // Send notification with recommendation to set baseline
-  return sendDefaultNotification({
-    userId: userId,
-    deviceId: deviceId,
-    heartRate: newHeartRate,
-    severity: newSeverity,
-    recommendBaseline: true,
-  });
 }
 
 /**
@@ -369,46 +337,6 @@ async function storeAlert(userId: string, deviceId: string, alertData: any) {
     });
   } catch (error) {
     console.error("Error storing alert:", error);
-  }
-}
-
-/**
- * Send default notification (when no baseline exists)
- */
-async function sendDefaultNotification(data: any) {
-  const { userId, deviceId, heartRate, severity, recommendBaseline } = data;
-
-  let body = `Heart rate: ${heartRate} BPM`;
-  if (recommendBaseline) {
-    body += ". Set up your personal baseline for more accurate monitoring.";
-  }
-
-  const message = {
-    data: {
-      type: "anxiety_alert_default",
-      severity: severity,
-      heartRate: heartRate.toString(),
-      recommendBaseline: recommendBaseline.toString(),
-      deviceId: deviceId,
-      timestamp: Date.now().toString(),
-    },
-    notification: {
-      title: `${
-        severity.charAt(0).toUpperCase() + severity.slice(1)
-      } Anxiety Alert`,
-      body: body,
-    },
-    topic: `user_${userId}`,
-  };
-
-  try {
-    await admin.messaging().send(message);
-    console.log(`Default notification sent - ${severity}: ${heartRate} BPM`);
-    return { success: true, severity, heartRate, recommendBaseline };
-  } catch (error: unknown) {
-    console.error("Error sending default notification:", error);
-    const message = (error as Error)?.message ?? "Unknown error";
-    return { success: false, error: message };
   }
 }
 

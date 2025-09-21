@@ -132,6 +132,49 @@ class AuthProvider extends ChangeNotifier {
           _currentUser = UserModel.fromJson(enriched);
           debugPrint(
               '✅ User profile loaded after sign in: ${_currentUser?.firstName}');
+        } else {
+          debugPrint(
+              '❌ User profile missing after sign in - creating profile...');
+          // Try to create profile from auth metadata instead of signing out
+          final authUser = _supabaseService.client.auth.currentUser;
+          if (authUser != null) {
+            try {
+              final metadata = authUser.userMetadata ?? {};
+              debugPrint('Creating profile from auth metadata: $metadata');
+              debugPrint('Auth user email: ${authUser.email}');
+              debugPrint('Auth user ID: ${authUser.id}');
+              
+              await _supabaseService.client.from('user_profiles').upsert({
+                'id': authUser.id,
+                'email': authUser.email ?? '',
+                'first_name': metadata['first_name'] ?? '',
+                'middle_name': metadata['middle_name'] ?? '',
+                'last_name': metadata['last_name'] ?? '',
+                'role': 'patient',
+                'created_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+                'is_email_verified': authUser.emailConfirmedAt != null,
+              });
+              
+              // Try to load profile again
+              final newProfile = await _supabaseService.getUserProfile();
+              if (newProfile != null) {
+                final enriched = Map<String, dynamic>.from(newProfile);
+                enriched['email'] ??= authUser.email ?? '';
+                enriched['created_at'] ??= DateTime.now().toIso8601String();
+                enriched['updated_at'] ??= DateTime.now().toIso8601String();
+                enriched['avatar_url'] ??= newProfile['avatar_url'];
+                _currentUser = UserModel.fromJson(enriched);
+                debugPrint('✅ Profile created and loaded: ${_currentUser?.firstName}');
+              }
+            } catch (e) {
+              debugPrint('❌ Failed to create profile: $e');
+              // As last resort, sign out
+              await _supabaseService.signOut();
+              await _storageService.clearCredentials();
+              _currentUser = null;
+            }
+          }
         }
       } catch (e) {
         debugPrint('❌ Error loading user profile after sign in: $e');
@@ -175,6 +218,14 @@ class AuthProvider extends ChangeNotifier {
 
           _currentUser = UserModel.fromJson(enriched);
           debugPrint('✅ User profile updated: ${_currentUser?.firstName}');
+          notifyListeners();
+        } else {
+          debugPrint(
+              '❌ User profile missing during update - signing out...');
+          // Sign out if we have auth but no profile (corrupted state)
+          await _supabaseService.signOut();
+          await _storageService.clearCredentials();
+          _currentUser = null;
           notifyListeners();
         }
       } catch (e) {
@@ -233,6 +284,11 @@ class AuthProvider extends ChangeNotifier {
           } else {
             debugPrint(
                 '❌ AuthProvider - No user profile found despite authentication');
+            debugPrint('🔄 AuthProvider - Signing out due to missing profile...');
+            // Sign out if we have auth but no profile (corrupted state)
+            await _supabaseService.signOut();
+            await _storageService.clearCredentials();
+            _currentUser = null;
           }
         } catch (e) {
           debugPrint('❌ AuthProvider - Error loading user profile: $e');
@@ -368,6 +424,14 @@ class AuthProvider extends ChangeNotifier {
       await _supabaseService.resetPassword(email);
     } finally {
       _setLoading(false);
+    }
+  }
+
+  Future<void> resendVerificationEmail(String email) async {
+    try {
+      await _supabaseService.resendVerificationEmail(email);
+    } catch (e) {
+      rethrow;
     }
   }
 

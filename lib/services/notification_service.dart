@@ -25,6 +25,7 @@ class NotificationService extends ChangeNotifier {
 
   final SupabaseService _supabaseService = SupabaseService();
   DatabaseReference? _firebaseRef;
+  String? _currentDeviceId;
   String _currentSeverity = 'unknown';
   int _currentHeartRate = 0;
   bool _isFirstRead = true;
@@ -47,16 +48,40 @@ class NotificationService extends ChangeNotifier {
   void _initFirebaseRef() {
     try {
       if (Firebase.apps.isNotEmpty) {
-        // Listen to the new IoT "current" node instead of legacy "Metrics"
+        // Use current device ID if provided, fallback to a default testing device
+        final deviceId = _currentDeviceId ?? 'AnxieEase001';
         _firebaseRef =
-            FirebaseDatabase.instance.ref('devices/AnxieEase001/current');
-        debugPrint('Firebase reference initialized successfully');
+            FirebaseDatabase.instance.ref('devices/$deviceId/current');
+        debugPrint('Firebase reference initialized for device: $deviceId');
       } else {
         debugPrint(
             'Firebase not yet initialized, will initialize reference later');
       }
     } catch (e) {
       debugPrint('Error initializing Firebase reference: $e');
+    }
+  }
+
+  // Update Firebase reference when device changes
+  void updateDeviceReference(String? deviceId) {
+    try {
+      if (Firebase.apps.isNotEmpty && deviceId != null) {
+        // Cancel existing subscription if any
+        _dbSubscription?.cancel();
+
+        // Update Firebase reference
+        _currentDeviceId = deviceId;
+        _firebaseRef =
+            FirebaseDatabase.instance.ref('devices/$deviceId/current');
+        debugPrint('Firebase reference updated for device: $deviceId');
+
+        // Restart listening if we were already listening
+        if (_isInitialized) {
+          initializeListener();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error updating Firebase reference: $e');
     }
   } // Set callback for when a notification is added
 
@@ -108,9 +133,9 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> _initializeNotifications() async {
-    // Initialize awesome_notifications
+    // Initialize awesome_notifications with AnxieEase custom icon
     await AwesomeNotifications().initialize(
-      null,
+      'resource://drawable/launcher_icon', // Use AnxieEase custom icon instead of Flutter default
       [
         NotificationChannel(
           channelKey: 'anxiease_channel',
@@ -119,6 +144,7 @@ class NotificationService extends ChangeNotifier {
           defaultColor: Colors.blue,
           importance: NotificationImportance.High,
           enableVibration: true,
+          icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
           channelKey: 'alerts_channel',
@@ -127,6 +153,7 @@ class NotificationService extends ChangeNotifier {
           defaultColor: Colors.red,
           importance: NotificationImportance.High,
           ledColor: Colors.white,
+          icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
           channelKey: 'reminders_channel',
@@ -136,6 +163,7 @@ class NotificationService extends ChangeNotifier {
           defaultColor: Colors.green,
           importance: NotificationImportance.High,
           ledColor: Colors.green,
+          icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
           channelKey: 'anxiety_alerts',
@@ -144,6 +172,7 @@ class NotificationService extends ChangeNotifier {
           defaultColor: Colors.red,
           importance: NotificationImportance.High,
           ledColor: Colors.white,
+          icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
           channelKey: 'wellness_reminders',
@@ -155,6 +184,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFF2D9254),
           enableVibration: true,
           playSound: true,
+          icon: 'resource://drawable/launcher_icon',
         ),
       ],
     );
@@ -201,21 +231,6 @@ class NotificationService extends ChangeNotifier {
 
       // Get heart rate from the root level
       final heartRate = data['heartRate'] as int?;
-      final isDeviceWorn = (data['isDeviceWorn'] as bool?) ??
-          (() {
-                final worn = data['worn'];
-                if (worn is bool) {
-                  return worn;
-                }
-                if (worn is int) {
-                  return worn != 0;
-                }
-                if (worn is String) {
-                  return worn == '1' || worn.toLowerCase() == 'true';
-                }
-                return null;
-              }() ??
-              false);
       if (heartRate != null && heartRate != _currentHeartRate) {
         _currentHeartRate = heartRate;
         shouldNotifyListeners = true;
@@ -239,22 +254,13 @@ class NotificationService extends ChangeNotifier {
       }
 
       // Handle notifications:
-      // 1) If Firebase provides severity, use it
-      // 2) Otherwise, compute client-side from heartRate as fallback
+      // Only use Firebase-provided severity (from Cloud Functions with baseline calculations)
+      // No fallback to default thresholds - require baseline for anxiety detection
       String? severityForNotify;
       if (anxietyData != null) {
         severityForNotify = anxietyData['severity']?.toString().toLowerCase();
-      } else if (heartRate != null && isDeviceWorn) {
-        if (heartRate >= 120) {
-          severityForNotify = 'severe';
-        } else if (heartRate >= 100) {
-          severityForNotify = 'moderate';
-        } else if (heartRate >= 85) {
-          severityForNotify = 'mild';
-        } else {
-          severityForNotify = 'normal';
-        }
       }
+      // Removed default HR thresholds - anxiety detection requires personalized baseline
 
       if (severityForNotify != null) {
         final severity = severityForNotify;

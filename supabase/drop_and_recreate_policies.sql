@@ -1,5 +1,50 @@
--- Row Level Security (RLS) Policies for AnxieEase Database
--- These policies ensure users can only access their own data and authorized data
+-- Drop and Recreate RLS Policies for AnxieEase Database
+-- This script safely drops existing policies and recreates them to fix infinite recursion
+
+-- ========================================
+-- DROP EXISTING POLICIES
+-- ========================================
+
+-- Drop user_profiles policies
+DROP POLICY IF EXISTS "Users can view own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Psychologists can view assigned patients" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.user_profiles;
+
+-- Drop psychologists policies
+DROP POLICY IF EXISTS "Psychologists can view own profile" ON public.psychologists;
+DROP POLICY IF EXISTS "Psychologists can update own profile" ON public.psychologists;
+DROP POLICY IF EXISTS "Psychologists can insert own profile" ON public.psychologists;
+DROP POLICY IF EXISTS "Patients can view assigned psychologist" ON public.psychologists;
+DROP POLICY IF EXISTS "Users can view active psychologists" ON public.psychologists;
+
+-- Drop anxiety_records policies
+DROP POLICY IF EXISTS "Users can manage own anxiety records" ON public.anxiety_records;
+DROP POLICY IF EXISTS "Psychologists can view patient anxiety records" ON public.anxiety_records;
+
+-- Drop wellness_logs policies
+DROP POLICY IF EXISTS "Users can manage own wellness logs" ON public.wellness_logs;
+DROP POLICY IF EXISTS "Psychologists can view patient wellness logs" ON public.wellness_logs;
+
+-- Drop appointments policies
+DROP POLICY IF EXISTS "Users can view own appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Users can create own appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Users can update own appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Psychologists can view their appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Psychologists can update their appointments" ON public.appointments;
+
+-- Drop patient_notes policies
+DROP POLICY IF EXISTS "Psychologists can manage patient notes" ON public.patient_notes;
+DROP POLICY IF EXISTS "Patients can view their non-private notes" ON public.patient_notes;
+
+-- Drop notifications policies
+DROP POLICY IF EXISTS "Users can manage own notifications" ON public.notifications;
+
+-- Drop activity_logs policies
+DROP POLICY IF EXISTS "Users can view own activity logs" ON public.activity_logs;
+DROP POLICY IF EXISTS "System can insert activity logs" ON public.activity_logs;
+DROP POLICY IF EXISTS "Psychologists can view patient activity logs" ON public.activity_logs;
 
 -- ========================================
 -- ENABLE RLS ON ALL TABLES

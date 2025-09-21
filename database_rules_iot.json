@@ -1,28 +1,116 @@
 {
   "rules": {
     "devices": {
-      "$deviceId": {
+      "AnxieEase001": {
         ".read": true,
-        ".write": true,
+        ".write": false,
+        
         "metadata": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren(['deviceType', 'status']) && newData.child('deviceType').isString() && newData.child('status').isString()",
           ".indexOn": ["status", "deviceType", "isSimulated"]
         },
+        
         "current": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber()",
           ".indexOn": ["timestamp", "severityLevel", "connectionStatus"]
         },
+        
         "history": {
-          ".indexOn": ["timestamp", "sessionId"]
+          "$timestamp": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.hasChildren() && newData.child('timestamp').val() == parseInt($timestamp) && parseInt($timestamp) > 0",
+            ".indexOn": ["timestamp", "sessionId"]
+          }
         },
+        
         "alerts": {
-          ".indexOn": ["timestamp", "type", "severity"]
+          "$timestamp": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').val() == parseInt($timestamp)",
+            ".indexOn": ["timestamp", "type", "severity"]
+          }
+        }
+      },
+      
+      "$deviceId": {
+        ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || root.child('device_ownership').child($deviceId).child('sharedWith').child(auth.uid).exists())",
+        ".write": false,
+        
+        "metadata": {
+          ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+          ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+          ".validate": "newData.hasChildren(['deviceType', 'status']) && newData.child('deviceType').isString() && newData.child('status').isString()",
+          ".indexOn": ["status", "deviceType", "isSimulated"]
+        },
+        
+        "current": {
+          ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || root.child('device_ownership').child($deviceId).child('sharedWith').child(auth.uid).exists() || !root.child('device_ownership').child($deviceId).exists())",
+          ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+          ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber() && (now - newData.child('timestamp').val() < 300000 || !root.child('device_ownership').child($deviceId).exists())",
+          ".indexOn": ["timestamp", "severityLevel", "connectionStatus"]
+        },
+        
+        "history": {
+          "$timestamp": {
+            ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+            ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists()) && (now - parseInt($timestamp) < 86400000 || !root.child('device_ownership').child($deviceId).exists())",
+            ".validate": "newData.hasChildren() && newData.child('timestamp').val() == parseInt($timestamp) && parseInt($timestamp) > 0 && (now - parseInt($timestamp) < 86400000 || !root.child('device_ownership').child($deviceId).exists())",
+            ".indexOn": ["timestamp", "sessionId"]
+          }
+        },
+        
+        "alerts": {
+          "$timestamp": {
+            ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+            ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').val() == parseInt($timestamp) && (now - parseInt($timestamp) < 300000 || !root.child('device_ownership').child($deviceId).exists())",
+            ".indexOn": ["timestamp", "type", "severity"]
+          }
         }
       }
     },
+    
+    "device_ownership": {
+      "$deviceId": {
+        ".read": "auth != null && (data.child('userId').val() == auth.uid || data.child('sharedWith').child(auth.uid).exists())",
+        ".write": "auth != null && (!data.exists() || data.child('userId').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['userId', 'deviceType']) && newData.child('userId').isString() && newData.child('deviceType').isString()"
+      }
+    },
+    
     "users": {
       "$userId": {
-        ".read": true,
-        ".write": true,
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.hasChildren() && (newData.child('lastActivity').isNumber() || !newData.hasChild('lastActivity')) && (newData.child('deviceId').isString() || !newData.hasChild('deviceId'))",
         ".indexOn": ["lastActivity", "deviceId"]
+      }
+    },
+    
+    "user_profiles": {
+      "$userId": {
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId",
+        ".validate": "newData.isString() || (newData.hasChildren() && !newData.hasChild('private_key'))"
+      }
+    },
+    
+    "system_config": {
+      ".read": "auth != null",
+      ".write": "false"
+    },
+    
+    "emergency_access": {
+      "$requestId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('requestedBy').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['userId', 'requestedBy', 'reason', 'timestamp']) && newData.child('timestamp').val() <= now"
       }
     }
   }

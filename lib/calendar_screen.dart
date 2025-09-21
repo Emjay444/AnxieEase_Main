@@ -95,10 +95,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  static const String LOGS_KEY = 'daily_logs';
   final SupabaseService _supabaseService = SupabaseService();
   Timer? _saveLogsTimer; // debounce timer
   static const Duration _saveLogsDebounce = Duration(milliseconds: 500);
+
+  // Get user-specific key for SharedPreferences
+  String get _userSpecificLogsKey {
+    final userId = _supabaseService.client.auth.currentUser?.id ?? 'guest';
+    return 'daily_logs_$userId';
+  }
 
   final Map<String, bool> symptoms = {
     'None': false,
@@ -125,7 +130,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> _loadLogs() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? logsJson = prefs.getString(LOGS_KEY);
+    final String? logsJson = prefs.getString(_userSpecificLogsKey);
 
     if (logsJson != null) {
       final Map<String, dynamic> decoded = jsonDecode(logsJson);
@@ -209,7 +214,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       // Save updated logs to local storage
       if (logsAdded > 0) {
-  _saveLogsDebounced();
+        _saveLogsDebounced();
         setState(() {}); // Refresh UI
       }
     } catch (e) {
@@ -258,7 +263,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         value.map((log) => log.toJson()).toList(),
       );
     });
-    await prefs.setString(LOGS_KEY, jsonEncode(encoded));
+    await prefs.setString(_userSpecificLogsKey, jsonEncode(encoded));
   }
 
   void _saveLogsDebounced() {
@@ -393,7 +398,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     });
 
-  _saveLogsDebounced();
+    _saveLogsDebounced();
 
     // Sync with Supabase
     try {
@@ -967,24 +972,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: GestureDetector(
                         onTap: () {
-                          setState(() => showCustomMoodInput = !showCustomMoodInput);
+                          setState(
+                              () => showCustomMoodInput = !showCustomMoodInput);
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 250),
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 16),
                           decoration: BoxDecoration(
-                            color: showCustomMoodInput ? const Color(0xFF3AA772) : Colors.grey[200],
+                            color: showCustomMoodInput
+                                ? const Color(0xFF3AA772)
+                                : Colors.grey[200],
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(showCustomMoodInput ? Icons.close : Icons.add, color: showCustomMoodInput ? Colors.white : Colors.grey[700]),
+                              Icon(
+                                  showCustomMoodInput ? Icons.close : Icons.add,
+                                  color: showCustomMoodInput
+                                      ? Colors.white
+                                      : Colors.grey[700]),
                               const SizedBox(width: 8),
                               Text(
-                                showCustomMoodInput ? 'Hide Custom Input' : "Can't find how you feel? Click here",
+                                showCustomMoodInput
+                                    ? 'Hide Custom Input'
+                                    : "Can't find how you feel? Click here",
                                 style: TextStyle(
-                                  color: showCustomMoodInput ? Colors.white : Colors.grey[700],
+                                  color: showCustomMoodInput
+                                      ? Colors.white
+                                      : Colors.grey[700],
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1005,9 +1022,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             filled: true,
                             fillColor: Colors.grey[50],
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: Colors.grey[300]!)),
-                            prefixIcon: const Icon(Icons.edit, color: Color(0xFF3AA772)),
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide:
+                                    BorderSide(color: Colors.grey[300]!)),
+                            prefixIcon: const Icon(Icons.edit,
+                                color: Color(0xFF3AA772)),
                           ),
                           minLines: 2,
                           maxLines: 3,
@@ -1020,7 +1039,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: GridView.builder(
                           physics: const BouncingScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
@@ -1037,7 +1057,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   } else {
                                     selectedMoods.add(mood);
                                   }
-                                  if (selectedMoods.isNotEmpty) showWarning = false;
+                                  if (selectedMoods.isNotEmpty)
+                                    showWarning = false;
                                 });
                               },
                               child: AnimatedContainer(
@@ -1046,7 +1067,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 decoration: BoxDecoration(
                                   gradient: isSelected
                                       ? const LinearGradient(
-                                          colors: [Color(0xFF3AA772), Color(0xFF2F8E6A)],
+                                          colors: [
+                                            Color(0xFF3AA772),
+                                            Color(0xFF2F8E6A)
+                                          ],
                                           begin: Alignment.topLeft,
                                           end: Alignment.bottomRight,
                                         )
@@ -1054,20 +1078,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   color: isSelected ? null : Colors.white,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: isSelected ? const Color(0xFF3AA772) : Colors.grey.shade300,
+                                    color: isSelected
+                                        ? const Color(0xFF3AA772)
+                                        : Colors.grey.shade300,
                                     width: 1.2,
                                   ),
                                   boxShadow: isSelected
                                       ? [
                                           BoxShadow(
-                                            color: const Color(0xFF3AA772).withOpacity(0.25),
+                                            color: const Color(0xFF3AA772)
+                                                .withOpacity(0.25),
                                             blurRadius: 12,
                                             offset: const Offset(0, 4),
                                           )
                                         ]
                                       : [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.04),
+                                            color:
+                                                Colors.black.withOpacity(0.04),
                                             blurRadius: 6,
                                             offset: const Offset(0, 2),
                                           )
@@ -1078,7 +1106,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   children: [
                                     Icon(
                                       _getMoodIcon(mood),
-                                      color: isSelected ? Colors.white : Colors.grey.shade600,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey.shade600,
                                       size: 28,
                                     ),
                                     const SizedBox(height: 6),
@@ -1086,7 +1116,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       mood,
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: isSelected ? Colors.white : Colors.grey.shade700,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.grey.shade700,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -1153,7 +1185,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: steps.map((s) {
         final active = s == current;
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
+            duration: const Duration(milliseconds: 250),
             margin: const EdgeInsets.symmetric(horizontal: 6),
             height: 8,
             width: active ? 34 : 8,
@@ -1307,7 +1339,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF2F2F7),
         elevation: 0,
-  iconTheme: const IconThemeData(color: Color(0xFF3AA772)),
+        iconTheme: const IconThemeData(color: Color(0xFF3AA772)),
         title: const Text(
           'Calendar Logs',
           style: TextStyle(
@@ -1530,11 +1562,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         calendarBuilders: CalendarBuilders(
           defaultBuilder: (context, day, focusedDay) => _dayCell(context, day),
-          todayBuilder: (context, day, focusedDay) => _dayCell(context, day,
-              isToday: true),
-          selectedBuilder: (context, day, focusedDay) => _dayCell(context, day,
-              isSelected: true),
-          markerBuilder: (context, date, events) => _eventMarkers(context, date, events),
+          todayBuilder: (context, day, focusedDay) =>
+              _dayCell(context, day, isToday: true),
+          selectedBuilder: (context, day, focusedDay) =>
+              _dayCell(context, day, isSelected: true),
+          markerBuilder: (context, date, events) =>
+              _eventMarkers(context, date, events),
         ),
       ),
     );
@@ -2272,7 +2305,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _dailyLogs[normalizedDate]![index] = updatedLog;
       });
 
-  _saveLogsDebounced();
+      _saveLogsDebounced();
 
       // Also sync with Supabase
       try {
@@ -2309,7 +2342,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_selectedDay == null) return;
 
     TextEditingController journalController = TextEditingController();
-  int charCount = 0;
+    int charCount = 0;
 
     showModalBottomSheet(
       context: context,
@@ -2334,7 +2367,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _buildDragHandle(),
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 26),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 26),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(28),
@@ -2374,7 +2408,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  DateFormat('d MMMM yyyy').format(_selectedDay!),
+                                  DateFormat('d MMMM yyyy')
+                                      .format(_selectedDay!),
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -2401,13 +2436,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       controller: journalController,
                                       maxLines: null,
                                       expands: true,
-                                      onChanged: (val) => setState(() => charCount = val.length),
+                                      onChanged: (val) => setState(
+                                          () => charCount = val.length),
                                       textAlignVertical: TextAlignVertical.top,
                                       decoration: InputDecoration(
                                         hintText: 'Write your thoughts here...',
-                                        hintStyle: TextStyle(color: Colors.purple.shade200),
+                                        hintStyle: TextStyle(
+                                            color: Colors.purple.shade200),
                                         border: InputBorder.none,
-                                        contentPadding: const EdgeInsets.fromLTRB(18, 18, 18, 34),
+                                        contentPadding:
+                                            const EdgeInsets.fromLTRB(
+                                                18, 18, 18, 34),
                                       ),
                                       style: const TextStyle(
                                         fontSize: 16,
@@ -2419,13 +2458,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       right: 14,
                                       bottom: 8,
                                       child: AnimatedOpacity(
-                                        duration: const Duration(milliseconds: 200),
+                                        duration:
+                                            const Duration(milliseconds: 200),
                                         opacity: 1,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 6),
                                           decoration: BoxDecoration(
-                                            color: Colors.purple.withOpacity(0.08),
-                                            borderRadius: BorderRadius.circular(12),
+                                            color:
+                                                Colors.purple.withOpacity(0.08),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             '$charCount chars',
@@ -2520,7 +2563,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _dailyLogs[normalizedDate]!.add(logToSync!);
     });
 
-  _saveLogsDebounced();
+    _saveLogsDebounced();
 
     // Sync with Supabase
     try {
@@ -2584,7 +2627,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       setState(() {
         _dailyLogs.clear();
       });
-  await _saveLogs(); // immediate flush on destructive clear
+      await _saveLogs(); // immediate flush on destructive clear
 
       // 2. Clear data from Supabase (if user is authenticated)
       if (_supabaseService.isAuthenticated) {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'services/supabase_service.dart';
-import 'login.dart';
 import 'forgotpass.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -93,17 +92,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             _isSuccess = true;
           });
 
-          // Wait for 2 seconds before navigating to login
-          await Future.delayed(const Duration(seconds: 2));
+          // Ensure we clear any existing session and return to AuthWrapper
+          try {
+            await SupabaseService().signOut();
+            print('Signed out after password reset to return to login');
+          } catch (_) {}
+
+          // Brief success pause then navigate to root so AuthWrapper takes over
+          await Future.delayed(const Duration(seconds: 1));
           if (mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => LoginScreen(
-                  onSwitch: () {
-                    // This won't be called as we're coming from password reset
-                  },
-                ),
-              ),
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              '/',
               (route) => false,
             );
           }

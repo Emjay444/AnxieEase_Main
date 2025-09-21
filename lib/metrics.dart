@@ -68,14 +68,20 @@ class MetricsScreen extends StatefulWidget {
 }
 
 class _MetricsScreenState extends State<MetricsScreen> {
-  String selectedPeriod = 'Weekly'; // Default selected period
-  final List<String> periods = ['Weekly', 'Monthly'];
+  String selectedMonth =
+      DateFormat('MMMM yyyy').format(DateTime.now()); // Default current month
+  List<String> availableMonths = [];
 
   Map<DateTime, List<DailyLog>> _dailyLogs = {};
-  static const String logsKey = 'daily_logs';
   final SupabaseService _supabaseService = SupabaseService();
   bool _isLoading = true;
   bool _hasData = false;
+
+  // Get user-specific key for SharedPreferences
+  String get _userSpecificLogsKey {
+    final userId = _supabaseService.client.auth.currentUser?.id ?? 'guest';
+    return 'daily_logs_$userId';
+  }
 
   // Mood categories for grouping similar moods
   final Map<String, String> moodCategories = {
@@ -124,12 +130,27 @@ class _MetricsScreenState extends State<MetricsScreen> {
   @override
   void initState() {
     super.initState();
-  _checkConnectionStatus();
+    _generateAvailableMonths();
+    _checkConnectionStatus();
     _loadLogs();
   }
 
+  void _generateAvailableMonths() {
+    final now = DateTime.now();
+    availableMonths = [];
+
+    // Generate last 6 months including current month
+    for (int i = 5; i >= 0; i--) {
+      final monthDate = DateTime(now.year, now.month - i, 1);
+      availableMonths.add(DateFormat('MMMM yyyy').format(monthDate));
+    }
+
+    // Set default to current month
+    selectedMonth = availableMonths.last;
+  }
+
   Future<void> _checkConnectionStatus() async {
-  // no-op for UI; kept for potential future use
+    // no-op for UI; kept for potential future use
   }
 
   Future<void> _loadLogs() async {
@@ -140,7 +161,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
     try {
       // First try to load from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      final String? logsJson = prefs.getString(logsKey);
+      final String? logsJson = prefs.getString(_userSpecificLogsKey);
 
       if (logsJson != null) {
         final Map<String, dynamic> decoded = jsonDecode(logsJson);
@@ -411,7 +432,20 @@ class _MetricsScreenState extends State<MetricsScreen> {
     final weekStart =
         _normalizeDate(now.subtract(Duration(days: now.weekday - 1)));
     Logger.info('Week start date: ${weekStart.toString()}');
-    final monthStart = _normalizeDate(DateTime(now.year, now.month, 1));
+
+    // Parse selected month for filtering
+    DateTime monthStart;
+    if (selectedMonth.isNotEmpty) {
+      try {
+        final monthDate = DateFormat('MMMM yyyy').parse(selectedMonth);
+        monthStart =
+            _normalizeDate(DateTime(monthDate.year, monthDate.month, 1));
+      } catch (e) {
+        monthStart = _normalizeDate(DateTime(now.year, now.month, 1));
+      }
+    } else {
+      monthStart = _normalizeDate(DateTime(now.year, now.month, 1));
+    }
     Logger.info('Month start date: ${monthStart.toString()}');
 
     // Create a list of all unique logs to completely avoid duplicates
@@ -445,8 +479,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
     Map<String, int> symptomCounts = {};
     Map<String, int> moodCounts = {};
 
-    // Process all unique logs to count symptoms and moods
-    for (var log in uniqueLogs) {
+    // Filter logs by selected month for symptoms and moods counting
+    List<DailyLog> filteredLogsForCounts = uniqueLogs.where((log) {
+      final logDate = _normalizeDate(log.timestamp);
+      // Monthly - filter by selected month
+      final selectedMonthDate = selectedMonth.isNotEmpty
+          ? DateFormat('MMMM yyyy').parse(selectedMonth)
+          : DateTime(now.year, now.month, 1);
+      final monthEnd =
+          DateTime(selectedMonthDate.year, selectedMonthDate.month + 1, 0);
+      return (logDate.isAfter(monthStart) ||
+              logDate.isAtSameMomentAs(monthStart)) &&
+          logDate.isBefore(monthEnd.add(const Duration(days: 1)));
+    }).toList();
+
+    // Process filtered logs to count symptoms and moods
+    for (var log in filteredLogsForCounts) {
       // Count symptoms - each unique log counts a symptom only once
       for (var symptom in log.symptoms) {
         if (symptom != 'None') {
@@ -552,8 +600,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
         weeklySymptomCounts[weekday] = daySymptoms.length;
       }
 
-      // Monthly data
-      if (date.isAfter(monthStart) || date.isAtSameMomentAs(monthStart)) {
+      // Monthly data - filter by selected month
+      final selectedMonthDate = selectedMonth.isNotEmpty
+          ? DateFormat('MMMM yyyy').parse(selectedMonth)
+          : DateTime(now.year, now.month, 1);
+      final monthEnd =
+          DateTime(selectedMonthDate.year, selectedMonthDate.month + 1, 0);
+
+      if ((date.isAfter(monthStart) || date.isAtSameMomentAs(monthStart)) &&
+          date.isBefore(monthEnd.add(const Duration(days: 1)))) {
         int day = date.day - 1; // 0-based day of month
 
         // Store the data for each day of the month
@@ -666,23 +721,25 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic> chartProps = getChartProperties(selectedPeriod);
+    final Map<String, dynamic> chartProps = getChartProperties('Monthly');
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-  automaticallyImplyLeading: false, // prevent auto back arrow on first visit
-  foregroundColor: Colors.black, // ensure icons are visible on white bg
+        automaticallyImplyLeading:
+            false, // prevent auto back arrow on first visit
+        foregroundColor: Colors.black, // ensure icons are visible on white bg
         title: const Text(
           'Wellness Insights',
           style: TextStyle(
             color: Colors.black,
-            fontWeight: FontWeight.w600,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
           ),
         ),
-  // No actions per request (removed cloud and refresh)
+        // No actions per request (removed cloud and refresh)
       ),
       body: SafeArea(
         child: _isLoading
@@ -726,47 +783,67 @@ class _MetricsScreenState extends State<MetricsScreen> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Period selector
+                          // Add top spacing so floating label isn't clipped
+                          const SizedBox(height: 24),
+                          // Month selector
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: periods.map((period) {
-                                bool isSelected = selectedPeriod == period;
-                                return GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      selectedPeriod = period;
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 8),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 4),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? const Color(0xFF6200EE)
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(20),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: DropdownButtonFormField<String>(
+                              value: selectedMonth,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                labelText: 'Select Month',
+                                labelStyle: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey[300]!),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey[300]!),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF6200EE)),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
+                              items: availableMonths.map((String month) {
+                                return DropdownMenuItem<String>(
+                                  value: month,
+                                  child: Text(
+                                    month,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                    child: Text(
-                                      period,
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.grey[600],
-                                        fontWeight: isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 );
                               }).toList(),
+                              onChanged: (String? newValue) {
+                                if (newValue != null) {
+                                  setState(() {
+                                    selectedMonth = newValue;
+                                  });
+                                  _processLogsData(); // Reprocess data when month changes
+                                }
+                              },
                             ),
                           ),
+
+                          const SizedBox(height: 16),
 
                           // Metrics Cards
                           Expanded(
@@ -774,14 +851,36 @@ class _MetricsScreenState extends State<MetricsScreen> {
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 16),
                               children: [
+                                // Move Top Items to the top
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildTopItemsCard(
+                                        title: 'Top Moods',
+                                        items: topMoods,
+                                        color: const Color(0xFF4CAF50),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: _buildTopItemsCard(
+                                        title: 'Top Symptoms',
+                                        items: topSymptoms,
+                                        color: const Color(0xFF2196F3),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+
+                                // Main Charts
                                 _buildMetricCard(
                                   title: 'Mood Score',
-                                  value: moodData[selectedPeriod]!.isEmpty
+                                  value: moodData['Monthly']!.isEmpty
                                       ? 5.0
-                                      : _findValueForToday(
-                                          moodData[selectedPeriod]!,
+                                      : _findValueForToday(moodData['Monthly']!,
                                           DateTime.now().weekday % 7),
-                                  data: moodData[selectedPeriod]!,
+                                  data: moodData['Monthly']!,
                                   color:
                                       const Color(0xFF4CAF50), // Green for mood
                                   gradient: const LinearGradient(
@@ -802,12 +901,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Stress Level',
-                                  value: stressData[selectedPeriod]!.isEmpty
+                                  value: stressData['Monthly']!.isEmpty
                                       ? 5.0
                                       : _findValueForToday(
-                                          stressData[selectedPeriod]!,
+                                          stressData['Monthly']!,
                                           DateTime.now().weekday % 7),
-                                  data: stressData[selectedPeriod]!,
+                                  data: stressData['Monthly']!,
                                   color: const Color(
                                       0xFFFF5722), // Orange for stress
                                   gradient: const LinearGradient(
@@ -828,12 +927,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Symptom Count',
-                                  value: symptomsData[selectedPeriod]!.isEmpty
+                                  value: symptomsData['Monthly']!.isEmpty
                                       ? 0.0
                                       : _findValueForToday(
-                                          symptomsData[selectedPeriod]!,
+                                          symptomsData['Monthly']!,
                                           DateTime.now().weekday % 7),
-                                  data: symptomsData[selectedPeriod]!,
+                                  data: symptomsData['Monthly']!,
                                   color: const Color(
                                       0xFF2196F3), // Blue for symptoms
                                   gradient: const LinearGradient(
@@ -850,18 +949,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                   chartProps: chartProps,
                                   description:
                                       'Number of symptoms reported each day',
-                                ),
-                                const SizedBox(height: 16),
-                                _buildTopItemsCard(
-                                  title: 'Top Moods',
-                                  items: topMoods,
-                                  color: const Color(0xFF4CAF50),
-                                ),
-                                const SizedBox(height: 16),
-                                _buildTopItemsCard(
-                                  title: 'Top Symptoms',
-                                  items: topSymptoms,
-                                  color: const Color(0xFF2196F3),
                                 ),
                                 const SizedBox(height: 24),
                               ],
@@ -922,8 +1009,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
               ),
@@ -1016,11 +1103,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             getTitlesWidget: (value, meta) {
                               final int index = value.toInt();
                               if (index >= 0 &&
-                                  index < timeLabels[selectedPeriod]!.length) {
+                                  index < timeLabels['Monthly']!.length) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8),
                                   child: Text(
-                                    timeLabels[selectedPeriod]![index],
+                                    timeLabels['Monthly']![index],
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 12,
@@ -1110,13 +1197,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color:
-                color.withAlpha(25), // Using withAlpha instead of withOpacity
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: color.withAlpha(25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1127,26 +1213,27 @@ class _MetricsScreenState extends State<MetricsScreen> {
             title,
             style: const TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           items.isEmpty
               ? Center(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
                     child: Text(
-                      'No data available',
+                      'No data',
                       style: TextStyle(
                         color: Colors.grey[500],
-                        fontSize: 14,
+                        fontSize: 12,
                       ),
                     ),
                   ),
                 )
               : Column(
-                  children: items.map((item) {
+                  children: items.take(3).map((item) {
+                    // Show only top 3 in compact view
                     // Find the maximum count to calculate percentage
                     final maxCount = items.first.value.toDouble();
                     final percentage =
@@ -1158,37 +1245,45 @@ class _MetricsScreenState extends State<MetricsScreen> {
                       displayName = 'Custom';
                     }
 
+                    // Truncate long names
+                    if (displayName.length > 12) {
+                      displayName = '${displayName.substring(0, 12)}...';
+                    }
+
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
+                      padding: const EdgeInsets.only(bottom: 8.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                displayName,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                              Expanded(
+                                child: Text(
+                                  displayName,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               Text(
-                                '${item.value} times',
+                                '${item.value}x',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 11,
                                   color: Colors.grey[600],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           LinearProgressIndicator(
                             value: percentage / 100,
                             backgroundColor: Colors.grey[200],
                             valueColor: AlwaysStoppedAnimation<Color>(color),
-                            minHeight: 8,
-                            borderRadius: BorderRadius.circular(4),
+                            minHeight: 6,
+                            borderRadius: BorderRadius.circular(3),
                           ),
                         ],
                       ),

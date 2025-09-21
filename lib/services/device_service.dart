@@ -7,6 +7,8 @@ import '../models/baseline_heart_rate.dart';
 import '../services/supabase_service.dart';
 import '../services/iot_sensor_service.dart';
 import '../services/anxiety_detection_engine.dart';
+import '../services/notification_service.dart';
+import '../services/device_sharing_service.dart';
 import '../utils/logger.dart';
 
 /// Comprehensive device service for wearable device integration
@@ -25,6 +27,8 @@ class DeviceService extends ChangeNotifier {
   final IoTSensorService _iotSensorService = IoTSensorService();
   final AnxietyDetectionEngine _anxietyDetectionEngine =
       AnxietyDetectionEngine();
+  final NotificationService _notificationService = NotificationService();
+  final DeviceSharingService _deviceSharingService = DeviceSharingService();
 
   // Firebase references
   FirebaseDatabase get _realtimeDb => FirebaseDatabase.instance;
@@ -111,6 +115,13 @@ class DeviceService extends ChangeNotifier {
       if (deviceId.toLowerCase().startsWith('anxieease')) {
         normalizedDeviceId = 'AnxieEase${deviceId.substring(9)}';
       }
+
+      // For testing phase: Create user-specific virtual device ID
+      final virtualDeviceId =
+          await _deviceSharingService.getCurrentUserDeviceId();
+      AppLogger.d(
+          'DeviceService: Using virtual device ID for testing: $virtualDeviceId');
+
       AppLogger.d('DeviceService: Normalized device ID: $normalizedDeviceId');
 
       final user = _supabaseService.client.auth.currentUser;
@@ -137,10 +148,10 @@ class DeviceService extends ChangeNotifier {
             '4. Device LED shows blue (connected status)');
       }
 
-      // Create or update device record
+      // Create or update device record (using virtual device ID for testing)
       final device = WearableDevice(
-        deviceId: normalizedDeviceId,
-        deviceName: _getDeviceDisplayName(normalizedDeviceId),
+        deviceId: virtualDeviceId, // Use virtual device ID
+        deviceName: _deviceSharingService.getDeviceDisplayName(virtualDeviceId),
         userId: user.id,
         linkedAt: DateTime.now(),
         isActive: true,
@@ -150,10 +161,13 @@ class DeviceService extends ChangeNotifier {
       // Save to Supabase
       await _saveDeviceToDatabase(device);
 
-      // Set up Firebase real-time streaming
-      await _setupRealtimeStreaming(normalizedDeviceId);
+      // Set up Firebase real-time streaming (virtual device path)
+      await _setupRealtimeStreaming(virtualDeviceId);
 
       _linkedDevice = device;
+
+      // Update notification service to use the virtual device reference
+      _notificationService.updateDeviceReference(virtualDeviceId);
 
       // Reset anxiety detection engine for new device
       _anxietyDetectionEngine.reset();
@@ -1178,6 +1192,9 @@ class DeviceService extends ChangeNotifier {
         // Set up real-time streaming
         await _setupRealtimeStreaming(_linkedDevice!.deviceId);
 
+        // Inform NotificationService about the current deviceId
+        NotificationService().updateDeviceReference(_linkedDevice!.deviceId);
+
         AppLogger.d(
             'DeviceService: Loaded linked device: ${_linkedDevice!.deviceId}');
       }
@@ -1394,6 +1411,9 @@ class DeviceService extends ChangeNotifier {
       _linkedDevice = null;
       _currentMetrics = null;
       _currentBaseline = null;
+
+      // Reset notification service to default device (fallback)
+      _notificationService.updateDeviceReference('AnxieEase001');
 
       notifyListeners();
       AppLogger.d('DeviceService: Device unlinked successfully');

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
+import 'main.dart';
 import 'package:intl/intl.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -510,15 +511,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     try {
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return const Center(child: CircularProgressIndicator());
-        },
-      );
-
       // Debug log start of registration
       print(
           'Starting registration process for email: ${emailController.text.trim()}');
@@ -547,11 +539,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       print('authProvider.signUp completed successfully');
 
-      // Close loading indicator
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
       // Reset validation states after successful registration
       setState(() {
         _resetFieldErrors();
@@ -559,11 +546,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
 
       // Check if widget is still mounted before showing dialog
-      if (!mounted) return;
+      if (!mounted) {
+        print('❌ Widget not mounted, cannot show success dialog');
+        return;
+      }
 
-      // Show success dialog
+      print('🎉 Showing success dialog...');
+      // Show success dialog using global navigator to prevent it from being dismissed
       showDialog(
-        context: context,
+        context: rootNavigatorKey.currentContext ?? context,
         barrierDismissible: false,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
@@ -601,10 +592,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       );
     } catch (e) {
-      // Close loading indicator if it's showing
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-      }
 
       // Check if widget is still mounted before showing error
       if (!mounted) return;

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'services/notification_service.dart';
 import 'services/iot_sensor_service.dart';
+import 'services/device_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/supabase_service.dart';
 
@@ -32,6 +33,7 @@ class _WatchScreenState extends State<WatchScreen>
   // Legacy IoT service integration
   late NotificationService _notificationService;
   late IoTSensorService _iotSensorService;
+  late DeviceService _deviceService;
 
   // Health metrics data
   double? spo2Value;
@@ -118,6 +120,7 @@ class _WatchScreenState extends State<WatchScreen>
       _notificationService =
           Provider.of<NotificationService>(context, listen: false);
       _iotSensorService = Provider.of<IoTSensorService>(context, listen: false);
+      _deviceService = DeviceService();
 
       // Check if device is setup (you can modify this logic based on your app's requirements)
       await _checkDeviceSetup();
@@ -129,8 +132,9 @@ class _WatchScreenState extends State<WatchScreen>
       await _initializeIoTService();
 
       // Initialize Firebase references
+      final deviceId = _deviceService.linkedDevice?.deviceId ?? 'AnxieEase001';
       _currentDataRef =
-          FirebaseDatabase.instance.ref().child('devices/AnxieEase001/current');
+          FirebaseDatabase.instance.ref().child('devices/$deviceId/current');
 
       // Listen to real-time current data updates
       _iotDataSubscription = _currentDataRef.onValue.listen((event) {

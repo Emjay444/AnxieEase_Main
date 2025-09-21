@@ -290,10 +290,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _handleAppLink(Uri uri) {
-    print('Handling deep link: $uri');
-    print('URI path: ${uri.path}');
-    print('URI query parameters: ${uri.queryParameters}');
-    print('URI fragment: ${uri.fragment}');
+    print('🔗 Deep link received: $uri');
+    print('🔗 URI scheme: ${uri.scheme}');
+    print('🔗 URI host: ${uri.host}');
+    print('🔗 URI path: ${uri.path}');
+    print('🔗 URI query: ${uri.queryParameters}');
+    print('🔗 URI fragment: ${uri.fragment}');
 
     // Check if this is a reset password link - look for different path variations
     bool isResetPasswordLink = uri.path == '/reset-password' ||
@@ -400,48 +402,32 @@ class _MyAppState extends State<MyApp> {
       }
     }
 
-    // Check for email verification
-    if (uri.path == '/verify' || uri.path.contains('verify')) {
+    // Check for email verification (Supabase confirmation callback)
+    if (uri.path == '/verify' || uri.path.contains('verify') ||
+        uri.toString().contains('type=signup') ||
+        uri.toString().contains('type=signup_email') ||
+        uri.toString().contains('/auth/confirm')) {
       print('Email verification path detected');
-      String? token;
-      String? email;
 
-      // Check for token in query parameters
-      if (uri.queryParameters.containsKey('token')) {
-        token = uri.queryParameters['token'];
-        print('Token parameter found: $token');
-      }
+      // Extract params from both query and fragment (Supabase often uses hash)
+      final Map<String, String> frag = uri.fragment.isNotEmpty
+          ? Uri.splitQueryString(uri.fragment)
+          : <String, String>{};
 
-      // Get email from parameters
-      if (uri.queryParameters.containsKey('email')) {
-        email = uri.queryParameters['email'];
-        print('Email parameter found: $email');
-      }
+      final String? type = uri.queryParameters['type'] ?? frag['type'];
+      final String? email = uri.queryParameters['email'] ?? frag['email'];
 
-      // Check for type=signup_email in query parameters
-      if (uri.queryParameters['type'] == 'signup_email') {
-        print('Email verification link detected');
+      // Treat signup and signup_email as verification success
+      if (type == 'signup' || type == 'signup_email') {
+        print('Supabase signup verification detected for email: ${email ?? 'unknown'}');
 
-        // Update email verification status in database if email is available
+        // Best-effort: update flag in our profile table when we know the email
         if (email != null) {
-          _supabaseService.updateEmailVerificationStatus(email).then((_) {
-            print('Updated email verification status for $email');
-            // Navigate directly to login screen
-            _navigatorKey.currentState?.pushNamedAndRemoveUntil(
-              '/',
-              (route) => false,
-              arguments: {
-                'message': 'Email verified successfully! Please log in.',
-                'showLogin': true,
-              },
-            );
-          }).catchError((e) {
-            print('Error updating verification status: $e');
-            // Still navigate to login even if update fails
+          _supabaseService.updateEmailVerificationStatus(email).whenComplete(() {
             _navigatorKey.currentState?.pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (context) => const AuthScreen(
-                  message: 'Please try logging in with your credentials.',
+                  message: 'Email verified! You can log in now.',
                   showLogin: true,
                 ),
               ),
@@ -449,17 +435,17 @@ class _MyAppState extends State<MyApp> {
             );
           });
         } else {
-          // If no email is available, still navigate to login
           _navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => const AuthScreen(
-                message: 'Please try logging in with your credentials.',
+                message: 'Email verified! Please log in.',
                 showLogin: true,
               ),
             ),
             (route) => false,
           );
         }
+        return;
       }
     }
   }

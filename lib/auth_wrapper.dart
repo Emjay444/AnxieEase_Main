@@ -21,8 +21,10 @@ class AuthWrapper extends StatelessWidget {
             '🔍 AuthWrapper - currentUser: ${authProvider.currentUser?.firstName ?? 'null'}');
         debugPrint('🔍 AuthWrapper - isLoading: ${authProvider.isLoading}');
 
-        // Show loading indicator while initializing OR while loading user data
-        if (!authProvider.isInitialized || authProvider.isLoading) {
+        // Show loading indicator ONLY during initial auth/session restoration
+        // Do NOT gate on isLoading here to avoid resetting the auth screens
+        // while the user is interacting with Login/Register flows.
+        if (!authProvider.isInitialized) {
           debugPrint('🔄 AuthWrapper - Still initializing or loading...');
           return Scaffold(
             body: Container(
