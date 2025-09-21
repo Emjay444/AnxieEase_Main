@@ -592,7 +592,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       );
     } catch (e) {
-
       // Check if widget is still mounted before showing error
       if (!mounted) return;
 

@@ -403,7 +403,8 @@ class _MyAppState extends State<MyApp> {
     }
 
     // Check for email verification (Supabase confirmation callback)
-    if (uri.path == '/verify' || uri.path.contains('verify') ||
+    if (uri.path == '/verify' ||
+        uri.path.contains('verify') ||
         uri.toString().contains('type=signup') ||
         uri.toString().contains('type=signup_email') ||
         uri.toString().contains('/auth/confirm')) {
@@ -419,11 +420,14 @@ class _MyAppState extends State<MyApp> {
 
       // Treat signup and signup_email as verification success
       if (type == 'signup' || type == 'signup_email') {
-        print('Supabase signup verification detected for email: ${email ?? 'unknown'}');
+        print(
+            'Supabase signup verification detected for email: ${email ?? 'unknown'}');
 
         // Best-effort: update flag in our profile table when we know the email
         if (email != null) {
-          _supabaseService.updateEmailVerificationStatus(email).whenComplete(() {
+          _supabaseService
+              .updateEmailVerificationStatus(email)
+              .whenComplete(() {
             _navigatorKey.currentState?.pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (context) => const AuthScreen(

@@ -14,7 +14,7 @@ class SupabaseService {
   bool _isInitialized = false;
   bool _isInitializing = false;
   final Completer<void> _initCompleter = Completer<void>();
-  
+
   // Store registration data temporarily for profile creation during sign-in
   Map<String, dynamic>? _pendingUserData;
 
@@ -29,7 +29,7 @@ class SupabaseService {
       // Create a temporary client with service role key for admin operations
       // Note: In production, this should be done via a server-side function
       // For now, we'll try with the existing client and handle RLS issues
-      
+
       final profileData = {
         'id': userId,
         'email': email,
@@ -47,7 +47,7 @@ class SupabaseService {
       };
 
       print('Attempting to insert profile data: $profileData');
-      
+
       // Try using the database function first (most reliable)
       try {
         await client.rpc('create_missing_user_profile', params: {
@@ -97,8 +97,8 @@ class SupabaseService {
         'emergency_contact': userData['emergency_contact'],
         'gender': userData['gender'],
       };
-      print('⏳ Stored data for profile creation during sign-in: $_pendingUserData');
-      
+      print(
+          '⏳ Stored data for profile creation during sign-in: $_pendingUserData');
     } catch (e) {
       print('❌ Error in _createUserProfileDirectly: $e');
       // Store for later creation as fallback
@@ -264,7 +264,7 @@ class SupabaseService {
         // Always attempt to create user profile immediately during registration
         final timestamp = DateTime.now().toIso8601String();
         print('Creating user profile immediately during registration...');
-        
+
         // Use service role to bypass RLS and create profile directly
         await _createUserProfileDirectly(
           userId: response.user!.id,
@@ -272,7 +272,7 @@ class SupabaseService {
           userData: userData,
           timestamp: timestamp,
         );
-        
+
         print('User profile created successfully during registration');
       } catch (e) {
         print('Error creating user record: $e');
@@ -349,11 +349,13 @@ class SupabaseService {
           // User doesn't exist in user_profiles table, create it
           Logger.info(
               'User not found in user_profiles table, creating user record');
-          
+
           // Try to use pending user data first, then fall back to metadata
           Map<String, dynamic> profileData;
-          if (_pendingUserData != null && _pendingUserData!['user_id'] == response.user!.id) {
-            print('Using pending user data for profile creation: $_pendingUserData');
+          if (_pendingUserData != null &&
+              _pendingUserData!['user_id'] == response.user!.id) {
+            print(
+                'Using pending user data for profile creation: $_pendingUserData');
             profileData = {
               'id': response.user!.id,
               'email': email,
@@ -387,7 +389,7 @@ class SupabaseService {
               'is_email_verified': response.user?.emailConfirmedAt != null,
             };
           }
-          
+
           await client.from('user_profiles').upsert(profileData);
           Logger.info('User record created successfully with profile data');
         } else {

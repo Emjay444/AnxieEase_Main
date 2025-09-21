@@ -14,7 +14,8 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
-        debugPrint('🔍 AuthWrapper - isInitialized: ${authProvider.isInitialized}');
+        debugPrint(
+            '🔍 AuthWrapper - isInitialized: ${authProvider.isInitialized}');
         debugPrint(
             '🔍 AuthWrapper - isAuthenticated: ${authProvider.isAuthenticated}');
         debugPrint(
@@ -68,7 +69,8 @@ class AuthWrapper extends StatelessWidget {
         }
 
         // If user is not authenticated, show the authentication screens
-        debugPrint('❌ AuthWrapper - User not authenticated, showing AuthScreen');
+        debugPrint(
+            '❌ AuthWrapper - User not authenticated, showing AuthScreen');
         return const AuthScreen();
       },
     );
