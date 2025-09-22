@@ -8,6 +8,7 @@ import 'utils/settings_helper.dart';
 import 'auth.dart'; // Import for AuthScreen
 import 'services/notification_service.dart';
 import 'screens/developer_test_screen.dart';
+import 'screens/baseline_recording_screen.dart';
 // Import for logout navigation
 
 class SettingsScreen extends StatefulWidget {
@@ -214,6 +215,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildSettingsSection(
                       'App Settings',
                       [
+                        _buildSettingsTile(
+                          icon: Icons.refresh,
+                          title: 'Recalibrate Baseline',
+                          subtitle: 'Run a quick 5-minute resting HR session',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const BaselineRecordingScreen()),
+                            );
+                          },
+                        ),
                         Consumer<NotificationProvider>(
                           builder: (context, notificationProvider, child) {
                             return _buildSettingsTile(

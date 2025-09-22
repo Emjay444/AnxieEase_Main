@@ -5,6 +5,7 @@ import '../services/device_service.dart';
 import '../models/baseline_heart_rate.dart';
 import '../theme/app_theme.dart';
 import 'health_dashboard_screen.dart';
+import '../config/baseline_config.dart';
 
 /// Guided resting heart rate recording screen
 ///
@@ -26,7 +27,7 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
   bool _isComplete = false;
   bool _isFinishing =
       false; // when timer hits 0 or stop pressed while finishing
-  int _selectedDuration = 3; // Default 3 minutes
+  int _selectedDuration = BaselineConfig.defaultMinutes; // Fixed to config
   String? _errorMessage;
   BaselineHeartRate? _result;
 
@@ -125,6 +126,12 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
   Future<void> _startRecording() async {
     if (_isRecording) return;
 
+    // Prevent duplicate listeners if retrying
+    await _countdownSubscription?.cancel();
+    _countdownSubscription = null;
+    await _heartRateSubscription?.cancel();
+    _heartRateSubscription = null;
+
     setState(() {
       _isRecording = true;
       _isComplete = false;
@@ -202,8 +209,8 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
       });
       _pulseController.stop();
 
-      // Show error dialog for insufficient data
-      _showInsufficientDataDialog(e.toString());
+      // Show error dialog with friendly message
+      _showInsufficientDataDialog(_friendlyErrorMessage(e));
     }
   }
 
@@ -250,8 +257,8 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
       });
       _pulseController.stop();
 
-      // Show error dialog for insufficient data
-      _showInsufficientDataDialog(e.toString());
+      // Show error dialog with friendly message
+      _showInsufficientDataDialog(_friendlyErrorMessage(e));
     }
   }
 
@@ -280,32 +287,59 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
     return 1.0 - (_remainingSeconds / totalSeconds);
   }
 
+  String _friendlyErrorMessage(Object e) {
+    final raw = e.toString().toLowerCase();
+    if (raw.contains('baseline_aborted')) {
+      return 'Session ended. Your baseline recording was canceled. You can try again when you’re ready.';
+    }
+    if (raw.contains('not enough data') || raw.contains('insufficient')) {
+      return 'Not enough data to compute your heart rate. Please make sure the device is worn properly and remain still during recording.';
+    }
+    if (raw.contains('too short')) {
+      return 'The session was too short to compute a baseline. Please complete the 5-minute recording.';
+    }
+    return e.toString();
+  }
+
+  String _friendlyErrorTitle(String message) {
+    final m = message.toLowerCase();
+    if (m.contains('canceled') || m.contains('ended'))
+      return 'Session Canceled';
+    if (m.contains('not enough data') || m.contains('insufficient'))
+      return 'Recording Incomplete';
+    if (m.contains('too short')) return 'Recording Too Short';
+    return 'Recording Incomplete';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
-        title: const Text(
-          'Resting Heart Rate Setup',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Resting Heart Rate Setup',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
+          backgroundColor: AppTheme.primaryColor,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.light,
         ),
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
-      ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: _isComplete
-                ? _buildCompletionView()
-                : _isRecording
-                    ? _buildRecordingView()
-                    : _buildPreparationView(),
+        body: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: _isComplete
+                  ? _buildCompletionView()
+                  : _isRecording
+                      ? _buildRecordingView()
+                      : _buildPreparationView(),
+            ),
           ),
         ),
       ),
@@ -330,8 +364,8 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
                 _buildDeviceStatus(),
                 const SizedBox(height: 40),
 
-                // Duration selector
-                _buildDurationSelector(),
+                // Fixed duration info
+                _buildFixedDurationCard(),
                 const SizedBox(height: 40),
 
                 // Instructions
@@ -446,6 +480,41 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
         _buildResultSummary(),
         const SizedBox(height: 40),
 
+        // Guidance based on quality
+        if (_result != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue[100]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[600]),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Tips',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _result!.recordingQuality == RecordingQuality.excellent ||
+                          _result!.recordingQuality == RecordingQuality.good
+                      ? 'Great baseline! You’re all set. Recalibrate weekly or if your routine changes.'
+                      : 'Baseline captured, but quality could improve. Consider another 5-minute session when you’re fully at rest.',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 20),
+
         // Continue button
         SizedBox(
           width: double.infinity,
@@ -507,7 +576,9 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
 
   Widget _buildDeviceStatus() {
     final device = _deviceService.linkedDevice;
-    if (device == null) return const SizedBox.shrink();
+
+    // Show default device info even if no device is formally linked
+    final deviceId = device?.deviceId ?? 'AnxieEase001';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -539,43 +610,12 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  device.deviceId,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color:
-                            _deviceService.currentMetrics?.isConnected == true
-                                ? Colors.green
-                                : Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _deviceService.currentMetrics?.isConnected == true
-                          ? 'Connected'
-                          : 'Connecting...',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            child: Text(
+              deviceId,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -583,18 +623,29 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
     );
   }
 
-  Widget _buildDurationSelector() {
+  Widget _buildFixedDurationCard() {
+    final now = DateTime.now();
+    final eta = now.add(Duration(minutes: BaselineConfig.defaultMinutes));
+    final etaTime = TimeOfDay.fromDateTime(eta).format(context);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primaryColor.withOpacity(0.06),
+            Colors.white,
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.15)),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -609,61 +660,95 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
               color: AppTheme.textColor,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Row(
-            children: [3, 4, 5].map((minutes) {
-              final isSelected = _selectedDuration == minutes;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: minutes == 5 ? 0 : 8,
-                  ),
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedDuration = minutes;
-                      });
-                    },
-                    child: Container(
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppTheme.primaryColor
-                              : Colors.grey[300]!,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '$minutes',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color:
-                                  isSelected ? Colors.white : Colors.grey[700],
-                            ),
-                          ),
-                          Text(
-                            'min',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  isSelected ? Colors.white : Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Icon badge
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.25),
                   ),
                 ),
-              );
-            }).toList(),
+                child: const Icon(
+                  Icons.timer_rounded,
+                  color: AppTheme.primaryColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Text block
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '${BaselineConfig.defaultMinutes} minutes',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Chip(
+                          label: const Text(
+                            'Recommended',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 0, horizontal: 6),
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor:
+                              AppTheme.primaryColor.withOpacity(0.10),
+                          side: BorderSide(
+                            color: AppTheme.primaryColor.withOpacity(0.20),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Auto-finish • Hands-free • Best accuracy',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 6),
+              Text(
+                'Est. completion: $etaTime',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'A single 5-minute session is recommended for best accuracy.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ],
       ),
@@ -934,9 +1019,18 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
         color = Colors.orange;
         text = 'Fair';
         break;
-      default:
+      case RecordingQuality.unstable:
         color = Colors.red;
-        text = 'Poor';
+        text = 'Unstable';
+        break;
+      case RecordingQuality.insufficientData:
+        color = Colors.red;
+        text = 'Insufficient Data';
+        break;
+      case RecordingQuality.tooShort:
+        color = Colors.red;
+        text = 'Too Short';
+        break;
     }
 
     return Chip(
@@ -1126,9 +1220,9 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
               color: Colors.orange,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Recording Incomplete',
-              style: TextStyle(
+            Text(
+              _friendlyErrorTitle(errorMessage),
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -1145,7 +1239,7 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
           // Cancel button: abort any ongoing recording and return to preparation UI
           OutlinedButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog
+              Navigator.of(context, rootNavigator: true).pop(); // Close dialog
               await _deviceService.abortBaselineRecording();
               if (!mounted) return;
               setState(() {
@@ -1168,7 +1262,7 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
           // Try Again button: just dismiss the dialog and keep user on the selection UI
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog
+              Navigator.of(context, rootNavigator: true).pop(); // Close dialog
               await _deviceService.abortBaselineRecording();
               if (!mounted) return;
               setState(() {
@@ -1179,7 +1273,11 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
                 _heartRateHistory.clear();
                 _remainingSeconds = 0;
               });
-              // User can now press Start again manually; no hidden auto-retry
+              // Immediately retry recording
+              await Future.delayed(const Duration(milliseconds: 150));
+              if (mounted) {
+                _startRecording();
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
@@ -1191,6 +1289,55 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
               'Try Again',
               style: TextStyle(color: Colors.white),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_isRecording || _isFinishing) {
+      final shouldLeave = await _showLeaveSessionDialog();
+      if (shouldLeave == true) {
+        try {
+          await _deviceService.abortBaselineRecording();
+        } catch (_) {}
+        _pulseController.stop();
+        await _countdownSubscription?.cancel();
+        await _heartRateSubscription?.cancel();
+        _countdownSubscription = null;
+        _heartRateSubscription = null;
+        return true; // allow pop
+      }
+      return false; // stay on page
+    }
+    return true; // not recording; allow pop
+  }
+
+  Future<bool?> _showLeaveSessionDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('End session?'),
+        content: const Text(
+            'Leaving now will end the test session and discard current progress.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(false),
+            child: const Text('Continue Session'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('End Session',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

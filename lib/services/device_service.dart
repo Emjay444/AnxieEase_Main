@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
+import '../config/baseline_config.dart';
 import '../models/wearable_device.dart';
 import '../models/health_metrics.dart';
 import '../models/baseline_heart_rate.dart';
@@ -145,28 +146,29 @@ class DeviceService extends ChangeNotifier {
             '1. Device is turned ON\n'
             '2. Device is connected to "AnxieEase" WiFi hotspot\n'
             '3. Hotspot password is "11112222"\n'
-            '4. Device LED shows blue (connected status)');
+            '4. Device is actively sending data to the system');
       }
 
-      // Create or update device record (using virtual device ID for testing)
+      // Create or update device record (use normalized device ID for Supabase)
       final device = WearableDevice(
-        deviceId: virtualDeviceId, // Use virtual device ID
-        deviceName: _deviceSharingService.getDeviceDisplayName(virtualDeviceId),
+        deviceId: normalizedDeviceId, // Use actual device ID for DB consistency
+        deviceName:
+            _deviceSharingService.getDeviceDisplayName(normalizedDeviceId),
         userId: user.id,
         linkedAt: DateTime.now(),
         isActive: true,
         lastSeenAt: DateTime.now(),
       );
 
-      // Save to Supabase
+      // Save to Supabase with real device ID
       await _saveDeviceToDatabase(device);
 
-      // Set up Firebase real-time streaming (virtual device path)
+      // Set up Firebase real-time streaming (use virtual device ID for user separation)
       await _setupRealtimeStreaming(virtualDeviceId);
 
       _linkedDevice = device;
 
-      // Update notification service to use the virtual device reference
+      // Update notification service to use the virtual device reference for Firebase
       _notificationService.updateDeviceReference(virtualDeviceId);
 
       // Reset anxiety detection engine for new device
@@ -185,7 +187,7 @@ class DeviceService extends ChangeNotifier {
 
   /// Start collecting resting heart rate baseline (3-5 minute session)
   Future<BaselineHeartRate> recordRestingHeartRate({
-    int durationMinutes = 3,
+    int durationMinutes = BaselineConfig.defaultMinutes,
     String? notes,
   }) async {
     if (_linkedDevice == null) {
@@ -230,10 +232,10 @@ class DeviceService extends ChangeNotifier {
             'DeviceService: Timer tick - ${remainingSeconds}s remaining');
         _countdownController?.add(remainingSeconds);
 
-        // Collect heart rate reading every 5 seconds
-        if (remainingSeconds % 5 == 0) {
+        // Collect heart rate reading every 3 seconds for better quality
+        if (remainingSeconds % 3 == 0) {
           AppLogger.d(
-              'DeviceService: 5-second interval - collecting HR reading');
+              'DeviceService: 3-second interval - collecting HR reading');
           _collectHeartRateReading();
         }
 
@@ -264,7 +266,8 @@ class DeviceService extends ChangeNotifier {
           if (_baselineReadings.length >= 5) {
             final endTime = DateTime.now();
             final startTime = _baselineRecordingStartTime ??
-                endTime.subtract(Duration(minutes: durationMinutes));
+                endTime.subtract(
+                    const Duration(minutes: BaselineConfig.defaultMinutes));
             final baseline = BaselineHeartRate.calculateBaseline(
               userId: _linkedDevice!.userId!,
               deviceId: _linkedDevice!.deviceId,
@@ -350,23 +353,32 @@ class DeviceService extends ChangeNotifier {
       if (_currentMetrics != null && _currentMetrics!.heartRate != null) {
         currentHR = _currentMetrics!.heartRate!;
         worn = _currentMetrics!.isWorn;
+        print(
+            'DeviceService: Using live metrics - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
       } else {
         // Fallback to simulator if no live data
         currentHR = _iotSensorService.heartRate;
         worn = _iotSensorService.isDeviceWorn;
+        print(
+            'DeviceService: Using IoT simulator - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
       }
 
       // Collect only when the device is worn and we have a positive HR
       if (worn && currentHR > 0) {
         _baselineReadings.add(currentHR);
         _heartRateController?.add(currentHR);
+        print(
+            'DeviceService: ✓ Collected HR reading #${_baselineReadings.length}: ${currentHR.toStringAsFixed(1)} BPM');
         AppLogger.d(
             'DeviceService: Collected HR reading: ${currentHR.toStringAsFixed(1)} BPM (worn: $worn, live: ${_currentMetrics != null})');
       } else {
+        print(
+            'DeviceService: ✗ Skipped HR reading - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
         AppLogger.d(
             'DeviceService: Skipped HR reading (hr: ${currentHR.toStringAsFixed(1)}, worn: $worn)');
       }
     } catch (e) {
+      print('DeviceService: Error collecting HR reading: $e');
       AppLogger.w('DeviceService: Error collecting HR reading: $e');
     }
   }
@@ -391,7 +403,7 @@ class DeviceService extends ChangeNotifier {
 
       final endTime = DateTime.now();
       final startTime = _baselineRecordingStartTime ??
-          endTime.subtract(const Duration(minutes: 3));
+          endTime.subtract(Duration(minutes: BaselineConfig.defaultMinutes));
 
       if (_baselineReadings.isEmpty) {
         throw Exception(
@@ -404,6 +416,11 @@ class DeviceService extends ChangeNotifier {
       }
 
       // Calculate baseline
+      print(
+          'DeviceService: About to calculate baseline with ${_baselineReadings.length} readings');
+      print(
+          'DeviceService: Readings: ${_baselineReadings.map((r) => r.toStringAsFixed(1)).join(', ')}');
+
       final baseline = BaselineHeartRate.calculateBaseline(
         userId: _linkedDevice!.userId!,
         deviceId: _linkedDevice!.deviceId,
@@ -412,6 +429,10 @@ class DeviceService extends ChangeNotifier {
         endTime: endTime,
         notes: notes,
       );
+
+      print(
+          'DeviceService: Calculated baseline HR: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
+      print('DeviceService: Recording quality: ${baseline.recordingQuality}');
 
       // Always update local state first for immediate UI feedback
       _currentBaseline = baseline;
@@ -487,21 +508,35 @@ class DeviceService extends ChangeNotifier {
       // Check if device exists in Firebase
       final snapshot = await deviceRef.once();
       if (!snapshot.snapshot.exists) {
-        AppLogger.w('DeviceService: Device $deviceId not found in Firebase');
+        AppLogger.w(
+            'DeviceService: Device $deviceId not found in Firebase at path: devices/$deviceId');
         return false;
       }
+
+      AppLogger.d('DeviceService: Device $deviceId found in Firebase');
 
       // Check if device has recent data
       final currentRef = deviceRef.child('current');
       final currentSnapshot = await currentRef.once();
 
       if (!currentSnapshot.snapshot.exists) {
-        AppLogger.w('DeviceService: No current data for device $deviceId');
+        AppLogger.w(
+            'DeviceService: No current data for device $deviceId at path: devices/$deviceId/current');
         return false;
       }
 
+      AppLogger.d('DeviceService: Current data found for device $deviceId');
+
       final data =
           Map<String, dynamic>.from(currentSnapshot.snapshot.value as Map);
+
+      AppLogger.d(
+          'DeviceService: Device $deviceId data keys: ${data.keys.toList()}');
+      AppLogger.d(
+          'DeviceService: Device $deviceId timestamp: ${data['timestamp']}');
+      AppLogger.d(
+          'DeviceService: Device $deviceId battery: ${data['battPerc']}');
+      AppLogger.d('DeviceService: Device $deviceId status: ${data['status']}');
 
       // Check if data is recent (within last 60 seconds for setup)
       final timestampValue = data['timestamp'];
@@ -516,10 +551,20 @@ class DeviceService extends ChangeNotifier {
             // Try parsing as ISO string first
             dataTime = DateTime.parse(timestampValue);
           } catch (e) {
-            // Try parsing as int string
-            final intValue = int.tryParse(timestampValue);
-            if (intValue != null) {
-              dataTime = DateTime.fromMillisecondsSinceEpoch(intValue);
+            try {
+              // Try parsing as int string
+              final intValue = int.tryParse(timestampValue);
+              if (intValue != null) {
+                dataTime = DateTime.fromMillisecondsSinceEpoch(intValue);
+              }
+            } catch (e2) {
+              // Try parsing custom format like "2025-09-23 00:16:00"
+              try {
+                dataTime = DateTime.parse(timestampValue.replaceAll(' ', 'T'));
+              } catch (e3) {
+                AppLogger.w(
+                    'DeviceService: Could not parse timestamp: $timestampValue');
+              }
             }
           }
         }
@@ -535,30 +580,32 @@ class DeviceService extends ChangeNotifier {
         }
       }
 
-      // Determine connection status more flexibly
+      // Determine connection status more flexibly for device setup
       final rawConn = (data['connectionStatus'] ?? '').toString().toLowerCase();
       final isConnectedFlag = data['isConnected'];
       final hasVitals = (data['heartRate'] != null) || (data['spo2'] != null);
       final hasBattery = data['battPerc'] != null;
       final isExplicitlyDisconnected =
           rawConn == 'disconnected' || isConnectedFlag == false;
-      var isConnected =
-          !isExplicitlyDisconnected; // accept if not explicitly disconnected
-      final isWorn = data['worn'] == true;
 
-      // If not worn, treat as not connected for validation purposes
-      if (!isWorn) {
-        isConnected = false;
-      }
+      // For device setup validation, we're more lenient:
+      // - Device just needs to be sending ANY data (not necessarily worn)
+      // - Check if device has recent timestamp and battery info
+      // - Don't require worn status during setup phase
+      final hasRecentData = timestampValue != null;
+      final deviceSendingData =
+          hasRecentData && (hasBattery || hasVitals || data.isNotEmpty);
+
+      var isConnected = !isExplicitlyDisconnected && deviceSendingData;
 
       if (!isConnected) {
         AppLogger.w(
-            'DeviceService: Device $deviceId appears inactive (no vitals or explicitly disconnected)');
+            'DeviceService: Device $deviceId appears inactive (no recent data or explicitly disconnected)');
         return false;
       }
 
       AppLogger.d(
-          'DeviceService: Device $deviceId validation successful - connected, vitals: $hasVitals, battery: $hasBattery, worn: $isWorn');
+          'DeviceService: Device $deviceId validation successful - connected, data: $deviceSendingData, battery: $hasBattery');
       return true;
     } catch (e) {
       AppLogger.e('DeviceService: Device validation error', e as Object?);
@@ -569,7 +616,16 @@ class DeviceService extends ChangeNotifier {
   /// Set up real-time data streaming from Firebase
   Future<void> _setupRealtimeStreaming(String deviceId) async {
     try {
-      _deviceRef = _realtimeDb.ref('devices/$deviceId/current');
+      // Extract real device ID from virtual device ID for Firebase streaming
+      String realDeviceId = deviceId;
+      if (deviceId.contains('_')) {
+        realDeviceId = deviceId.split('_')[0];
+      }
+
+      AppLogger.d(
+          'DeviceService: Setting up streaming for virtual device $deviceId, reading from real device $realDeviceId');
+
+      _deviceRef = _realtimeDb.ref('devices/$realDeviceId/current');
 
       // Cancel existing subscription
       await _realtimeSubscription?.cancel();
@@ -589,7 +645,7 @@ class DeviceService extends ChangeNotifier {
       );
 
       AppLogger.d(
-          'DeviceService: Real-time streaming setup for device $deviceId');
+          'DeviceService: Real-time streaming setup for device $deviceId, reading from Firebase path devices/$realDeviceId/current');
     } catch (e) {
       AppLogger.e(
           'DeviceService: Failed to setup real-time streaming', e as Object?);
@@ -1005,6 +1061,8 @@ class DeviceService extends ChangeNotifier {
       // - Send to emergency contacts for critical alerts
       // - Log to health monitoring dashboard
       // NotificationService.sendAnxietyAlert(notificationContent, result.confidenceLevel);
+      notificationContent
+          .toString(); // prevent unused local var warning until integration
     } catch (e) {
       AppLogger.e(
           'DeviceService: Failed to send anxiety notification', e as Object?);
@@ -1297,6 +1355,24 @@ class DeviceService extends ChangeNotifier {
     try {
       AppLogger.d(
           'DeviceService: Saving baseline to Supabase: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
+      AppLogger.d('DeviceService: Baseline device_id: ${baseline.deviceId}');
+      AppLogger.d('DeviceService: Baseline user_id: ${baseline.userId}');
+
+      // Check if device exists in wearable_devices table first
+      final deviceExists = await _supabaseService.client
+          .from('wearable_devices')
+          .select('device_id')
+          .eq('device_id', baseline.deviceId)
+          .maybeSingle();
+
+      if (deviceExists == null) {
+        AppLogger.w(
+            'DeviceService: Device ${baseline.deviceId} not found in wearable_devices table');
+        throw Exception(
+            'Device not found in database. Please link device first.');
+      }
+
+      AppLogger.d('DeviceService: Device exists in wearable_devices table');
 
       // Prefer explicit find-update-or-insert to avoid ON CONFLICT constraint issues
       // 1) Try to find the latest existing baseline for this user + device (single canonical row)
@@ -1430,10 +1506,7 @@ class DeviceService extends ChangeNotifier {
     return regex.hasMatch(deviceId);
   }
 
-  /// Get display name for device
-  String _getDeviceDisplayName(String deviceId) {
-    return 'AnxieEase Wearable ($deviceId)';
-  }
+  // Removed unused _getDeviceDisplayName helper
 
   /// Update device battery level
   Future<void> updateDeviceBatteryLevel(double batteryLevel) async {

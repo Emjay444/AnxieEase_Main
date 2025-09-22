@@ -259,21 +259,24 @@ class _WatchScreenState extends State<WatchScreen>
     });
   }
 
-  /// Initialize IoT Sensor Service
+  /// Initialize IoT Sensor Service (for real device monitoring)
   Future<void> _initializeIoTService() async {
     try {
       await _iotSensorService.initialize();
       // Ensure initial animation reflects current state
       _updatePulseAnimation();
 
-      // Update monitoring state
+      // Update monitoring state - but don't auto-start for real device
       setState(() {
-        _isMonitoringActive = _iotSensorService.isActive;
-        isConnected = _iotSensorService.isConnected;
+        _isMonitoringActive = false; // Will be true when real device connects
+        isConnected = false; // Will be true when real device data arrives
         if (!isConnected) {
           _hasRealtimeData = false;
         }
       });
+
+      debugPrint(
+          '📱 WatchScreen: IoT service initialized - waiting for real device data');
     } catch (e) {
       debugPrint('❌ Wearable: Error initializing IoT service: $e');
     }
@@ -303,7 +306,7 @@ class _WatchScreenState extends State<WatchScreen>
     _updatePulseAnimation();
   }
 
-  /// Start IoT sensor monitoring
+  /// Start monitoring (for real device - no mock data generation)
   Future<void> _startIoTMonitoring() async {
     try {
       setState(() {
@@ -311,15 +314,22 @@ class _WatchScreenState extends State<WatchScreen>
         _connectionState = 'connecting';
         _isMonitoringActive = true;
       });
-      await _iotSensorService.startSensors();
 
-      // Start validation timer to check if Firebase data arrives
+      // Note: Real device should write directly to Firebase
+      // We just set the service as active but don't generate mock data
+      await _iotSensorService
+          .startSensors(); // This will not generate mock data anymore
+
+      // Start validation timer to check if real device data arrives
       _startFirebaseValidation();
+
+      debugPrint(
+          '📱 WatchScreen: Monitoring started - waiting for real device data at /devices/AnxieEase001/current');
     } catch (e) {
       setState(() {
         _connectionState = 'disconnected';
       });
-      _showError('Failed to start IoT monitoring: $e');
+      _showError('Failed to start monitoring: $e');
     }
   }
 

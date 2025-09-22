@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'dart:io';
@@ -58,6 +59,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late double screenHeight;
   int _currentTechniqueIndex = 0;
   late PageController _techniquePageController;
+  // Looping carousel config
+  static const int _techniquesCount = 3;
+  static const int _loopingBase = 1000; // large base to allow bidirectional scroll
+  Timer? _techniqueAutoTimer;
+
+  void _stopTechniqueAutoPlay() {
+    _techniqueAutoTimer?.cancel();
+    _techniqueAutoTimer = null;
+  }
   // Subtle pulsing animation toggles were removed; we animate only icons now
   // (Icon animations now use controllers, not boolean toggles)
   // Controllers for continuous icon+ring breathing
@@ -110,10 +120,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
 
     // Initialize page controller
-    _techniquePageController = PageController(viewportFraction: 0.9);
+    _techniquePageController = PageController(
+      viewportFraction: 0.9,
+      initialPage: _techniquesCount * _loopingBase,
+    );
 
     // Looping controllers for icon/ring breathing
     _initControllers();
+
+    // Gentle auto-play for the technique carousel
+    _techniqueAutoTimer?.cancel();
+    _techniqueAutoTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) return;
+      if (_techniquePageController.hasClients) {
+        final current = _techniquePageController.page?.round() ??
+            (_techniquesCount * _loopingBase);
+        _techniquePageController.animateToPage(
+          current + 1,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
@@ -183,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _techniquePageController.dispose();
     _breathingController?.dispose();
     _groundingController?.dispose();
+    _techniqueAutoTimer?.cancel();
     super.dispose();
   }
 
@@ -2222,8 +2251,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildTechniqueCarousel() {
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setCarouselState) {
-        // Number of technique cards
-        const int techniquesCount = 3;
+        // Number of technique cards (looping)
 
         return Column(
           children: [
@@ -2285,50 +2313,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Carousel
             SizedBox(
               height: screenHeight * 0.22, // Fixed height for the carousel
-              child: PageView.builder(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanDown: (_) => _stopTechniqueAutoPlay(),
+                child: PageView.builder(
                 controller: _techniquePageController,
                 onPageChanged: (index) {
-                  // Update local state within StatefulBuilder
+                  final normalized = index % _techniquesCount;
                   setCarouselState(() {
-                    _currentTechniqueIndex = index;
+                    _currentTechniqueIndex = normalized;
                   });
-                  // Also update parent state
                   setState(() {
-                    _currentTechniqueIndex = index;
+                    _currentTechniqueIndex = normalized;
                   });
                 },
-                itemCount: techniquesCount,
+                // No itemCount => allows infinite scrolling
                 itemBuilder: (context, index) {
-                  // Apply scale effect to cards
-                  final isCurrentPage = index == _currentTechniqueIndex;
+                  final normalizedIndex = index % _techniquesCount;
+                  final isCurrentPage =
+                      normalizedIndex == _currentTechniqueIndex;
                   return AnimatedScale(
                     scale: isCurrentPage ? 1.0 : 0.9,
                     duration: const Duration(milliseconds: 300),
                     child: Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: screenWidth * 0.02),
-                      child: index == 0
+                      padding: EdgeInsets.symmetric(
+                          horizontal: screenWidth * 0.02),
+                      child: normalizedIndex == 0
                           ? _buildHealthMonitoringCard(isCurrentPage)
-                          : index == 1
+                          : (normalizedIndex == 1
                               ? _buildBreathingCard(isCurrentPage)
-                              : _buildGroundingCard(isCurrentPage),
+                              : _buildGroundingCard(isCurrentPage)),
                     ),
                   );
                 },
+                ),
               ),
             ),
-
-            // Page indicator dots
             Padding(
               padding: EdgeInsets.only(top: screenHeight * 0.015),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
-                  techniquesCount,
+                  _techniquesCount,
                   (index) => GestureDetector(
                     onTap: () {
+                      _stopTechniqueAutoPlay();
                       _techniquePageController.animateToPage(
-                        index,
+                        (_techniquesCount * _loopingBase) + index,
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeInOut,
                       );
@@ -2671,11 +2702,10 @@ class _HomeContentState extends State<HomeContent> {
     return SafeArea(
       child: Column(
         children: [
-          // App Bar with Profile (enhanced shadow for stronger separation)
+          // Top Bar (white card with shadow)
           Material(
             elevation: 4,
-            shadowColor: Colors.black.withOpacity(0.18),
-            surfaceTintColor: theme.cardColor,
+            color: Colors.transparent,
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: screenWidth * 0.05,
@@ -2684,14 +2714,12 @@ class _HomeContentState extends State<HomeContent> {
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 boxShadow: [
-                  // Subtle primary shadow
                   BoxShadow(
                     color: Colors.black.withOpacity(0.08),
                     blurRadius: 12,
                     spreadRadius: 0.5,
                     offset: const Offset(0, 4),
                   ),
-                  // Softer ambient shadow
                   BoxShadow(
                     color: Colors.black.withOpacity(0.03),
                     blurRadius: 4,
@@ -2734,6 +2762,7 @@ class _HomeContentState extends State<HomeContent> {
                           fontSize: screenWidth * 0.035,
                         ),
                       ),
+                      // (No date chip in the white card design)
                     ],
                   ),
                   GestureDetector(
@@ -2779,14 +2808,14 @@ class _HomeContentState extends State<HomeContent> {
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       color: Colors.white,
-                                      value:
-                                          loadingProgress.expectedTotalBytes !=
-                                                  null
-                                              ? loadingProgress
-                                                      .cumulativeBytesLoaded /
-                                                  loadingProgress
-                                                      .expectedTotalBytes!
-                                              : null,
+                                      value: loadingProgress
+                                                  .expectedTotalBytes !=
+                                              null
+                                          ? loadingProgress
+                                                  .cumulativeBytesLoaded /
+                                              loadingProgress
+                                                  .expectedTotalBytes!
+                                          : null,
                                     ),
                                   );
                                 },
@@ -2843,10 +2872,8 @@ class _HomeContentState extends State<HomeContent> {
                                 radius: screenWidth * 0.06,
                                 backgroundImage: FileImage(
                                   snapshot.data!,
-                                  // Add a scale parameter to force refresh
                                   scale: 1.0,
                                 ),
-                                // Add a key with timestamp to force widget rebuild
                                 key: ValueKey(snapshot.data!.path),
                               );
                             } else {

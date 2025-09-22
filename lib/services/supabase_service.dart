@@ -1281,13 +1281,8 @@ class SupabaseService {
       // First get the user's assigned psychologist ID
       final userProfile = await getUserProfile();
       if (userProfile == null) {
-        // If no user profile found, try fetching a default psychologist
-        final psychologists =
-            await client.from('psychologists').select().limit(1).maybeSingle();
-
-        if (psychologists != null) {
-          return _ensurePsychologistFields(psychologists);
-        }
+        // If no user profile found, return null
+        // Don't automatically assign a psychologist
         return null;
       }
 
@@ -1307,35 +1302,15 @@ class SupabaseService {
         }
         return null;
       } else {
-        // If user doesn't have assigned psychologist, get the first available one
-        final psychologist =
-            await client.from('psychologists').select().limit(1).maybeSingle();
-
-        // If a psychologist is found, assign it to the user
-        if (psychologist != null) {
-          await client
-              .from('user_profiles')
-              .update({'assigned_psychologist_id': psychologist['id']}).eq(
-                  'id', user.id);
-
-          return _ensurePsychologistFields(psychologist);
-        }
+        // If user doesn't have assigned psychologist, return null
+        // Don't automatically assign one - let admin or user choose
         return null;
       }
     } catch (e) {
       Logger.error('Error fetching assigned psychologist', e);
 
-      // Fallback to hardcoded data in case of error
-      return {
-        'id': 'psy-001',
-        'name': 'Dr. Sarah Johnson',
-        'specialization': 'Clinical Psychologist, Anxiety Specialist',
-        'contact_email': 'sarah.johnson@anxiease.com',
-        'contact_phone': '(555) 123-4567',
-        'biography':
-            'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management. She completed her Ph.D. at Stanford University and has published numerous research papers on cognitive behavioral therapy techniques for anxiety management. Dr. Johnson takes a holistic approach to mental health, combining evidence-based therapeutic techniques with mindfulness practices to help patients develop effective coping strategies for their anxiety.',
-        'image_url': null,
-      };
+      // Return null instead of fallback data to properly reflect no assignment
+      return null;
     }
   }
 
@@ -1667,7 +1642,7 @@ class SupabaseService {
     try {
       // Query all psychologists from the database
       final response =
-          await client.from('psychologists').select().order('name');
+          await client.from('psychologists').select().order('first_name');
 
       // Ensure all required fields are present for each psychologist
       return List<Map<String, dynamic>>.from(response
@@ -1731,9 +1706,29 @@ class SupabaseService {
   // Helper method to ensure all required psychologist fields are present
   Map<String, dynamic> _ensurePsychologistFields(
       Map<String, dynamic> psychologist) {
+    // Build full name from first_name, middle_name, last_name
+    String fullName = '';
+    if (psychologist['first_name'] != null &&
+        psychologist['first_name'].toString().isNotEmpty) {
+      fullName = psychologist['first_name'].toString();
+      if (psychologist['middle_name'] != null &&
+          psychologist['middle_name'].toString().isNotEmpty) {
+        fullName += ' ${psychologist['middle_name']}';
+      }
+      if (psychologist['last_name'] != null &&
+          psychologist['last_name'].toString().isNotEmpty) {
+        fullName += ' ${psychologist['last_name']}';
+      }
+    } else if (psychologist['name'] != null) {
+      // Fallback to 'name' field if it exists (for backward compatibility)
+      fullName = psychologist['name'].toString();
+    } else {
+      fullName = 'Unknown Psychologist';
+    }
+
     return {
       'id': psychologist['id'] ?? 'unknown-id',
-      'name': psychologist['name'] ?? 'Unknown Psychologist',
+      'name': fullName,
       'specialization': psychologist['specialization'] ?? 'General Psychology',
       // Try multiple possible keys before using placeholder
       'contact_email': psychologist['contact_email'] ??

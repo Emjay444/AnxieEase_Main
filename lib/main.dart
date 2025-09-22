@@ -161,8 +161,18 @@ Future<void> _initializeRemainingServices(
     // Initialize storage service
     await StorageService().init();
 
-    // Initialize device manager
+    // Initialize device manager (but don't auto-start sensors for real device mode)
     await iotSensorService.initialize();
+
+    // REAL DEVICE MODE: Don't auto-start mock data generation
+    // Stop any mock data generation and prepare for real device
+    iotSensorService.enableMockDataGeneration(false);
+    await iotSensorService.stopSensors();
+    // If you need to test without real device, manually call:
+    // iotSensorService.enableMockDataGeneration(true);
+    // await iotSensorService.startSensors();
+    AppLogger.i(
+        'IoT Service initialized - mock data generation disabled for real device use');
 
     // Configure Firebase Cloud Messaging (foreground listeners, token log)
     await _configureFCM();

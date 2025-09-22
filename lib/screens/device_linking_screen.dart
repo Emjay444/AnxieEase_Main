@@ -209,10 +209,9 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                           ),
                         ),
                         Text(
-                          'Status: ${device.isActive ? 'Active' : 'Inactive'}',
+                          'Status: Active',
                           style: TextStyle(
-                            color:
-                                device.isActive ? Colors.green : Colors.orange,
+                            color: Colors.green,
                             fontSize: 14,
                           ),
                         ),

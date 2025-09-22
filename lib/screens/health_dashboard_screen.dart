@@ -3,6 +3,7 @@ import 'dart:async';
 import '../services/device_service.dart';
 import '../models/health_metrics.dart';
 import '../theme/app_theme.dart';
+import '../config/baseline_config.dart';
 
 /// Real-time health metrics dashboard
 ///
@@ -229,6 +230,9 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Weekly recalibration suggestion
+            _buildRecalibrationBanner(),
+            const SizedBox(height: 12),
             // Device status card
             _buildDeviceStatusCard(),
             const SizedBox(height: 20),
@@ -249,6 +253,62 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
             _buildHealthStatusSummary(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildRecalibrationBanner() {
+    final device = _deviceService.linkedDevice;
+    final metrics = _deviceService.currentMetrics;
+    if (device == null || device.baselineHR == null) return const SizedBox.shrink();
+
+    bool show = false;
+    String message = 'It’s been a week since your last baseline. Recalibrate for best accuracy.';
+
+    // Suggest if baseline older than weeklyRefreshDays
+    if (device.baselineUpdatedAt == null) {
+      show = true;
+    } else {
+      final days = DateTime.now().difference(device.baselineUpdatedAt!).inDays;
+      if (days >= BaselineConfig.weeklyRefreshDays) show = true;
+    }
+
+    // Also suggest if current resting HR while worn seems to drift > threshold
+    if (!show && metrics != null && metrics.isWorn && metrics.heartRate != null) {
+      final drift = (metrics.heartRate! - device.baselineHR!).abs();
+      if (drift >= BaselineConfig.driftThresholdBpm && (metrics.movementLevel ?? 0) <= BaselineConfig.restfulMovementThreshold) {
+        show = true;
+        message = 'Your resting HR changed by ≥${BaselineConfig.driftThresholdBpm} BPM. Consider recalibrating.';
+      }
+    }
+
+    if (!show) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.refresh, color: Colors.amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pushNamed(context, '/baseline-recording');
+            },
+            child: const Text('Recalibrate'),
+          )
+        ],
       ),
     );
   }

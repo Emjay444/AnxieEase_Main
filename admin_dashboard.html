@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnxieEase Admin - Device Management</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-assigned { background-color: #dbeafe; color: #1e40af; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+        .status-active { background-color: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+        .status-completed { background-color: #f3f4f6; color: #374151; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+        .status-available { background-color: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+        .status-expired { background-color: #fee2e2; color: #991b1b; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+        .status-pending { background-color: #fef3c7; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">AnxieEase Device Management</h1>
+        
+        <!-- Login Section -->
+        <div id="loginSection" class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Admin Login</h2>
+            <div class="flex gap-4">
+                <input type="email" id="adminEmail" placeholder="Admin Email" class="flex-1 border rounded-md px-3 py-2">
+                <input type="password" id="adminPassword" placeholder="Password" class="flex-1 border rounded-md px-3 py-2">
+                <button onclick="login()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Login</button>
+            </div>
+            <div id="loginError" class="text-red-600 mt-2 hidden"></div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div id="dashboard" class="hidden">
+            <!-- Device Status Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">AnxieEase001 Status</h2>
+                <div id="deviceStatus" class="space-y-4">
+                    <!-- Device status will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Device Assignment Form -->
+            <div id="assignmentForm" class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Assign Device</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Select User</label>
+                        <select id="userSelect" class="w-full border rounded-md px-3 py-2">
+                            <option value="">Loading users...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Duration</label>
+                        <select id="durationSelect" class="w-full border rounded-md px-3 py-2">
+                            <option value="1">1 hour</option>
+                            <option value="2" selected>2 hours</option>
+                            <option value="4">4 hours</option>
+                            <option value="8">8 hours</option>
+                            <option value="24">24 hours</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Admin Notes</label>
+                        <input type="text" id="adminNotes" placeholder="Optional notes..." class="w-full border rounded-md px-3 py-2">
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="assignDevice()" id="assignBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                        Assign Device
+                    </button>
+                    <button onclick="releaseDevice()" id="releaseBtn" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+                        Release Device
+                    </button>
+                </div>
+            </div>
+
+            <!-- Usage History -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4">Usage History</h2>
+                <div id="usageHistory" class="overflow-x-auto">
+                    <!-- History table will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Logout -->
+            <div class="mt-6 text-center">
+                <button onclick="logout()" class="text-gray-600 hover:text-gray-800">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Replace with your Supabase project details
+        const SUPABASE_URL = 'https://your-project.supabase.co';  // UPDATE THIS
+        const SUPABASE_ANON_KEY = 'your-anon-key';                // UPDATE THIS
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentUser = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        async function checkAuth() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                currentUser = user;
+                showDashboard();
+                loadDashboard();
+            } else {
+                showLogin();
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+        }
+
+        async function login() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            const errorDiv = document.getElementById('loginError');
+
+            if (!email || !password) {
+                showError('Please enter both email and password');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) throw error;
+
+                currentUser = data.user;
+                errorDiv.classList.add('hidden');
+                showDashboard();
+                loadDashboard();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function logout() {
+            await supabase.auth.signOut();
+            currentUser = null;
+            showLogin();
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        async function loadDashboard() {
+            await Promise.all([
+                loadDeviceStatus(),
+                loadUsers(),
+                loadUsageHistory()
+            ]);
+        }
+
+        async function loadDeviceStatus() {
+            try {
+                const { data, error } = await supabase.rpc('get_device_assignment_status', {
+                    p_device_id: 'AnxieEase001'
+                });
+
+                if (error) throw error;
+
+                const device = data[0];
+                const statusDiv = document.getElementById('deviceStatus');
+                const assignBtn = document.getElementById('assignBtn');
+                const releaseBtn = document.getElementById('releaseBtn');
+
+                if (device && device.user_id) {
+                    // Device is assigned
+                    statusDiv.innerHTML = `
+                        <div class="bg-blue-50 p-4 rounded-md">
+                            <h3 class="font-medium text-blue-900 mb-2">Currently Assigned</h3>
+                            <div class="text-blue-800 space-y-1">
+                                <p><strong>User:</strong> ${device.user_name || 'Unknown'} (${device.user_email || 'No email'})</p>
+                                <p><strong>Status:</strong> 
+                                    <span class="px-2 py-1 rounded-full text-xs status-${device.assignment_status}">
+                                        ${device.assignment_status}
+                                    </span>
+                                </p>
+                                <p><strong>Session:</strong> 
+                                    <span class="px-2 py-1 rounded-full text-xs status-${device.session_status}">
+                                        ${device.session_status}
+                                    </span>
+                                </p>
+                                <p><strong>Assigned:</strong> ${new Date(device.assigned_at).toLocaleString()}</p>
+                                ${device.expires_at ? `<p><strong>Expires:</strong> ${new Date(device.expires_at).toLocaleString()}</p>` : ''}
+                                ${device.admin_notes ? `<p><strong>Admin Notes:</strong> ${device.admin_notes}</p>` : ''}
+                                ${device.session_notes ? `<p><strong>Session Notes:</strong> ${device.session_notes}</p>` : ''}
+                                ${device.is_expired ? '<p class="text-red-600"><strong>⚠️ Assignment has expired</strong></p>' : ''}
+                            </div>
+                        </div>
+                    `;
+                    assignBtn.disabled = true;
+                    assignBtn.textContent = 'Device Already Assigned';
+                    releaseBtn.disabled = false;
+                } else {
+                    // Device is available
+                    statusDiv.innerHTML = `
+                        <div class="bg-green-50 p-4 rounded-md">
+                            <h3 class="font-medium text-green-900 mb-2">Device Available</h3>
+                            <p class="text-green-800">AnxieEase001 is ready to be assigned to a user.</p>
+                        </div>
+                    `;
+                    assignBtn.disabled = false;
+                    assignBtn.textContent = 'Assign Device';
+                    releaseBtn.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error loading device status:', error);
+                document.getElementById('deviceStatus').innerHTML = `
+                    <div class="bg-red-50 p-4 rounded-md">
+                        <p class="text-red-800">Error loading device status: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const { data, error } = await supabase.rpc('get_users_for_admin');
+                if (error) throw error;
+
+                const select = document.getElementById('userSelect');
+                select.innerHTML = '<option value="">Select a user...</option>';
+                
+                data.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = `${user.full_name} (${user.email})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('userSelect').innerHTML = '<option value="">Error loading users</option>';
+            }
+        }
+
+        async function loadUsageHistory() {
+            try {
+                const { data, error } = await supabase.rpc('get_device_usage_history', {
+                    p_device_id: 'AnxieEase001',
+                    p_limit: 20
+                });
+
+                if (error) throw error;
+
+                const historyDiv = document.getElementById('usageHistory');
+                
+                if (data.length === 0) {
+                    historyDiv.innerHTML = '<p class="text-gray-500">No usage history found.</p>';
+                    return;
+                }
+
+                const table = `
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${data.map(record => `
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm font-medium text-gray-900">${record.user_name || 'Unknown'}</div>
+                                        <div class="text-sm text-gray-500">${record.user_email || 'No email'}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        ${new Date(record.assigned_at).toLocaleString()}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        ${record.session_duration || 'N/A'}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 rounded-full text-xs status-${record.session_status}">
+                                            ${record.session_status}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                                        ${record.admin_notes || record.session_notes || '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                historyDiv.innerHTML = table;
+            } catch (error) {
+                console.error('Error loading usage history:', error);
+                document.getElementById('usageHistory').innerHTML = `
+                    <p class="text-red-600">Error loading usage history: ${error.message}</p>
+                `;
+            }
+        }
+
+        async function assignDevice() {
+            const userId = document.getElementById('userSelect').value;
+            const duration = parseInt(document.getElementById('durationSelect').value);
+            const notes = document.getElementById('adminNotes').value;
+
+            if (!userId) {
+                alert('Please select a user');
+                return;
+            }
+
+            try {
+                const expiresAt = new Date();
+                expiresAt.setHours(expiresAt.getHours() + duration);
+
+                const { data, error } = await supabase.rpc('assign_device_to_user', {
+                    p_device_id: 'AnxieEase001',
+                    p_user_id: userId,
+                    p_expires_at: expiresAt.toISOString(),
+                    p_admin_notes: notes || null
+                });
+
+                if (error) throw error;
+
+                const result = data[0];
+                if (result.success) {
+                    alert('Device assigned successfully!');
+                    document.getElementById('userSelect').value = '';
+                    document.getElementById('adminNotes').value = '';
+                    loadDashboard();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error assigning device:', error);
+                alert('Error assigning device: ' + error.message);
+            }
+        }
+
+        async function releaseDevice() {
+            if (!confirm('Are you sure you want to release the device assignment?')) {
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.rpc('release_device_assignment', {
+                    p_device_id: 'AnxieEase001'
+                });
+
+                if (error) throw error;
+
+                const result = data[0];
+                if (result.success) {
+                    alert('Device released successfully!');
+                    loadDashboard();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error releasing device:', error);
+                alert('Error releasing device: ' + error.message);
+            }
+        }
+
+        // Auto-refresh dashboard every 30 seconds
+        setInterval(() => {
+            if (currentUser) {
+                loadDeviceStatus();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

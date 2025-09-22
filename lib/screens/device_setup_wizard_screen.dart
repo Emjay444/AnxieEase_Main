@@ -201,7 +201,7 @@ class _DeviceSetupWizardScreenState extends State<DeviceSetupWizardScreen>
                   'Please ensure:\n'
                   '• Device is ON and connected to WiFi\n'
                   '• Hotspot is active and named "AnxieEase"\n'
-                  '• Device LED shows blue (connected status)');
+                  '• Device is connected and sending data');
             }
           }
 
@@ -214,7 +214,7 @@ class _DeviceSetupWizardScreenState extends State<DeviceSetupWizardScreen>
               'Please check:\n'
               '• Device is connected to "AnxieEase" hotspot\n'
               '• Hotspot password is "11112222"\n'
-              '• Device LED is blue (connected)');
+              '• Device is connected and sending data');
         }
       } else {
         throw Exception('Device not found in system.\n\n'
@@ -573,7 +573,7 @@ class _DeviceSetupWizardScreenState extends State<DeviceSetupWizardScreen>
           const SizedBox(height: 16),
           _buildWiFiStep(
             '6',
-            'Wait for device LED to turn blue (connected)',
+            'Wait for device to connect and send data',
             Icons.bluetooth_connected,
             Colors.indigo,
           ),

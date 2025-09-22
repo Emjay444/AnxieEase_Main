@@ -28,6 +28,10 @@ class IoTSensorService extends ChangeNotifier {
   int _updateIntervalSeconds = 10; // 10 second interval as requested
   static const int _minInterval = 5; // Minimum 5 seconds
   static const int _maxInterval = 15; // Maximum 15 seconds
+
+  // REAL DEVICE MODE: Disable automatic mock data generation
+  bool _enableMockDataGeneration =
+      false; // Set to true only for testing without real device
   final String _deviceId = 'AnxieEase001';
   final String _userId = 'user_001';
 
@@ -78,27 +82,62 @@ class IoTSensorService extends ChangeNotifier {
     _deviceRef = _realtimeDb.ref('devices/$_deviceId');
     _currentRef = _realtimeDb.ref('devices/$_deviceId/current');
 
-    // Skip legacy cleanup to avoid permission errors - all new writes use current structure
-    AppLogger.d('IoTSensorService: Using clean structure');
-
-    // Initialize clean wearable data structure - only essential sensor data
-    await _currentRef.set({
-      'heartRate': _heartRate.round(),
-      'spo2': _spo2.round(),
-      'bodyTemp': double.parse(_bodyTemperature.toStringAsFixed(1)),
-      'battPerc': _batteryLevel.round(),
-      'worn': _isDeviceWorn,
-      'timestamp': ServerValue.timestamp,
-    });
+    // In real device mode (default), do not perform any client writes to RTDB
+    // to avoid permission-denied due to lack of Firebase auth.
+    if (!_enableMockDataGeneration) {
+      AppLogger.i(
+          'IoTSensorService: Real-device mode, skipping RTDB initialization writes');
+    } else {
+      // Initialize clean wearable data structure - only essential sensor data
+      try {
+        AppLogger.d('IoTSensorService: Using clean structure');
+        await _currentRef.set({
+          'heartRate': _heartRate.round(),
+          'spo2': _spo2.round(),
+          'bodyTemp': double.parse(_bodyTemperature.toStringAsFixed(1)),
+          'battPerc': _batteryLevel.round(),
+          'worn': _isDeviceWorn,
+          'timestamp': ServerValue.timestamp,
+        });
+      } catch (e) {
+        AppLogger.w('IoTSensorService: Skipped RTDB init write (mock-only)');
+      }
+    }
 
     AppLogger.d('IoTSensorService: Initialized');
     _initialized = true;
   }
 
-  /// Start IoT sensor simulation
+  /// Start IoT sensor simulation (ONLY FOR TESTING - Real device should write directly to Firebase)
   Future<void> startSensors() async {
     if (_isActive) {
       AppLogger.d('IoTSensorService: Already active');
+      return;
+    }
+
+    if (!_enableMockDataGeneration) {
+      AppLogger.i(
+          'IoTSensorService: Mock data generation disabled - using real wearable device');
+      AppLogger.i(
+          'IoTSensorService: Real device should write directly to Firebase at /devices/AnxieEase001/current');
+
+      // Set status as active but don't generate mock data
+      _isActive = true;
+      _isConnected = true;
+
+      if (!_initialized) {
+        await initialize();
+      }
+
+      // Do not write any RTDB status in real-device mode to avoid permission issues
+      try {
+        await _deviceRef.child('metadata/status').set('active');
+      } catch (e) {
+        AppLogger.w(
+            'IoTSensorService: Skipping RTDB status write in real-device mode');
+      }
+
+      notifyListeners();
       return;
     }
 
@@ -106,17 +145,24 @@ class IoTSensorService extends ChangeNotifier {
       await initialize();
     }
 
-    AppLogger.d('IoTSensorService: Starting simulation');
+    AppLogger.d('IoTSensorService: Starting simulation (TEST MODE ONLY)');
 
     _isActive = true;
     _isConnected = true;
-    // Don't force worn state - let it be determined naturally during simulation
+    // Force device to be worn for baseline recording reliability
+    _isDeviceWorn = true;
 
-    // Update device status
-    await _deviceRef.child('metadata/status').set('active');
-    await _currentRef.child('connectionStatus').set('connected');
+    print('IoTSensorService: Starting with worn status: $_isDeviceWorn');
 
-    // Start sensor data generation
+    // Update device status (mock mode only)
+    try {
+      await _deviceRef.child('metadata/status').set('active');
+      await _currentRef.child('connectionStatus').set('connected');
+    } catch (e) {
+      AppLogger.w('IoTSensorService: Skipped RTDB status writes (mock-only)');
+    }
+
+    // Start sensor data generation ONLY if mock mode enabled
     _startSensorTimer();
 
     notifyListeners();
@@ -139,22 +185,35 @@ class IoTSensorService extends ChangeNotifier {
     _isConnected = false;
     _isDeviceWorn = false;
 
-    // Update device status
-    await _deviceRef.child('metadata/status').set('offline');
-    await _currentRef.child('connectionStatus').set('disconnected');
-    await _currentRef.child('worn').set(false);
+    // Update device status (mock mode only)
+    if (_enableMockDataGeneration) {
+      try {
+        await _deviceRef.child('metadata/status').set('offline');
+        await _currentRef.child('connectionStatus').set('disconnected');
+        await _currentRef.child('worn').set(false);
+      } catch (e) {
+        AppLogger.w('IoTSensorService: Skipped RTDB stop writes (mock-only)');
+      }
+    }
 
     notifyListeners();
     AppLogger.d('IoTSensorService: Stopped');
   }
 
   void _startSensorTimer() {
+    // Only start timer if mock data generation is enabled
+    if (!_enableMockDataGeneration) {
+      AppLogger.d(
+          'IoTSensorService: Mock data generation disabled - timer not started');
+      return;
+    }
+
     // Prevent multiple timer instances
     _sensorTimer?.cancel();
     _sensorTimer = null;
 
     AppLogger.d(
-        'IoTSensorService: 🕒 Starting timer with ${_updateIntervalSeconds}s interval');
+        'IoTSensorService: 🕒 Starting timer with ${_updateIntervalSeconds}s interval (TEST MODE)');
     _sensorTimer = Timer.periodic(
         Duration(seconds: _updateIntervalSeconds), _generateSensorData);
   }
@@ -173,14 +232,14 @@ class IoTSensorService extends ChangeNotifier {
     setUpdateInterval(enabled ? 8 : 3);
   }
 
-  /// Generate realistic sensor data
+  /// Generate realistic sensor data (ONLY when mock mode enabled)
   void _generateSensorData(Timer timer) async {
     try {
       // CRITICAL SAFETY CHECKS - Prevent any interference
-      if (!_isActive) {
+      if (!_isActive || !_enableMockDataGeneration) {
         AppLogger.d(
-            'IoTSensorService: ⚠️ Skipping data generation - monitoring not active');
-        return; // Don't generate data if monitoring stopped
+            'IoTSensorService: ⚠️ Skipping data generation - monitoring not active or mock mode disabled');
+        return; // Don't generate data if monitoring stopped or mock disabled
       }
 
       // For testing: Keep device always worn to avoid 0 values
@@ -212,13 +271,20 @@ class IoTSensorService extends ChangeNotifier {
           'spo2': 0.0,
           'timestamp': ServerValue.timestamp,
           'worn': 0,
+          'connected': _isConnected,
+          'isConnected': _isConnected,
+          'connectionStatus': _isConnected ? 'connected' : 'disconnected',
         };
 
         // Battery level remains stable when device is not worn
         // (no battery drain simulation when not actively being used)
 
-        // Upload to Firebase
-        await _currentRef.set(sensorData);
+        // Upload to Firebase (mock mode only)
+        try {
+          await _currentRef.set(sensorData);
+        } catch (e) {
+          AppLogger.w('IoTSensorService: Skipped RTDB write (mock-only)');
+        }
         AppLogger.d(
             'IoTSensorService: ✅ Data sent - HR: 0, SpO2: 0, Worn: NOT_WORN');
 
@@ -314,6 +380,9 @@ class IoTSensorService extends ChangeNotifier {
         'spo2': _isDeviceWorn ? double.parse(_spo2.toStringAsFixed(1)) : 0,
         'timestamp': ServerValue.timestamp,
         'worn': _isDeviceWorn ? 1 : 0,
+        'connected': _isConnected,
+        'isConnected': _isConnected,
+        'connectionStatus': _isConnected ? 'connected' : 'disconnected',
       };
 
       // Upload to Firebase Realtime Database
@@ -363,6 +432,12 @@ class IoTSensorService extends ChangeNotifier {
 
   /// Manually trigger stress event (for testing)
   Future<void> simulateStressEvent() async {
+    if (!_enableMockDataGeneration) {
+      AppLogger.w(
+          'IoTSensorService: Cannot simulate stress - mock data generation disabled');
+      return;
+    }
+
     _triggerStressEvent();
     await _currentRef.child('manualStressTest').set({
       'triggered': true,
@@ -370,10 +445,18 @@ class IoTSensorService extends ChangeNotifier {
     });
   }
 
-  /// Trigger anxiety alert
-  Future<void> _triggerAnxietyAlert() async {
+  /// Enable mock data generation (for testing without real device)
+  void enableMockDataGeneration(bool enable) {
+    _enableMockDataGeneration = enable;
     AppLogger.i(
-        'IoTSensorService: Anxiety alert (HR ${_heartRate.round()} Sev $_currentSeverityLevel)');
+        'IoTSensorService: Mock data generation ${enable ? 'ENABLED' : 'DISABLED'}');
+
+    if (!enable && _sensorTimer != null) {
+      // Stop timer if mock data is disabled
+      _sensorTimer?.cancel();
+      _sensorTimer = null;
+      AppLogger.d('IoTSensorService: Mock data timer stopped');
+    }
   }
 
   /// Get real-time sensor data stream

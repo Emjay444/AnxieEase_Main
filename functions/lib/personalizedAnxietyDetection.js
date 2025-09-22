@@ -9,13 +9,13 @@ const db = admin.database();
  * Triggers when heart rate data is updated in Firebase RTDB
  */
 exports.detectPersonalizedAnxiety = functions.database
-    .ref('/devices/{deviceId}/current/heartRate')
+    .ref("/devices/{deviceId}/current/heartRate")
     .onUpdate(async (change, context) => {
     const deviceId = context.params.deviceId;
     const newHeartRate = change.after.val();
     const oldHeartRate = change.before.val();
-    if (!newHeartRate || typeof newHeartRate !== 'number') {
-        console.log('Invalid heart rate data, skipping');
+    if (!newHeartRate || typeof newHeartRate !== "number") {
+        console.log("Invalid heart rate data, skipping");
         return null;
     }
     console.log(`Processing HR update for ${deviceId}: ${oldHeartRate} → ${newHeartRate}`);
@@ -29,8 +29,8 @@ exports.detectPersonalizedAnxiety = functions.database
         // Get user's personalized baseline and thresholds
         const userBaseline = await getUserBaseline(deviceData.userId, deviceId);
         if (!userBaseline) {
-            console.log(`No baseline found for user ${deviceData.userId}, using default thresholds`);
-            return processWithDefaultThresholds(newHeartRate, oldHeartRate, deviceId, deviceData.userId);
+            console.log(`No baseline found for user ${deviceData.userId}, skipping anxiety detection - baseline required`);
+            return null; // No detection without baseline
         }
         // Calculate personalized thresholds
         const thresholds = calculatePersonalizedThresholds(userBaseline.baselineHR);
@@ -40,13 +40,13 @@ exports.detectPersonalizedAnxiety = functions.database
         const oldSeverity = getSeverityLevel(oldHeartRate || 0, thresholds);
         console.log(`Severity change: ${oldSeverity} → ${newSeverity}`);
         // Skip if severity hasn't changed or is normal
-        if (newSeverity === oldSeverity || newSeverity === 'normal') {
-            console.log('No significant severity change, skipping notification');
+        if (newSeverity === oldSeverity || newSeverity === "normal") {
+            console.log("No significant severity change, skipping notification");
             return null;
         }
         // Check rate limiting
         if (await isRateLimited(deviceData.userId, newSeverity)) {
-            console.log('Rate limited, skipping notification');
+            console.log("Rate limited, skipping notification");
             return null;
         }
         // Send personalized notification
@@ -56,11 +56,11 @@ exports.detectPersonalizedAnxiety = functions.database
             heartRate: newHeartRate,
             baseline: userBaseline.baselineHR,
             severity: newSeverity,
-            thresholds: thresholds
+            thresholds: thresholds,
         });
     }
     catch (error) {
-        console.error('Error processing anxiety detection:', error);
+        console.error("Error processing anxiety detection:", error);
         return null;
     }
 });
@@ -72,14 +72,14 @@ async function getDeviceInfo(deviceId) {
         // In a real implementation, you'd query Supabase here
         // For now, we'll get it from Firebase device metadata
         const deviceRef = db.ref(`devices/${deviceId}/metadata`);
-        const snapshot = await deviceRef.once('value');
+        const snapshot = await deviceRef.once("value");
         if (snapshot.exists()) {
             return snapshot.val();
         }
         return null;
     }
     catch (error) {
-        console.error('Error fetching device info:', error);
+        console.error("Error fetching device info:", error);
         return null;
     }
 }
@@ -89,19 +89,19 @@ async function getDeviceInfo(deviceId) {
 async function getUserBaseline(userId, deviceId) {
     try {
         // In a real implementation, query Supabase:
-        // SELECT * FROM baseline_heart_rates 
-        // WHERE user_id = ? AND device_id = ? AND is_active = true 
+        // SELECT * FROM baseline_heart_rates
+        // WHERE user_id = ? AND device_id = ? AND is_active = true
         // ORDER BY created_at DESC LIMIT 1
         // For now, we'll store it in Firebase as a fallback
         const baselineRef = db.ref(`baselines/${userId}/${deviceId}`);
-        const snapshot = await baselineRef.once('value');
+        const snapshot = await baselineRef.once("value");
         if (snapshot.exists()) {
             return snapshot.val();
         }
         return null;
     }
     catch (error) {
-        console.error('Error fetching user baseline:', error);
+        console.error("Error fetching user baseline:", error);
         return null;
     }
 }
@@ -116,7 +116,7 @@ function calculatePersonalizedThresholds(baselineHR) {
         severe: baselineHR + 35,
         // Additional thresholds for more granular detection
         elevated: baselineHR + 10,
-        critical: baselineHR + 45 // +45 BPM (emergency)
+        critical: baselineHR + 45, // +45 BPM (emergency)
     };
 }
 exports.calculatePersonalizedThresholds = calculatePersonalizedThresholds;
@@ -125,52 +125,30 @@ exports.calculatePersonalizedThresholds = calculatePersonalizedThresholds;
  */
 function getSeverityLevel(heartRate, thresholds) {
     if (heartRate >= thresholds.critical)
-        return 'critical';
+        return "critical";
     if (heartRate >= thresholds.severe)
-        return 'severe';
+        return "severe";
     if (heartRate >= thresholds.moderate)
-        return 'moderate';
+        return "moderate";
     if (heartRate >= thresholds.mild)
-        return 'mild';
+        return "mild";
     if (heartRate >= thresholds.elevated)
-        return 'elevated';
-    return 'normal';
+        return "elevated";
+    return "normal";
 }
 exports.getSeverityLevel = getSeverityLevel;
-/**
- * Process with default thresholds (fallback when no baseline exists)
- */
-function processWithDefaultThresholds(newHeartRate, oldHeartRate, deviceId, userId) {
-    console.log('Using default thresholds - recommend user to set baseline');
-    // Default absolute thresholds (your current implementation)
-    let newSeverity = 'normal';
-    if (newHeartRate >= 120)
-        newSeverity = 'severe';
-    else if (newHeartRate >= 100)
-        newSeverity = 'moderate';
-    else if (newHeartRate >= 85)
-        newSeverity = 'mild';
-    // Send notification with recommendation to set baseline
-    return sendDefaultNotification({
-        userId: userId,
-        deviceId: deviceId,
-        heartRate: newHeartRate,
-        severity: newSeverity,
-        recommendBaseline: true
-    });
-}
 /**
  * Check if notifications are rate-limited for this user
  */
 async function isRateLimited(userId, severity) {
     const now = Date.now();
     const rateLimitRef = db.ref(`rateLimits/${userId}/${severity}`);
-    const snapshot = await rateLimitRef.once('value');
+    const snapshot = await rateLimitRef.once("value");
     const limits = {
         mild: 300000,
         moderate: 180000,
         severe: 60000,
-        critical: 30000 // 30 seconds
+        critical: 30000, // 30 seconds
     };
     const limit = limits[severity] || 300000;
     if (snapshot.exists()) {
@@ -190,12 +168,12 @@ async function sendPersonalizedNotification(data) {
     var _a;
     const { userId, deviceId, heartRate, baseline, severity, thresholds } = data;
     // Calculate percentage above baseline
-    const percentageAbove = ((heartRate - baseline) / baseline * 100).toFixed(0);
+    const percentageAbove = (((heartRate - baseline) / baseline) * 100).toFixed(0);
     const bpmAbove = (heartRate - baseline).toFixed(0);
     const notificationContent = getPersonalizedNotificationContent(severity, heartRate, baseline, percentageAbove, bpmAbove);
     const message = {
         data: {
-            type: 'anxiety_alert_personalized',
+            type: "anxiety_alert_personalized",
             severity: severity,
             heartRate: heartRate.toString(),
             baseline: baseline.toString(),
@@ -209,9 +187,11 @@ async function sendPersonalizedNotification(data) {
             body: notificationContent.body,
         },
         android: {
-            priority: (severity === 'severe' || severity === 'critical') ? 'high' : 'normal',
+            priority: severity === "severe" || severity === "critical"
+                ? "high"
+                : "normal",
             notification: {
-                channelId: 'anxiety_alerts',
+                channelId: "anxiety_alerts",
                 // omit notification.priority to avoid type incompatibilities across SDK versions
                 defaultSound: true,
                 defaultVibrateTimings: true,
@@ -222,11 +202,11 @@ async function sendPersonalizedNotification(data) {
             payload: {
                 aps: {
                     badge: 1,
-                    sound: 'default',
+                    sound: "default",
                 },
             },
         },
-        topic: `user_${userId}`
+        topic: `user_${userId}`,
     };
     try {
         await admin.messaging().send(message);
@@ -238,13 +218,13 @@ async function sendPersonalizedNotification(data) {
             severity,
             percentageAbove: parseFloat(percentageAbove),
             bpmAbove: parseFloat(bpmAbove),
-            thresholds
+            thresholds,
         });
         return { success: true, severity, heartRate, baseline };
     }
     catch (error) {
-        console.error('Error sending personalized notification:', error);
-        const message = (_a = error === null || error === void 0 ? void 0 : error.message) !== null && _a !== void 0 ? _a : 'Unknown error';
+        console.error("Error sending personalized notification:", error);
+        const message = (_a = error === null || error === void 0 ? void 0 : error.message) !== null && _a !== void 0 ? _a : "Unknown error";
         return { success: false, error: message };
     }
 }
@@ -254,27 +234,28 @@ async function sendPersonalizedNotification(data) {
 function getPersonalizedNotificationContent(severity, heartRate, baseline, percentageAbove, bpmAbove) {
     const templates = {
         elevated: {
-            title: 'Heart Rate Elevated',
-            body: `Your heart rate is ${bpmAbove} BPM above your baseline (${heartRate} vs ${baseline} BPM). Take a moment to breathe.`
+            title: "Heart Rate Elevated",
+            body: `Your heart rate is ${bpmAbove} BPM above your baseline (${heartRate} vs ${baseline} BPM). Take a moment to breathe.`,
         },
         mild: {
-            title: 'Mild Anxiety Detected',
-            body: `Heart rate ${percentageAbove}% above baseline (${heartRate} BPM). Try some breathing exercises.`
+            title: "Mild Anxiety Detected",
+            body: `Heart rate ${percentageAbove}% above baseline (${heartRate} BPM). Try some breathing exercises.`,
         },
         moderate: {
-            title: 'Moderate Anxiety Alert',
-            body: `Heart rate significantly elevated: ${heartRate} BPM (${bpmAbove} above your baseline). Consider grounding techniques.`
+            title: "Moderate Anxiety Alert",
+            body: `Heart rate significantly elevated: ${heartRate} BPM (${bpmAbove} above your baseline). Consider grounding techniques.`,
         },
         severe: {
-            title: 'High Anxiety Detected',
-            body: `Heart rate very high: ${heartRate} BPM (${percentageAbove}% above baseline). Please use your coping strategies.`
+            title: "High Anxiety Detected",
+            body: `Heart rate very high: ${heartRate} BPM (${percentageAbove}% above baseline). Please use your coping strategies.`,
         },
         critical: {
-            title: 'Critical Alert',
-            body: `Heart rate critically high: ${heartRate} BPM. Please seek immediate support if needed.`
-        }
+            title: "Critical Alert",
+            body: `Heart rate critically high: ${heartRate} BPM. Please seek immediate support if needed.`,
+        },
     };
-    return templates[severity] || templates.mild;
+    return (templates[severity] ||
+        templates.mild);
 }
 exports.getPersonalizedNotificationContent = getPersonalizedNotificationContent;
 /**
@@ -282,11 +263,11 @@ exports.getPersonalizedNotificationContent = getPersonalizedNotificationContent;
  */
 function getNotificationColor(severity) {
     const colors = {
-        elevated: '#FFA726',
-        mild: '#66BB6A',
-        moderate: '#FF9800',
-        severe: '#F44336',
-        critical: '#D32F2F' // Dark Red
+        elevated: "#FFA726",
+        mild: "#66BB6A",
+        moderate: "#FF9800",
+        severe: "#F44336",
+        critical: "#D32F2F", // Dark Red
     };
     return colors[severity] || colors.mild;
 }
@@ -299,43 +280,7 @@ async function storeAlert(userId, deviceId, alertData) {
         await alertRef.set(Object.assign(Object.assign({}, alertData), { timestamp: Date.now(), resolved: false }));
     }
     catch (error) {
-        console.error('Error storing alert:', error);
-    }
-}
-/**
- * Send default notification (when no baseline exists)
- */
-async function sendDefaultNotification(data) {
-    var _a;
-    const { userId, deviceId, heartRate, severity, recommendBaseline } = data;
-    let body = `Heart rate: ${heartRate} BPM`;
-    if (recommendBaseline) {
-        body += '. Set up your personal baseline for more accurate monitoring.';
-    }
-    const message = {
-        data: {
-            type: 'anxiety_alert_default',
-            severity: severity,
-            heartRate: heartRate.toString(),
-            recommendBaseline: recommendBaseline.toString(),
-            deviceId: deviceId,
-            timestamp: Date.now().toString(),
-        },
-        notification: {
-            title: `${severity.charAt(0).toUpperCase() + severity.slice(1)} Anxiety Alert`,
-            body: body,
-        },
-        topic: `user_${userId}`
-    };
-    try {
-        await admin.messaging().send(message);
-        console.log(`Default notification sent - ${severity}: ${heartRate} BPM`);
-        return { success: true, severity, heartRate, recommendBaseline };
-    }
-    catch (error) {
-        console.error('Error sending default notification:', error);
-        const message = (_a = error === null || error === void 0 ? void 0 : error.message) !== null && _a !== void 0 ? _a : 'Unknown error';
-        return { success: false, error: message };
+        console.error("Error storing alert:", error);
     }
 }
 //# sourceMappingURL=personalizedAnxietyDetection.js.map

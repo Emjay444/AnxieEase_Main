@@ -11,25 +11,14 @@ export {
   monitorFirebaseUsage,
 } from "./dataCleanup";
 
-// Interface for anxiety data structure
-interface AnxietyData {
-  severity: string;
-  timestamp: number;
-  confidence?: number;
-}
-
-interface MetricsData {
-  heartRate: number;
-  anxietyDetected: AnxietyData;
-  timestamp: number;
-}
-
-// Global variable to track last notification to prevent duplicates
-let lastNotification: {
-  severity: string;
-  timestamp: number;
-  heartRate: number;
-} = { severity: "", timestamp: 0, heartRate: 0 };
+// Import and export device data copy functions for multi-user support
+export {
+  copyDeviceDataToUserSession,
+  copyDeviceCurrentToUserSession,
+  assignDeviceToUser,
+  getDeviceAssignment,
+  cleanupOldSessions
+} from "./deviceDataCopyService";
 
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database

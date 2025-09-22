@@ -5,6 +5,11 @@
         ".read": true,
         ".write": false,
         
+        "assignment": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.token.admin == true || !data.exists())"
+        },
+        
         "metadata": {
           ".read": true,
           ".write": true,
@@ -23,7 +28,7 @@
           "$timestamp": {
             ".read": true,
             ".write": true,
-            ".validate": "newData.hasChildren() && newData.child('timestamp').val() == parseInt($timestamp) && parseInt($timestamp) > 0",
+            ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber()",
             ".indexOn": ["timestamp", "sessionId"]
           }
         },
@@ -32,7 +37,7 @@
           "$timestamp": {
             ".read": true,
             ".write": true,
-            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').val() == parseInt($timestamp)",
+            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').isNumber()",
             ".indexOn": ["timestamp", "type", "severity"]
           }
         }
@@ -52,15 +57,15 @@
         "current": {
           ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || root.child('device_ownership').child($deviceId).child('sharedWith').child(auth.uid).exists() || !root.child('device_ownership').child($deviceId).exists())",
           ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
-          ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber() && (now - newData.child('timestamp').val() < 300000 || !root.child('device_ownership').child($deviceId).exists())",
+          ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber()",
           ".indexOn": ["timestamp", "severityLevel", "connectionStatus"]
         },
         
         "history": {
           "$timestamp": {
             ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
-            ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists()) && (now - parseInt($timestamp) < 86400000 || !root.child('device_ownership').child($deviceId).exists())",
-            ".validate": "newData.hasChildren() && newData.child('timestamp').val() == parseInt($timestamp) && parseInt($timestamp) > 0 && (now - parseInt($timestamp) < 86400000 || !root.child('device_ownership').child($deviceId).exists())",
+            ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
+            ".validate": "newData.hasChildren() && newData.child('timestamp').isNumber()",
             ".indexOn": ["timestamp", "sessionId"]
           }
         },
@@ -69,9 +74,48 @@
           "$timestamp": {
             ".read": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
             ".write": "auth != null && (root.child('device_ownership').child($deviceId).child('userId').val() == auth.uid || !root.child('device_ownership').child($deviceId).exists())",
-            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').val() == parseInt($timestamp) && (now - parseInt($timestamp) < 300000 || !root.child('device_ownership').child($deviceId).exists())",
+            ".validate": "newData.hasChildren(['type', 'severity', 'timestamp']) && newData.child('timestamp').isNumber()",
             ".indexOn": ["timestamp", "type", "severity"]
           }
+        }
+      }
+    },
+    
+    "users": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid == $userId || auth.token.admin == true)",
+        ".write": "auth != null && (auth.uid == $userId || auth.token.admin == true)",
+        
+        "profile": {
+          ".validate": "newData.hasChildren(['name']) && newData.child('name').isString()"
+        },
+        
+        "sessions": {
+          "$sessionId": {
+            "metadata": {
+              ".validate": "newData.hasChildren(['deviceId', 'startTime']) && newData.child('deviceId').isString() && newData.child('startTime').isNumber()"
+            },
+            "current": {
+              ".validate": "newData.hasChildren(['heartRate', 'timestamp']) && newData.child('heartRate').isNumber() && newData.child('timestamp').isNumber()"
+            },
+            "history": {
+              "$timestamp": {
+                ".validate": "newData.hasChildren(['heartRate', 'timestamp']) && newData.child('heartRate').isNumber() && newData.child('timestamp').isNumber()"
+              }
+            }
+          }
+        },
+        
+        "baseline": {
+          ".validate": "newData.hasChildren(['baselineHR']) && newData.child('baselineHR').isNumber()"
+        },
+        
+        "lastActivity": {
+          ".validate": "newData.isNumber()"
+        },
+        
+        "deviceId": {
+          ".validate": "newData.isString()"
         }
       }
     },
@@ -84,20 +128,22 @@
       }
     },
     
-    "users": {
-      "$userId": {
-        ".read": "auth != null && auth.uid == $userId",
-        ".write": "auth != null && auth.uid == $userId",
-        ".validate": "newData.hasChildren() && (newData.child('lastActivity').isNumber() || !newData.hasChild('lastActivity')) && (newData.child('deviceId').isString() || !newData.hasChild('deviceId'))",
-        ".indexOn": ["lastActivity", "deviceId"]
-      }
-    },
-    
     "user_profiles": {
       "$userId": {
         ".read": "auth != null && auth.uid == $userId",
         ".write": "auth != null && auth.uid == $userId",
         ".validate": "newData.isString() || (newData.hasChildren() && !newData.hasChild('private_key'))"
+      }
+    },
+    
+    "system": {
+      "errors": {
+        ".read": "auth != null && auth.token.admin == true",
+        ".write": "auth != null"
+      },
+      "stats": {
+        ".read": "auth != null && auth.token.admin == true",
+        ".write": "auth != null"
       }
     },
     
@@ -110,7 +156,7 @@
       "$requestId": {
         ".read": "auth != null",
         ".write": "auth != null && (!data.exists() || data.child('requestedBy').val() == auth.uid)",
-        ".validate": "newData.hasChildren(['userId', 'requestedBy', 'reason', 'timestamp']) && newData.child('timestamp').val() <= now"
+        ".validate": "newData.hasChildren(['userId', 'requestedBy', 'reason', 'timestamp']) && newData.child('timestamp').isNumber()"
       }
     }
   }

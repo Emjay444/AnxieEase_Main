@@ -105,7 +105,9 @@ class BaselineHeartRate {
       userId: userId,
       deviceId: deviceId,
       baselineHR: double.parse(baseline.toStringAsFixed(1)),
-      recordedReadings: readings,
+      // Store a copy to prevent later mutations (e.g., cleanup) from
+      // affecting this baseline's quality assessment.
+      recordedReadings: List<double>.from(readings),
       recordingStartTime: startTime,
       recordingEndTime: endTime,
       recordingDurationMinutes: double.parse(duration.toStringAsFixed(1)),
@@ -132,8 +134,19 @@ class BaselineHeartRate {
 
   /// Get recording quality assessment
   RecordingQuality get recordingQuality {
-    if (recordingDurationMinutes < 2) return RecordingQuality.tooShort;
-    if (recordedReadings.length < 10) return RecordingQuality.insufficientData;
+    print('BaselineHeartRate: Assessing recording quality');
+    print(
+        '  - Duration: ${recordingDurationMinutes.toStringAsFixed(1)} minutes');
+    print('  - Number of readings: ${recordedReadings.length}');
+
+    if (recordingDurationMinutes < 2) {
+      print('  - Quality result: tooShort (duration < 2 minutes)');
+      return RecordingQuality.tooShort;
+    }
+    if (recordedReadings.length < 5) {
+      print('  - Quality result: insufficientData (< 5 readings)');
+      return RecordingQuality.insufficientData;
+    }
 
     // Calculate coefficient of variation (CV = std dev / mean)
     final mean =
@@ -145,10 +158,24 @@ class BaselineHeartRate {
     final stdDev = math.sqrt(variance.abs());
     final cv = stdDev / mean;
 
-    if (cv > 0.15) return RecordingQuality.unstable; // >15% variation
-    if (cv > 0.10) return RecordingQuality.fair; // 10-15% variation
-    if (cv > 0.05) return RecordingQuality.good; // 5-10% variation
-    return RecordingQuality.excellent; // <5% variation
+    print('  - Mean HR: ${mean.toStringAsFixed(1)} BPM');
+    print('  - Standard deviation: ${stdDev.toStringAsFixed(2)} BPM');
+    print('  - Coefficient of variation: ${(cv * 100).toStringAsFixed(1)}%');
+
+    if (cv > 0.20) {
+      print('  - Quality result: unstable (CV > 20%)');
+      return RecordingQuality.unstable; // >20% variation
+    }
+    if (cv > 0.15) {
+      print('  - Quality result: fair (CV 15-20%)');
+      return RecordingQuality.fair; // 15-20% variation
+    }
+    if (cv > 0.10) {
+      print('  - Quality result: good (CV 10-15%)');
+      return RecordingQuality.good; // 10-15% variation
+    }
+    print('  - Quality result: excellent (CV < 10%)');
+    return RecordingQuality.excellent; // <10% variation
   }
 
   @override

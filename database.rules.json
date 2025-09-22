@@ -1,5 +1,65 @@
 {
   "rules": {
+    "devices": {
+      "AnxieEase001": {
+        "assignment": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.token.admin == true || root.child('devices/AnxieEase001/assignment').val() == null)"
+        },
+        "current": {
+          ".read": "auth != null",
+          ".write": true
+        },
+        "history": {
+          "$timestamp": {
+            ".read": "auth != null",
+            ".write": true,
+            ".validate": "newData.hasChildren(['heartRate', 'timestamp'])"
+          }
+        },
+        "metadata": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.token.admin == true"
+        }
+      }
+    },
+    "users": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid == $userId || auth.token.admin == true)",
+        ".write": "auth != null && (auth.uid == $userId || auth.token.admin == true)",
+        "profile": {
+          ".validate": "newData.hasChildren(['name', 'email'])"
+        },
+        "sessions": {
+          "$sessionId": {
+            "metadata": {
+              ".validate": "newData.hasChildren(['deviceId', 'startTime'])"
+            },
+            "current": {
+              ".validate": "newData.hasChildren(['heartRate', 'timestamp'])"
+            },
+            "history": {
+              "$timestamp": {
+                ".validate": "newData.hasChildren(['heartRate', 'timestamp'])"
+              }
+            }
+          }
+        },
+        "baseline": {
+          ".validate": "newData.hasChildren(['baselineHR'])"
+        }
+      }
+    },
+    "system": {
+      "errors": {
+        ".read": "auth != null && auth.token.admin == true",
+        ".write": "auth != null"
+      },
+      "stats": {
+        ".read": "auth != null && auth.token.admin == true",
+        ".write": "auth != null"
+      }
+    },
     "health_metrics": {
       "$userId": {
         "$deviceId": {
@@ -9,23 +69,20 @@
           },
           "history": {
             "$timestamp": {
-              ".write": "auth != null && auth.uid == $userId && now - parseInt($timestamp) < 86400000",
-              ".read": "auth != null && auth.uid == $userId",
-              ".validate": "now - parseInt($timestamp) < 86400000"
+              ".write": "auth != null && auth.uid == $userId",
+              ".read": "auth != null && auth.uid == $userId"
             }
           },
           "hourly_summary": {
             "$hour": {
               ".write": "auth != null && auth.uid == $userId",
-              ".read": "auth != null && auth.uid == $userId",
-              ".validate": "now - parseInt($hour) < 604800000"
+              ".read": "auth != null && auth.uid == $userId"
             }
           },
           "alerts": {
             "$timestamp": {
               ".write": "auth != null && auth.uid == $userId",
-              ".read": "auth != null && auth.uid == $userId",
-              ".validate": "now - parseInt($timestamp) < 2592000000"
+              ".read": "auth != null && auth.uid == $userId"
             }
           }
         }

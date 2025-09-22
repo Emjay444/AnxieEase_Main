@@ -1,0 +1,268 @@
+{
+  "devices": {
+    "AnxieEase001": {
+      "assignment": {
+        "assignedUser": "user_123",
+        "activeSessionId": "session_456", 
+        "assignedAt": 1695369600000,
+        "assignedBy": "admin_user_id"
+      },
+      "metadata": {
+        "deviceType": "AnxieEase_Wearable",
+        "status": "active",
+        "firmwareVersion": "1.0.0",
+        "lastSeen": 1695369600000,
+        "isSimulated": false
+      },
+      "current": {
+        "heartRate": 75,
+        "spo2": 98.5,
+        "bodyTemp": 36.6,
+        "ambientTemp": 22.5,
+        "battPerc": 85,
+        "worn": 1,
+        "timestamp": 1695369600000,
+        "accelX": 0.12,
+        "accelY": 0.45,
+        "accelZ": 9.8,
+        "gyroX": 0.01,
+        "gyroY": -0.02,
+        "gyroZ": 0.01,
+        "pitch": 5.2,
+        "roll": -2.1
+      },
+      "history": {
+        "1695369600000": {
+          "heartRate": 75,
+          "spo2": 98.5,
+          "bodyTemp": 36.6,
+          "ambientTemp": 22.5,
+          "battPerc": 85,
+          "worn": 1,
+          "timestamp": 1695369600000,
+          "accelX": 0.12,
+          "accelY": 0.45,
+          "accelZ": 9.8,
+          "gyroX": 0.01,
+          "gyroY": -0.02,
+          "gyroZ": 0.01,
+          "pitch": 5.2,
+          "roll": -2.1
+        },
+        "1695369610000": {
+          "heartRate": 77,
+          "spo2": 98.2,
+          "bodyTemp": 36.7,
+          "ambientTemp": 22.8,
+          "battPerc": 84,
+          "worn": 1,
+          "timestamp": 1695369610000,
+          "accelX": 0.15,
+          "accelY": 0.48,
+          "accelZ": 9.7,
+          "gyroX": 0.02,
+          "gyroY": -0.01,
+          "gyroZ": 0.01,
+          "pitch": 6.1,
+          "roll": -1.8
+        }
+      },
+      "alerts": {
+        "1695369600000": {
+          "type": "anxiety_spike",
+          "severity": "moderate",
+          "heartRate": 95,
+          "timestamp": 1695369600000,
+          "reason": "Heart rate elevated above baseline"
+        }
+      }
+    }
+  },
+  "users": {
+    "user_123": {
+      "profile": {
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@example.com",
+        "role": "patient"
+      },
+      "sessions": {
+        "session_456": {
+          "metadata": {
+            "deviceId": "AnxieEase001",
+            "startTime": 1695369500000,
+            "endTime": null,
+            "status": "active",
+            "assignedBy": "admin_user_id",
+            "adminNotes": "Testing session for anxiety monitoring",
+            "totalDataPoints": 150,
+            "lastActivity": 1695369600000,
+            "lastDataTimestamp": 1695369610000
+          },
+          "current": {
+            "heartRate": 77,
+            "spo2": 98.2,
+            "bodyTemp": 36.7,
+            "ambientTemp": 22.8,
+            "battPerc": 84,
+            "worn": 1,
+            "timestamp": 1695369610000,
+            "deviceId": "AnxieEase001",
+            "lastUpdated": 1695369615000,
+            "sessionId": "session_456",
+            "userId": "user_123"
+          },
+          "history": {
+            "1695369600000": {
+              "heartRate": 75,
+              "spo2": 98.5,
+              "bodyTemp": 36.6,
+              "ambientTemp": 22.5,
+              "battPerc": 85,
+              "worn": 1,
+              "timestamp": 1695369600000,
+              "accelX": 0.12,
+              "accelY": 0.45,
+              "accelZ": 9.8,
+              "gyroX": 0.01,
+              "gyroY": -0.02,
+              "gyroZ": 0.01,
+              "pitch": 5.2,
+              "roll": -2.1,
+              "deviceId": "AnxieEase001",
+              "copiedAt": 1695369605000,
+              "sessionId": "session_456",
+              "userId": "user_123"
+            },
+            "1695369610000": {
+              "heartRate": 77,
+              "spo2": 98.2,
+              "bodyTemp": 36.7,
+              "ambientTemp": 22.8,
+              "battPerc": 84,
+              "worn": 1,
+              "timestamp": 1695369610000,
+              "accelX": 0.15,
+              "accelY": 0.48,
+              "accelZ": 9.7,
+              "gyroX": 0.02,
+              "gyroY": -0.01,
+              "gyroZ": 0.01,
+              "pitch": 6.1,
+              "roll": -1.8,
+              "deviceId": "AnxieEase001",
+              "copiedAt": 1695369615000,
+              "sessionId": "session_456",
+              "userId": "user_123"
+            }
+          },
+          "analytics": {
+            "avgHeartRate": 76,
+            "maxHeartRate": 95,
+            "minHeartRate": 65,
+            "avgSpO2": 98.1,
+            "anxietyEvents": 2,
+            "totalDuration": 1800
+          }
+        },
+        "session_789": {
+          "metadata": {
+            "deviceId": "AnxieEase001",
+            "startTime": 1695283200000,
+            "endTime": 1695286800000,
+            "status": "completed",
+            "assignedBy": "admin_user_id", 
+            "adminNotes": "Completed baseline recording session",
+            "totalDataPoints": 360,
+            "lastActivity": 1695286800000,
+            "unassignedBy": "admin_user_id"
+          },
+          "history": {
+            "1695283200000": {
+              "heartRate": 72,
+              "spo2": 98.8,
+              "bodyTemp": 36.5,
+              "timestamp": 1695283200000,
+              "deviceId": "AnxieEase001",
+              "copiedAt": 1695283205000,
+              "sessionId": "session_789", 
+              "userId": "user_123"
+            }
+          },
+          "analytics": {
+            "avgHeartRate": 73,
+            "maxHeartRate": 85,
+            "minHeartRate": 68,
+            "avgSpO2": 98.5,
+            "anxietyEvents": 0,
+            "totalDuration": 3600
+          }
+        }
+      }
+    },
+    "user_456": {
+      "profile": {
+        "firstName": "Jane",
+        "lastName": "Smith",
+        "email": "jane.smith@example.com",
+        "role": "patient"
+      },
+      "sessions": {
+        "session_101": {
+          "metadata": {
+            "deviceId": "AnxieEase001",
+            "startTime": 1695196800000,
+            "endTime": 1695200400000,
+            "status": "completed",
+            "assignedBy": "admin_user_id",
+            "adminNotes": "Stress test session",
+            "totalDataPoints": 180,
+            "lastActivity": 1695200400000,
+            "unassignedBy": "admin_user_id"
+          },
+          "history": {
+            "1695196800000": {
+              "heartRate": 80,
+              "spo2": 97.5,
+              "bodyTemp": 36.8,
+              "timestamp": 1695196800000,
+              "deviceId": "AnxieEase001",
+              "copiedAt": 1695196805000,
+              "sessionId": "session_101",
+              "userId": "user_456"
+            }
+          },
+          "analytics": {
+            "avgHeartRate": 82,
+            "maxHeartRate": 105,
+            "minHeartRate": 70,
+            "avgSpO2": 97.2,
+            "anxietyEvents": 3,
+            "totalDuration": 1800
+          }
+        }
+      }
+    }
+  },
+  "system": {
+    "errors": {
+      "error_001": {
+        "type": "device_data_copy_error",
+        "timestamp": 1695369500000,
+        "deviceTimestamp": "1695369600000",
+        "error": "Failed to copy data: network timeout",
+        "data": {
+          "heartRate": 75,
+          "timestamp": 1695369600000
+        }
+      }
+    },
+    "stats": {
+      "totalUsers": 2,
+      "activeSessions": 1,
+      "completedSessions": 2,
+      "totalDataPointsCopied": 690,
+      "lastSystemUpdate": 1695369600000
+    }
+  }
+}

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -10,131 +10,25 @@ var dataCleanup_1 = require("./dataCleanup");
 Object.defineProperty(exports, "cleanupHealthData", { enumerable: true, get: function () { return dataCleanup_1.cleanupHealthData; } });
 Object.defineProperty(exports, "aggregateHealthDataHourly", { enumerable: true, get: function () { return dataCleanup_1.aggregateHealthDataHourly; } });
 Object.defineProperty(exports, "monitorFirebaseUsage", { enumerable: true, get: function () { return dataCleanup_1.monitorFirebaseUsage; } });
-// Global variable to track last notification to prevent duplicates
-let lastNotification = { severity: "", timestamp: 0, heartRate: 0 };
+// Import and export device data copy functions for multi-user support
+var deviceDataCopyService_1 = require("./deviceDataCopyService");
+Object.defineProperty(exports, "copyDeviceDataToUserSession", { enumerable: true, get: function () { return deviceDataCopyService_1.copyDeviceDataToUserSession; } });
+Object.defineProperty(exports, "copyDeviceCurrentToUserSession", { enumerable: true, get: function () { return deviceDataCopyService_1.copyDeviceCurrentToUserSession; } });
+Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
+Object.defineProperty(exports, "getDeviceAssignment", { enumerable: true, get: function () { return deviceDataCopyService_1.getDeviceAssignment; } });
+Object.defineProperty(exports, "cleanupOldSessions", { enumerable: true, get: function () { return deviceDataCopyService_1.cleanupOldSessions; } });
 // Cloud Function to send FCM notifications when anxiety severity changes
 exports.onAnxietySeverityChangeV2 = functions.database
     .ref("/devices/AnxieEase001/current")
     .onWrite(async (change, context) => {
     try {
-        const beforeData = change.before.val();
-        const afterData = change.after.val();
-        // Skip if no new data or data was deleted
-        if (!afterData || !afterData.heartRate) {
-            console.log("No heart rate data found, skipping notification");
-            return null;
-        }
-        const heartRate = afterData.heartRate;
-        const currentTime = Date.now();
-        // Compute severity from heart rate (same logic as native service)
-        let newSeverity;
-        if (heartRate >= 120) {
-            newSeverity = "severe";
-        }
-        else if (heartRate >= 100) {
-            newSeverity = "moderate";
-        }
-        else if (heartRate >= 85) {
-            newSeverity = "mild";
-        }
-        else {
-            newSeverity = "normal";
-        }
-        // Skip if severity is normal
-        if (newSeverity === "normal") {
-            console.log("Heart rate normal, skipping notification");
-            return null;
-        }
-        // Compute old severity for comparison
-        const oldHeartRate = (beforeData === null || beforeData === void 0 ? void 0 : beforeData.heartRate) || 0;
-        let oldSeverity = "normal";
-        if (oldHeartRate >= 120) {
-            oldSeverity = "severe";
-        }
-        else if (oldHeartRate >= 100) {
-            oldSeverity = "moderate";
-        }
-        else if (oldHeartRate >= 85) {
-            oldSeverity = "mild";
-        }
-        // ENHANCED DEDUPLICATION - Multiple checks to prevent flooding:
-        // 1. Skip if severity is unchanged
-        if (newSeverity === oldSeverity) {
-            console.log(`Severity unchanged (${newSeverity}), skipping notification`);
-            return null;
-        }
-        // 2. Skip if same severity notification was sent within last 2 MINUTES (was 5 minutes)
-        if (lastNotification.severity === newSeverity &&
-            currentTime - lastNotification.timestamp < 120000 // 2 minutes
-        ) {
-            console.log(`Duplicate ${newSeverity} notification within 2 minutes, skipping`);
-            return null;
-        }
-        // 3. Skip if heart rate change is too small (< 5 bpm difference, was 10)
-        // This prevents notifications from minor fluctuations like 89→91→88
-        if (Math.abs(heartRate - lastNotification.heartRate) < 5 &&
-            newSeverity === lastNotification.severity) {
-            console.log(`Heart rate fluctuation too small (${lastNotification.heartRate}→${heartRate}), skipping`);
-            return null;
-        }
-        // 4. Rate limiting: Maximum 1 notification per 1 minute regardless of severity (was 2 minutes)
-        if (currentTime - lastNotification.timestamp < 60000) {
-            // 1 minute
-            console.log(`Rate limit: Last notification was ${(currentTime - lastNotification.timestamp) / 1000}s ago, skipping`);
-            return null;
-        }
-        // DEDUPLICATION: Skip if same severity notification was sent within last 30 seconds
-        if (lastNotification.severity === newSeverity &&
-            currentTime - lastNotification.timestamp < 30000) {
-            console.log(`Duplicate ${newSeverity} notification within 30 seconds, skipping`);
-            return null;
-        }
-        // Skip if severity is not one of the expected values
-        if (!["mild", "moderate", "severe"].includes(newSeverity)) {
-            console.log(`Invalid severity value: ${newSeverity}, skipping notification`);
-            return null;
-        }
-        console.log(`Anxiety severity changed from ${oldSeverity} to ${newSeverity}, HR: ${heartRate}`);
-        // Update last notification tracker
-        lastNotification = {
-            severity: newSeverity,
-            timestamp: currentTime,
-            heartRate: heartRate,
-        };
-        // Get notification content based on severity
-        const notificationData = getNotificationContent(newSeverity, heartRate);
-        // Send FCM notification to all app instances
-        const message = {
-            data: {
-                type: "anxiety_alert",
-                severity: newSeverity,
-                heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
-                timestamp: currentTime.toString(),
-                notificationId: `${newSeverity}_${currentTime}`, // Unique ID
-            },
-            notification: {
-                title: notificationData.title,
-                body: notificationData.body,
-            },
-            android: {
-                priority: newSeverity === "severe" ? "high" : "normal",
-                notification: {
-                    channelId: "anxiety_alerts",
-                    priority: newSeverity === "severe" ? "max" : "default",
-                    defaultSound: true,
-                    defaultVibrateTimings: true,
-                    tag: `anxiety_${newSeverity}_${currentTime}`, // Unique tag to prevent grouping
-                },
-            },
-            // Send to topic so all app instances receive the notification
-            topic: "anxiety_alerts",
-        };
-        const response = await admin.messaging().send(message);
-        console.log("✅ FCM notification sent successfully:", response);
-        return response;
+        // Legacy function disabled - anxiety detection now requires personalized baseline
+        // Use personalizedAnxietyDetection function instead
+        console.log("Legacy threshold-based detection disabled - requires baseline from personalizedAnxietyDetection function");
+        return null;
     }
     catch (error) {
-        console.error("❌ Error sending FCM notification:", error);
+        console.error("❌ Error in onAnxietySeverityChangeV2:", error);
         throw error;
     }
 });
@@ -479,28 +373,30 @@ function getRandomWellnessMessage(timeCategory) {
 }
 // Multi-parameter anxiety detection Cloud Function
 exports.detectAnxietyMultiParameter = functions.database
-    .ref('/devices/{deviceId}/current')
+    .ref("/devices/{deviceId}/current")
     .onUpdate(async (change, context) => {
     const deviceId = context.params.deviceId;
     const afterData = change.after.val();
     console.log(`Processing metrics update for device ${deviceId}`);
     // Validate required data
     if (!afterData || !afterData.heartRate || !afterData.spo2) {
-        console.log('Missing required metrics data, skipping');
+        console.log("Missing required metrics data, skipping");
         return null;
     }
     try {
         // Get device info to find user
         const deviceRef = admin.database().ref(`/devices/${deviceId}/metadata`);
-        const deviceSnapshot = await deviceRef.once('value');
+        const deviceSnapshot = await deviceRef.once("value");
         const deviceInfo = deviceSnapshot.val();
         if (!deviceInfo || !deviceInfo.userId) {
-            console.log('Device info or userId not found');
+            console.log("Device info or userId not found");
             return null;
         }
         // Get user's baseline HR from Supabase
-        const userRef = admin.database().ref(`/users/${deviceInfo.userId}/baseline`);
-        const baselineSnapshot = await userRef.once('value');
+        const userRef = admin
+            .database()
+            .ref(`/users/${deviceInfo.userId}/baseline`);
+        const baselineSnapshot = await userRef.once("value");
         const baseline = baselineSnapshot.val();
         if (!baseline || !baseline.baselineHR) {
             console.log(`No baseline found for user ${deviceInfo.userId}`);
@@ -511,56 +407,79 @@ exports.detectAnxietyMultiParameter = functions.database
         const restingHR = baseline.baselineHR;
         const hrThreshold = restingHR * 1.2; // 20% above
         const severityThreshold = restingHR * 1.3; // 30% above
-        let hrAnalysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+        let hrAnalysis = { abnormal: false, severity: "normal", confidence: 0.6 };
         if (currentHR > severityThreshold) {
-            hrAnalysis = { abnormal: true, severity: 'high', confidence: 0.8 };
+            hrAnalysis = { abnormal: true, severity: "high", confidence: 0.8 };
         }
         else if (currentHR > hrThreshold) {
-            hrAnalysis = { abnormal: true, severity: 'elevated', confidence: 0.7 };
+            hrAnalysis = { abnormal: true, severity: "elevated", confidence: 0.7 };
         }
         // Analyze SpO2 levels
         const currentSpO2 = afterData.spo2;
-        let spo2Analysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+        let spo2Analysis = {
+            abnormal: false,
+            severity: "normal",
+            confidence: 0.6,
+        };
         if (currentSpO2 < 90) {
-            spo2Analysis = { abnormal: true, severity: 'critical', confidence: 1.0 };
+            spo2Analysis = {
+                abnormal: true,
+                severity: "critical",
+                confidence: 1.0,
+            };
         }
         else if (currentSpO2 < 94) {
-            spo2Analysis = { abnormal: true, severity: 'low', confidence: 0.8 };
+            spo2Analysis = { abnormal: true, severity: "low", confidence: 0.8 };
         }
         // Analyze movement (simple spike detection)
         const currentMovement = afterData.movementLevel || 0;
-        let movementAnalysis = { abnormal: false, severity: 'normal', confidence: 0.6 };
+        let movementAnalysis = {
+            abnormal: false,
+            severity: "normal",
+            confidence: 0.6,
+        };
         if (currentMovement > 80) {
-            movementAnalysis = { abnormal: true, severity: 'high', confidence: 0.7 };
+            movementAnalysis = {
+                abnormal: true,
+                severity: "high",
+                confidence: 0.7,
+            };
         }
         // Count abnormal metrics
-        const abnormalMetrics = [hrAnalysis, spo2Analysis, movementAnalysis].filter(a => a.abnormal);
+        const abnormalMetrics = [
+            hrAnalysis,
+            spo2Analysis,
+            movementAnalysis,
+        ].filter((a) => a.abnormal);
         const abnormalCount = abnormalMetrics.length;
         // Apply trigger logic
         let triggered = false;
         let requiresUserConfirmation = true;
         let overallConfidence = 0.6;
-        let reason = 'normal';
-        if (spo2Analysis.abnormal && spo2Analysis.severity === 'critical') {
+        let reason = "normal";
+        if (spo2Analysis.abnormal && spo2Analysis.severity === "critical") {
             // Critical SpO2 always triggers immediately
             triggered = true;
             requiresUserConfirmation = false;
             overallConfidence = 1.0;
-            reason = 'criticalSpO2';
+            reason = "criticalSpO2";
         }
         else if (abnormalCount >= 2) {
             // Multiple abnormal metrics - auto-trigger
             triggered = true;
             requiresUserConfirmation = false;
             overallConfidence = 0.85;
-            reason = 'multipleAbnormal';
+            reason = "multipleAbnormal";
         }
         else if (abnormalCount === 1) {
             // Single abnormal metric - request user confirmation
             triggered = true;
             requiresUserConfirmation = true;
             overallConfidence = 0.65;
-            reason = abnormalMetrics[0].severity === 'critical' ? 'singleCritical' : 'singleAbnormal';
+            reason =
+                abnormalMetrics[0].severity === "critical"
+                    ? "singleCritical"
+                    : "singleAbnormal";
         }
         if (triggered) {
             console.log(`Anxiety detected: ${reason} (confidence: ${overallConfidence})`);
@@ -576,15 +495,18 @@ exports.detectAnxietyMultiParameter = functions.database
                     heartRate: currentHR,
                     baselineHR: restingHR,
                     spO2: currentSpO2,
-                    movement: currentMovement
+                    movement: currentMovement,
                 },
                 analysis: {
                     heartRate: hrAnalysis,
                     spO2: spo2Analysis,
-                    movement: movementAnalysis
-                }
+                    movement: movementAnalysis,
+                },
             };
-            await admin.database().ref(`/devices/${deviceId}/anxiety_alerts`).push(alertData);
+            await admin
+                .database()
+                .ref(`/devices/${deviceId}/anxiety_alerts`)
+                .push(alertData);
             // Send notification
             const notificationTitle = requiresUserConfirmation
                 ? "Are you feeling anxious?"
@@ -594,28 +516,33 @@ exports.detectAnxietyMultiParameter = functions.database
                 : `Multiple concerning metrics detected. Please check your wellbeing.`;
             const message = {
                 data: {
-                    type: 'anxiety_detection',
+                    type: "anxiety_detection",
                     reason,
                     confidence: overallConfidence.toString(),
                     requiresConfirmation: requiresUserConfirmation.toString(),
                     heartRate: currentHR.toString(),
                     spO2: currentSpO2.toString(),
                     deviceId,
-                    timestamp: Date.now().toString()
+                    timestamp: Date.now().toString(),
                 },
                 notification: {
                     title: notificationTitle,
-                    body: notificationBody
+                    body: notificationBody,
                 },
-                topic: `user_${deviceInfo.userId}_anxiety_alerts`
+                topic: `user_${deviceInfo.userId}_anxiety_alerts`,
             };
             await admin.messaging().send(message);
-            console.log('Notification sent successfully');
+            console.log("Notification sent successfully");
         }
-        return { processed: true, triggered, reason, confidence: overallConfidence };
+        return {
+            processed: true,
+            triggered,
+            reason,
+            confidence: overallConfidence,
+        };
     }
     catch (error) {
-        console.error('Error in anxiety detection:', error);
+        console.error("Error in anxiety detection:", error);
         return null;
     }
 });
