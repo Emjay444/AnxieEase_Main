@@ -260,10 +260,12 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   Widget _buildRecalibrationBanner() {
     final device = _deviceService.linkedDevice;
     final metrics = _deviceService.currentMetrics;
-    if (device == null || device.baselineHR == null) return const SizedBox.shrink();
+    if (device == null || device.baselineHR == null)
+      return const SizedBox.shrink();
 
     bool show = false;
-    String message = 'It’s been a week since your last baseline. Recalibrate for best accuracy.';
+    String message =
+        'It’s been a week since your last baseline. Recalibrate for best accuracy.';
 
     // Suggest if baseline older than weeklyRefreshDays
     if (device.baselineUpdatedAt == null) {
@@ -274,11 +276,17 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
     }
 
     // Also suggest if current resting HR while worn seems to drift > threshold
-    if (!show && metrics != null && metrics.isWorn && metrics.heartRate != null) {
+    if (!show &&
+        metrics != null &&
+        metrics.isWorn &&
+        metrics.heartRate != null) {
       final drift = (metrics.heartRate! - device.baselineHR!).abs();
-      if (drift >= BaselineConfig.driftThresholdBpm && (metrics.movementLevel ?? 0) <= BaselineConfig.restfulMovementThreshold) {
+      if (drift >= BaselineConfig.driftThresholdBpm &&
+          (metrics.movementLevel ?? 0) <=
+              BaselineConfig.restfulMovementThreshold) {
         show = true;
-        message = 'Your resting HR changed by ≥${BaselineConfig.driftThresholdBpm} BPM. Consider recalibrating.';
+        message =
+            'Your resting HR changed by ≥${BaselineConfig.driftThresholdBpm} BPM. Consider recalibrating.';
       }
     }
 

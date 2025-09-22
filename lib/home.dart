@@ -61,13 +61,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late PageController _techniquePageController;
   // Looping carousel config
   static const int _techniquesCount = 3;
-  static const int _loopingBase = 1000; // large base to allow bidirectional scroll
+  static const int _loopingBase =
+      1000; // large base to allow bidirectional scroll
   Timer? _techniqueAutoTimer;
 
   void _stopTechniqueAutoPlay() {
     _techniqueAutoTimer?.cancel();
     _techniqueAutoTimer = null;
   }
+
   // Subtle pulsing animation toggles were removed; we animate only icons now
   // (Icon animations now use controllers, not boolean toggles)
   // Controllers for continuous icon+ring breathing
@@ -2317,35 +2319,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 behavior: HitTestBehavior.opaque,
                 onPanDown: (_) => _stopTechniqueAutoPlay(),
                 child: PageView.builder(
-                controller: _techniquePageController,
-                onPageChanged: (index) {
-                  final normalized = index % _techniquesCount;
-                  setCarouselState(() {
-                    _currentTechniqueIndex = normalized;
-                  });
-                  setState(() {
-                    _currentTechniqueIndex = normalized;
-                  });
-                },
-                // No itemCount => allows infinite scrolling
-                itemBuilder: (context, index) {
-                  final normalizedIndex = index % _techniquesCount;
-                  final isCurrentPage =
-                      normalizedIndex == _currentTechniqueIndex;
-                  return AnimatedScale(
-                    scale: isCurrentPage ? 1.0 : 0.9,
-                    duration: const Duration(milliseconds: 300),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: screenWidth * 0.02),
-                      child: normalizedIndex == 0
-                          ? _buildHealthMonitoringCard(isCurrentPage)
-                          : (normalizedIndex == 1
-                              ? _buildBreathingCard(isCurrentPage)
-                              : _buildGroundingCard(isCurrentPage)),
-                    ),
-                  );
-                },
+                  controller: _techniquePageController,
+                  onPageChanged: (index) {
+                    final normalized = index % _techniquesCount;
+                    setCarouselState(() {
+                      _currentTechniqueIndex = normalized;
+                    });
+                    setState(() {
+                      _currentTechniqueIndex = normalized;
+                    });
+                  },
+                  // No itemCount => allows infinite scrolling
+                  itemBuilder: (context, index) {
+                    final normalizedIndex = index % _techniquesCount;
+                    final isCurrentPage =
+                        normalizedIndex == _currentTechniqueIndex;
+                    return AnimatedScale(
+                      scale: isCurrentPage ? 1.0 : 0.9,
+                      duration: const Duration(milliseconds: 300),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.02),
+                        child: normalizedIndex == 0
+                            ? _buildHealthMonitoringCard(isCurrentPage)
+                            : (normalizedIndex == 1
+                                ? _buildBreathingCard(isCurrentPage)
+                                : _buildGroundingCard(isCurrentPage)),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -2808,14 +2810,14 @@ class _HomeContentState extends State<HomeContent> {
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       color: Colors.white,
-                                      value: loadingProgress
-                                                  .expectedTotalBytes !=
-                                              null
-                                          ? loadingProgress
-                                                  .cumulativeBytesLoaded /
-                                              loadingProgress
-                                                  .expectedTotalBytes!
-                                          : null,
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                              : null,
                                     ),
                                   );
                                 },
