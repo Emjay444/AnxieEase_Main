@@ -149,10 +149,7 @@ class IoTSensorService extends ChangeNotifier {
 
     _isActive = true;
     _isConnected = true;
-    // Force device to be worn for baseline recording reliability
-    _isDeviceWorn = true;
-
-    print('IoTSensorService: Starting with worn status: $_isDeviceWorn');
+    // Don't force worn state - let it be determined naturally during simulation
 
     // Update device status (mock mode only)
     try {
@@ -271,9 +268,6 @@ class IoTSensorService extends ChangeNotifier {
           'spo2': 0.0,
           'timestamp': ServerValue.timestamp,
           'worn': 0,
-          'connected': _isConnected,
-          'isConnected': _isConnected,
-          'connectionStatus': _isConnected ? 'connected' : 'disconnected',
         };
 
         // Battery level remains stable when device is not worn
@@ -380,9 +374,6 @@ class IoTSensorService extends ChangeNotifier {
         'spo2': _isDeviceWorn ? double.parse(_spo2.toStringAsFixed(1)) : 0,
         'timestamp': ServerValue.timestamp,
         'worn': _isDeviceWorn ? 1 : 0,
-        'connected': _isConnected,
-        'isConnected': _isConnected,
-        'connectionStatus': _isConnected ? 'connected' : 'disconnected',
       };
 
       // Upload to Firebase Realtime Database

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
-import 'services/notification_service.dart';
 import 'services/iot_sensor_service.dart';
 import 'services/device_service.dart';
 import 'providers/auth_provider.dart';
@@ -31,25 +30,22 @@ class _WatchScreenState extends State<WatchScreen>
   String? _errorMessage;
 
   // Legacy IoT service integration
-  late NotificationService _notificationService;
   late IoTSensorService _iotSensorService;
   late DeviceService _deviceService;
 
-  // Health metrics data
+  // Health metrics data - initially null until Firebase data arrives
   double? spo2Value;
   double? bodyTempValue;
   double? ambientTempValue;
   double? heartRateValue;
   double? baselineHR;
-  double batteryPercentage = 85.0;
+  double? batteryPercentage; // Start as null until data arrives
   bool isDeviceWorn = false;
-  bool isConnected = false;
+  bool isConnected = false; // Start disconnected
   bool _hasRealtimeData = false;
-  bool _isMonitoringActive = false;
   bool _isDeviceSetup = false;
 
-  // Connection states
-  String _connectionState = 'disconnected';
+  // Connection states - start as disconnected
 
   // Firebase references and listeners
   StreamSubscription? _iotDataSubscription;
@@ -117,8 +113,6 @@ class _WatchScreenState extends State<WatchScreen>
   Future<void> _initializeService() async {
     try {
       // Get services from Provider
-      _notificationService =
-          Provider.of<NotificationService>(context, listen: false);
       _iotSensorService = Provider.of<IoTSensorService>(context, listen: false);
       _deviceService = DeviceService();
 
@@ -177,10 +171,11 @@ class _WatchScreenState extends State<WatchScreen>
                   (bodyTempParsed != null) ||
                   (battParsed != null);
 
-              // If this is the first data and monitoring is active, show success and update connection state
-              if (wasFirstData && _hasRealtimeData && _isMonitoringActive) {
-                _firebaseValidationTimer?.cancel();
-                _connectionState = 'connected';
+              // Automatically connect when Firebase data arrives
+              if (wasFirstData && _hasRealtimeData) {
+                isConnected = true;
+                debugPrint(
+                    '📱 WatchScreen: Auto-connected - Firebase data received');
               }
 
               // If not worn, clear vitals to avoid misleading UI
@@ -266,9 +261,8 @@ class _WatchScreenState extends State<WatchScreen>
       // Ensure initial animation reflects current state
       _updatePulseAnimation();
 
-      // Update monitoring state - but don't auto-start for real device
+      // Update connection state - start as disconnected
       setState(() {
-        _isMonitoringActive = false; // Will be true when real device connects
         isConnected = false; // Will be true when real device data arrives
         if (!isConnected) {
           _hasRealtimeData = false;
@@ -285,7 +279,6 @@ class _WatchScreenState extends State<WatchScreen>
   void _onIoTSensorChanged() {
     if (mounted) {
       setState(() {
-        _isMonitoringActive = _iotSensorService.isActive;
         isConnected = _iotSensorService.isConnected;
         if (!isConnected) {
           _hasRealtimeData = false;
@@ -304,141 +297,6 @@ class _WatchScreenState extends State<WatchScreen>
     }
     // Ensure animation reflects any state changes
     _updatePulseAnimation();
-  }
-
-  /// Start monitoring (for real device - no mock data generation)
-  Future<void> _startIoTMonitoring() async {
-    try {
-      setState(() {
-        _hasRealtimeData = false;
-        _connectionState = 'connecting';
-        _isMonitoringActive = true;
-      });
-
-      // Note: Real device should write directly to Firebase
-      // We just set the service as active but don't generate mock data
-      await _iotSensorService
-          .startSensors(); // This will not generate mock data anymore
-
-      // Start validation timer to check if real device data arrives
-      _startFirebaseValidation();
-
-      debugPrint(
-          '📱 WatchScreen: Monitoring started - waiting for real device data at /devices/AnxieEase001/current');
-    } catch (e) {
-      setState(() {
-        _connectionState = 'disconnected';
-      });
-      _showError('Failed to start monitoring: $e');
-    }
-  }
-
-  /// Start Firebase data validation after monitoring begins
-  void _startFirebaseValidation() {
-    // Cancel any existing timer
-    _firebaseValidationTimer?.cancel();
-
-    // Wait 3 seconds to see if Firebase data arrives
-    _firebaseValidationTimer = Timer(const Duration(seconds: 3), () {
-      if (!_hasRealtimeData && _isMonitoringActive) {
-        // No Firebase data received - show no connection state
-        setState(() {
-          _connectionState = 'no_connection';
-        });
-      } else if (_hasRealtimeData) {
-        // Firebase data flowing - show connected state
-        setState(() {
-          _connectionState = 'connected';
-        });
-      }
-    });
-  }
-
-  /// Stop IoT sensor monitoring
-  Future<void> _stopIoTMonitoring() async {
-    try {
-      // Cancel any pending validation
-      _firebaseValidationTimer?.cancel();
-
-      await _iotSensorService.stopSensors();
-
-      // Reset connection state when stopping
-      setState(() {
-        _connectionState = 'disconnected';
-        _hasRealtimeData = false;
-        _isMonitoringActive = false;
-      });
-    } catch (e) {
-      setState(() {
-        _connectionState = 'disconnected';
-        _isMonitoringActive = false;
-      });
-      _showError('Failed to stop IoT monitoring: $e');
-    }
-  }
-
-  // Connection status helper methods
-  IconData _getConnectionIcon() {
-    switch (_connectionState) {
-      case 'connected':
-        return Icons.wifi;
-      case 'connecting':
-        return Icons.wifi_tethering;
-      case 'no_connection':
-        return Icons.wifi_off;
-      default: // 'disconnected'
-        return Icons.wifi_off;
-    }
-  }
-
-  String _getConnectionLabel() {
-    switch (_connectionState) {
-      case 'connected':
-        return 'Connected';
-      case 'connecting':
-        return 'Connecting';
-      case 'no_connection':
-        return 'No Connection';
-      default: // 'disconnected'
-        return 'Disconnected';
-    }
-  }
-
-  Color _getConnectionColor() {
-    switch (_connectionState) {
-      case 'connected':
-        return Colors.green;
-      case 'connecting':
-        return Colors.orange;
-      case 'no_connection':
-        return Colors.red;
-      default: // 'disconnected'
-        return Colors.grey;
-    }
-  }
-
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  void _showSuccess(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
   }
 
   @override
@@ -467,7 +325,7 @@ class _WatchScreenState extends State<WatchScreen>
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       title: const Text(
-        'Health Dashboard',
+        'Your Wearable',
         style: TextStyle(
           fontWeight: FontWeight.w600,
           color: Colors.white,
@@ -527,7 +385,7 @@ class _WatchScreenState extends State<WatchScreen>
           ),
           SizedBox(height: 16),
           Text(
-            'Initializing health dashboard...',
+            'Initializing your wearable...',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey,
@@ -566,10 +424,6 @@ class _WatchScreenState extends State<WatchScreen>
 
             // Heart rate section
             _buildHeartRateSection(),
-            const SizedBox(height: 24),
-
-            // Control buttons
-            _buildControlButtons(),
             const SizedBox(height: 24),
           ],
         ),
@@ -860,7 +714,7 @@ class _WatchScreenState extends State<WatchScreen>
               Expanded(
                 child: _buildStatusItem(
                   'Battery',
-                  '${batteryPercentage.toStringAsFixed(0)}%',
+                  '${(batteryPercentage ?? 0).toStringAsFixed(0)}%',
                   Icons.battery_full,
                 ),
               ),
@@ -1105,34 +959,6 @@ class _WatchScreenState extends State<WatchScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildControlButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed:
-                _isMonitoringActive ? _stopIoTMonitoring : _startIoTMonitoring,
-            icon: Icon(
-              _isMonitoringActive ? Icons.stop : Icons.play_arrow,
-            ),
-            label: Text(
-              _isMonitoringActive ? 'Stop Monitoring' : 'Start Monitoring',
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  _isMonitoringActive ? Colors.red : const Color(0xFF3AA772),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 

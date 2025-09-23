@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
-import '../config/baseline_config.dart';
 import '../models/wearable_device.dart';
 import '../models/health_metrics.dart';
 import '../models/baseline_heart_rate.dart';
@@ -187,7 +186,7 @@ class DeviceService extends ChangeNotifier {
 
   /// Start collecting resting heart rate baseline (3-5 minute session)
   Future<BaselineHeartRate> recordRestingHeartRate({
-    int durationMinutes = BaselineConfig.defaultMinutes,
+    int durationMinutes = 3,
     String? notes,
   }) async {
     if (_linkedDevice == null) {
@@ -232,10 +231,10 @@ class DeviceService extends ChangeNotifier {
             'DeviceService: Timer tick - ${remainingSeconds}s remaining');
         _countdownController?.add(remainingSeconds);
 
-        // Collect heart rate reading every 3 seconds for better quality
-        if (remainingSeconds % 3 == 0) {
+        // Collect heart rate reading every 5 seconds
+        if (remainingSeconds % 5 == 0) {
           AppLogger.d(
-              'DeviceService: 3-second interval - collecting HR reading');
+              'DeviceService: 5-second interval - collecting HR reading');
           _collectHeartRateReading();
         }
 
@@ -266,8 +265,7 @@ class DeviceService extends ChangeNotifier {
           if (_baselineReadings.length >= 5) {
             final endTime = DateTime.now();
             final startTime = _baselineRecordingStartTime ??
-                endTime.subtract(
-                    const Duration(minutes: BaselineConfig.defaultMinutes));
+                endTime.subtract(Duration(minutes: durationMinutes));
             final baseline = BaselineHeartRate.calculateBaseline(
               userId: _linkedDevice!.userId!,
               deviceId: _linkedDevice!.deviceId,
@@ -353,32 +351,23 @@ class DeviceService extends ChangeNotifier {
       if (_currentMetrics != null && _currentMetrics!.heartRate != null) {
         currentHR = _currentMetrics!.heartRate!;
         worn = _currentMetrics!.isWorn;
-        print(
-            'DeviceService: Using live metrics - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
       } else {
         // Fallback to simulator if no live data
         currentHR = _iotSensorService.heartRate;
         worn = _iotSensorService.isDeviceWorn;
-        print(
-            'DeviceService: Using IoT simulator - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
       }
 
       // Collect only when the device is worn and we have a positive HR
       if (worn && currentHR > 0) {
         _baselineReadings.add(currentHR);
         _heartRateController?.add(currentHR);
-        print(
-            'DeviceService: ✓ Collected HR reading #${_baselineReadings.length}: ${currentHR.toStringAsFixed(1)} BPM');
         AppLogger.d(
             'DeviceService: Collected HR reading: ${currentHR.toStringAsFixed(1)} BPM (worn: $worn, live: ${_currentMetrics != null})');
       } else {
-        print(
-            'DeviceService: ✗ Skipped HR reading - HR: ${currentHR.toStringAsFixed(1)}, worn: $worn');
         AppLogger.d(
             'DeviceService: Skipped HR reading (hr: ${currentHR.toStringAsFixed(1)}, worn: $worn)');
       }
     } catch (e) {
-      print('DeviceService: Error collecting HR reading: $e');
       AppLogger.w('DeviceService: Error collecting HR reading: $e');
     }
   }
@@ -403,7 +392,7 @@ class DeviceService extends ChangeNotifier {
 
       final endTime = DateTime.now();
       final startTime = _baselineRecordingStartTime ??
-          endTime.subtract(Duration(minutes: BaselineConfig.defaultMinutes));
+          endTime.subtract(const Duration(minutes: 3));
 
       if (_baselineReadings.isEmpty) {
         throw Exception(
@@ -416,11 +405,6 @@ class DeviceService extends ChangeNotifier {
       }
 
       // Calculate baseline
-      print(
-          'DeviceService: About to calculate baseline with ${_baselineReadings.length} readings');
-      print(
-          'DeviceService: Readings: ${_baselineReadings.map((r) => r.toStringAsFixed(1)).join(', ')}');
-
       final baseline = BaselineHeartRate.calculateBaseline(
         userId: _linkedDevice!.userId!,
         deviceId: _linkedDevice!.deviceId,
@@ -429,10 +413,6 @@ class DeviceService extends ChangeNotifier {
         endTime: endTime,
         notes: notes,
       );
-
-      print(
-          'DeviceService: Calculated baseline HR: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
-      print('DeviceService: Recording quality: ${baseline.recordingQuality}');
 
       // Always update local state first for immediate UI feedback
       _currentBaseline = baseline;

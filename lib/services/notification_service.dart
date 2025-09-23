@@ -598,6 +598,13 @@ class NotificationService extends ChangeNotifier {
   // Schedule anxiety prevention reminders
   Future<void> scheduleAnxietyReminders(int intervalHours) async {
     try {
+      // Check if user is authenticated before scheduling reminders
+      final user = _supabaseService.client.auth.currentUser;
+      if (user == null) {
+        debugPrint('User not authenticated - skipping anxiety reminder scheduling');
+        return;
+      }
+
       // First check if we already have active reminders
       final List<NotificationModel> activeReminders =
           await AwesomeNotifications().listScheduledNotifications();
@@ -698,12 +705,18 @@ class NotificationService extends ChangeNotifier {
     );
 
     // Also create a record in Supabase for display in the app
-    await _supabaseService.createNotification(
-      title: message['title'] ?? 'Anxiety Check-in',
-      message: message['body'] ?? 'Take a moment to check how you\'re feeling.',
-      type: 'reminder',
-      relatedScreen: 'breathing',
-    );
+    // Only if user is authenticated
+    final user = _supabaseService.client.auth.currentUser;
+    if (user != null) {
+      await _supabaseService.createNotification(
+        title: message['title'] ?? 'Anxiety Check-in',
+        message: message['body'] ?? 'Take a moment to check how you\'re feeling.',
+        type: 'reminder',
+        relatedScreen: 'breathing',
+      );
+    } else {
+      debugPrint('User not authenticated - skipping Supabase notification record');
+    }
 
     // Schedule the next notification with a new ID
     int nextId = notificationId + 1;

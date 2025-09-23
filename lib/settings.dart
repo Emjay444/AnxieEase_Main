@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
 // package_info_plus removed from About to avoid runtime plugin issues
 import 'profile.dart';
 import 'providers/notification_provider.dart';
@@ -21,12 +23,15 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   // Anxiety prevention reminder settings
   bool _anxietyRemindersEnabled = false;
+  // Breathing exercise reminder settings
+  bool _breathingRemindersEnabled = false;
   final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
     super.initState();
     _loadReminderSettings();
+    _loadBreathingReminderSettings();
   }
 
   // Load the anxiety reminder settings
@@ -53,6 +58,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  // Load the breathing reminder settings
+  Future<void> _loadBreathingReminderSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('breathing_reminders_enabled') ?? false;
+
+      setState(() {
+        _breathingRemindersEnabled = enabled;
+      });
+
+      // If reminders were enabled, make sure they're still scheduled
+      if (enabled) {
+        await _scheduleBreathingReminders();
+      }
+    } catch (e) {
+      debugPrint('Error loading breathing reminder settings: $e');
+    }
+  }
+
+  // Save the breathing reminder settings
+  Future<void> _saveBreathingReminderSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+          'breathing_reminders_enabled', _breathingRemindersEnabled);
+
+      if (_breathingRemindersEnabled) {
+        // Schedule breathing exercise reminders using AwesomeNotifications
+        await _scheduleBreathingReminders();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  '🫁 Breathing reminders enabled - you\'ll receive notifications every 30 minutes'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        // Cancel all breathing reminder notifications
+        await _cancelBreathingReminders();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Breathing reminders disabled'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error saving breathing reminder settings: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error updating breathing reminder settings'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _scheduleBreathingReminders() async {
+    try {
+      // Cancel any existing breathing reminders first
+      await _cancelBreathingReminders();
+
+      // Schedule repeating notifications every 30 minutes
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: 100, // Unique ID for breathing reminders
+          channelKey: 'wellness_reminders',
+          title: '🫁 Breathing Exercise Reminder',
+          body:
+              'Take a moment to relax and breathe. Your mental health matters.',
+          notificationLayout: NotificationLayout.Default,
+          category: NotificationCategory.Reminder,
+          payload: {
+            'type': 'reminder',
+            'related_screen': 'breathing_screen',
+          },
+        ),
+        schedule: NotificationInterval(
+          interval: const Duration(minutes: 30), // 30 minutes
+          timeZone: await AwesomeNotifications().getLocalTimeZoneIdentifier(),
+          preciseAlarm: true,
+          repeats: true,
+        ),
+      );
+
+      debugPrint('✅ Breathing exercise reminders scheduled every 30 minutes');
+    } catch (e) {
+      debugPrint('❌ Error scheduling breathing reminders: $e');
+    }
+  }
+
+  Future<void> _cancelBreathingReminders() async {
+    try {
+      await AwesomeNotifications().cancel(100); // Cancel by ID
+      debugPrint('✅ Breathing exercise reminders cancelled');
+    } catch (e) {
+      debugPrint('❌ Error cancelling breathing reminders: $e');
     }
   }
 
@@ -317,6 +430,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         // Add anxiety prevention reminder settings
                         _buildAnxietyReminderTile(),
+                        // Add breathing exercise reminder settings
+                        _buildBreathingReminderTile(),
                         _buildSettingsTile(
                           icon: Icons.developer_mode,
                           title: 'Developer Test',
@@ -332,9 +447,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           },
                         ),
                         _buildSettingsTile(
-                          icon: Icons.info_outline,
-                          title: 'About',
-                          subtitle: 'App version and information',
+                          icon: Icons.psychology,
+                          title: 'About AnxieEase',
+                          subtitle: 'Version, features & information',
                           onTap: () {
                             _showAboutDialog(context);
                           },
@@ -395,6 +510,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _saveReminderSettings();
         },
         activeColor: const Color(0xFF2D9254),
+      ),
+    );
+  }
+
+  // Build breathing exercise reminder settings tile
+  Widget _buildBreathingReminderTile() {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 8,
+      ),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(
+          Icons.air,
+          color: Colors.blue,
+          size: 24,
+        ),
+      ),
+      title: Text(
+        'Breathing Exercise Reminder',
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+      ),
+      subtitle: Text(
+        _breathingRemindersEnabled
+            ? 'Receive breathing exercise reminders every 30 minutes'
+            : 'Breathing reminders are disabled',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              color: Colors.black.withOpacity(0.6),
+            ),
+      ),
+      trailing: Switch(
+        value: _breathingRemindersEnabled,
+        onChanged: (value) {
+          setState(() {
+            _breathingRemindersEnabled = value;
+          });
+          _saveBreathingReminderSettings();
+        },
+        activeColor: Colors.blue,
       ),
     );
   }
@@ -502,65 +665,203 @@ class _SettingsScreenState extends State<SettingsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          bottom: MediaQuery.of(context).padding.bottom + 20,
-          top: 8,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            _AboutHeader(),
-            SizedBox(height: 16),
-            Text(
-              'AnxieEase helps you practice grounding and breathing techniques, log moods, and manage reminders to support anxiety prevention.',
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(context).padding.bottom + 24,
+            top: 16,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const _ModernAboutHeader(),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3AA772).withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF3AA772).withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.psychology_outlined,
+                            color: const Color(0xFF3AA772),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'What AnxieEase offers:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const _ModernBulletPoint(
+                        icon: Icons.air,
+                        text:
+                            'Guided grounding (5-4-3-2-1) and breathing exercises',
+                        color: Color(0xFF3AA772),
+                      ),
+                      const _ModernBulletPoint(
+                        icon: Icons.mood,
+                        text: 'Track moods and view patterns over time',
+                        color: Color(0xFF007AFF),
+                      ),
+                      const _ModernBulletPoint(
+                        icon: Icons.notifications_none,
+                        text: 'Set gentle reminders to practice techniques',
+                        color: Color(0xFFFF9500),
+                      ),
+                      const _ModernBulletPoint(
+                        icon: Icons.watch,
+                        text:
+                            'Real-time health monitoring with wearable devices',
+                        color: Color(0xFF8E44AD),
+                      ),
+                      const _ModernBulletPoint(
+                        icon: Icons.person_outline,
+                        text: 'Comprehensive wellness profile management',
+                        color: Color(0xFF00BCD4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.favorite,
+                        color: Colors.red.shade400,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      const Flexible(
+                        child: Text(
+                          'Supporting mental wellness, one breath at a time',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
-            SizedBox(height: 10),
-            Text('What you can do:',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            SizedBox(height: 6),
-            _AboutBullet(
-                text: 'Guided grounding (5-4-3-2-1) and breathing exercises'),
-            _AboutBullet(text: 'Track moods and view patterns over time'),
-            _AboutBullet(text: 'Set gentle reminders to practice techniques'),
-            _AboutBullet(text: 'Keep your profile up to date'),
-            SizedBox(height: 6),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _AboutHeader extends StatelessWidget {
-  const _AboutHeader();
+class _ModernAboutHeader extends StatelessWidget {
+  const _ModernAboutHeader();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
+        // AnxieEase Logo from assets
         Container(
-          padding: const EdgeInsets.all(10),
+          width: 80,
+          height: 80,
           decoration: BoxDecoration(
-            color: const Color(0xFF2D9254).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.info_outline,
-              color: Color(0xFF2D9254), size: 28),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('AnxieEase',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-              SizedBox(height: 2),
-              Text('Version 1.0.0 (1)', style: TextStyle(color: Colors.grey)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF3AA772).withOpacity(0.3),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
             ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              child: Image.asset(
+                'assets/images/greenribbon.png',
+                width: 56,
+                height: 56,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // App name and version
+        const Text(
+          'AnxieEase',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A1A),
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3AA772).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Text(
+            'Version 1.0.0 (1)',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF3AA772),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Your companion for mental wellness and anxiety management',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+              height: 1.4,
+            ),
           ),
         ),
       ],
@@ -568,22 +869,51 @@ class _AboutHeader extends StatelessWidget {
   }
 }
 
-class _AboutBullet extends StatelessWidget {
+class _ModernBulletPoint extends StatelessWidget {
+  final IconData icon;
   final String text;
-  const _AboutBullet({required this.text});
+  final Color color;
+
+  const _ModernBulletPoint({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('•  ', style: TextStyle(fontSize: 16)),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 14,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.3,
+                  color: Color(0xFF1A1A1A),
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
         ],

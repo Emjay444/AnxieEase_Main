@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'main.dart';
@@ -33,8 +34,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final List<String> _genderOptions = [
     'Male',
     'Female',
-    'Other',
-    'Prefer not to say'
   ];
 
   // Form validation
@@ -222,10 +221,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // Validate phone number
   bool _isValidPhoneNumber(String phone) {
-    // Allow digits, spaces, dashes, and parentheses
-    final RegExp phoneRegExp = RegExp(r'^[\d\s\-()]+$');
-    return phoneRegExp.hasMatch(phone) &&
-        phone.length >= 7; // Basic length check
+    // Must be exactly 11 digits, no other characters allowed
+    final RegExp phoneRegExp = RegExp(r'^[0-9]{11}$');
+    return phoneRegExp.hasMatch(phone);
   }
 
   // Reset all field errors
@@ -397,6 +395,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget buildInputField(TextEditingController controller, String label,
       {String? errorText, bool isDatePicker = false}) {
     bool isPassword = label.toLowerCase().contains('password');
+    bool isPhoneNumber = label.toLowerCase().contains('contact') ||
+        label.toLowerCase().contains('phone');
 
     // Check if there's an error with this field
     bool hasError = errorText?.isNotEmpty == true;
@@ -434,6 +434,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         onTap: isDatePicker
             ? () => _selectBirthDate(context)
             : null, // Show date picker when tapped
+        inputFormatters: isPhoneNumber
+            ? [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(11),
+              ]
+            : null,
+        keyboardType: isPhoneNumber ? TextInputType.phone : null,
         // Allow all input, validation will show errors for invalid characters
         decoration: InputDecoration(
           labelText: label,

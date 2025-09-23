@@ -9,7 +9,6 @@ const DeviceManagement = () => {
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState('');
-  const [expiresIn, setExpiresIn] = useState('2'); // Default 2 hours
   const [adminNotes, setAdminNotes] = useState('');
 
   useEffect(() => {
@@ -47,13 +46,10 @@ const DeviceManagement = () => {
     }
 
     try {
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + parseInt(expiresIn));
-
       const { error } = await supabase.rpc('assign_device_to_user', {
         p_device_id: 'AnxieEase001',
         p_user_id: selectedUser,
-        p_expires_at: expiresAt.toISOString(),
+        p_expires_at: null, // No expiration
         p_admin_notes: adminNotes || null
       });
 
@@ -138,7 +134,7 @@ const DeviceManagement = () => {
         {/* Assignment Form - only show if device is available */}
         {(!deviceStatus?.user_id || deviceStatus?.assignment_status === 'available') && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Select User</label>
                 <select
@@ -156,21 +152,6 @@ const DeviceManagement = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Duration (hours)</label>
-                <select
-                  value={expiresIn}
-                  onChange={(e) => setExpiresIn(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2"
-                >
-                  <option value="1">1 hour</option>
-                  <option value="2">2 hours</option>
-                  <option value="4">4 hours</option>
-                  <option value="8">8 hours</option>
-                  <option value="24">24 hours</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-2">Admin Notes</label>
                 <input
                   type="text"

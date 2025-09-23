@@ -275,6 +275,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return DateTime.utc(date.year, date.month, date.day);
   }
 
+  bool _isFutureDate(DateTime date) {
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    return normalizedDate.isAfter(normalizedToday);
+  }
+
+  void _showFutureDateError() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            'Cannot add logs for future dates. Please select today or a past date.'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
   List<String> _getEventsForDay(DateTime day) {
     final logs = _dailyLogs[_normalizeDate(day)];
     if (logs == null) return [];
@@ -440,18 +458,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
         notificationCreated = true;
       }
 
-      // Create notification for mood patterns - check for anxious or fearful moods
-      if (selectedMoods.any((mood) =>
-          mood.toLowerCase().contains('anxious') ||
-          mood.toLowerCase().contains('fearful'))) {
-        await _supabaseService.createNotification(
-          title: 'Mood Pattern Alert',
-          message:
-              'You\'ve been feeling anxious or fearful. Would you like to try some calming exercises?',
-          type: 'reminder',
-          relatedScreen: 'calendar',
-          relatedId: logToSync?.id,
-        );
+      // Create notification for ALL mood logs (positive and negative)
+      if (selectedMoods.isNotEmpty) {
+        final moodsList = selectedMoods.join(", ");
+        final isNegativeMood = selectedMoods.any((mood) =>
+            mood.toLowerCase().contains('anxious') ||
+            mood.toLowerCase().contains('fearful') ||
+            mood.toLowerCase().contains('angry') ||
+            mood.toLowerCase().contains('sad') ||
+            mood.toLowerCase().contains('confused'));
+
+        if (isNegativeMood) {
+          await _supabaseService.createNotification(
+            title: 'Mood Pattern Alert',
+            message:
+                'You\'ve been feeling $moodsList. Would you like to try some calming exercises?',
+            type: 'reminder',
+            relatedScreen: 'calendar',
+            relatedId: logToSync?.id,
+          );
+        } else {
+          // Positive mood notification
+          await _supabaseService.createNotification(
+            title: 'Positive Mood Logged',
+            message:
+                'Great to see you feeling $moodsList today! Keep up the good vibes.',
+            type: 'log',
+            relatedScreen: 'calendar',
+            relatedId: logToSync?.id,
+          );
+        }
         notificationCreated = true;
       }
 
@@ -482,6 +518,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _showFeelingsDialog([DailyLog? existingLog]) {
     if (_selectedDay == null) return;
+
+    // Prevent logging for future dates (only for new logs, allow editing existing logs)
+    if (existingLog == null && _isFutureDate(_selectedDay!)) {
+      _showFutureDateError();
+      return;
+    }
 
     final List<String> moods = [
       'Happy',
@@ -1350,45 +1392,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.more_vert,
-              color: Color(0xFF007AFF),
-              size: 22,
-            ),
-            onSelected: (String value) {
-              if (value == 'clear_all') {
-                _showClearAllDialog();
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem<String>(
-                value: 'clear_all',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_sweep, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Clear All Logs'),
-                  ],
-                ),
+          // Emphasized calendar view toggle button
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF007AFF).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF007AFF).withOpacity(0.3),
+                width: 1,
               ),
-            ],
-          ),
-          IconButton(
-            icon: Icon(
-              _calendarFormat == CalendarFormat.month
-                  ? Icons.view_week_rounded
-                  : Icons.calendar_view_month_rounded,
-              color: const Color(0xFF007AFF),
-              size: 22,
             ),
-            onPressed: () {
-              setState(() {
-                _calendarFormat = _calendarFormat == CalendarFormat.month
-                    ? CalendarFormat.week
-                    : CalendarFormat.month;
-              });
-            },
+            child: IconButton(
+              icon: Icon(
+                _calendarFormat == CalendarFormat.month
+                    ? Icons.view_week_rounded
+                    : Icons.calendar_view_month_rounded,
+                color: const Color(0xFF007AFF),
+                size: 24,
+              ),
+              tooltip: _calendarFormat == CalendarFormat.month
+                  ? 'Switch to Week View'
+                  : 'Switch to Month View',
+              onPressed: () {
+                setState(() {
+                  _calendarFormat = _calendarFormat == CalendarFormat.month
+                      ? CalendarFormat.week
+                      : CalendarFormat.month;
+                });
+              },
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -1432,6 +1465,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   _focusedDay = DateTime.now();
                 });
               }
+
+              // Check if selected day is in the future
+              if (_isFutureDate(_selectedDay!)) {
+                _showFutureDateError();
+                return;
+              }
+
               _showJournalDialog();
             },
             backgroundColor: Colors.purple,
@@ -1452,6 +1492,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   _focusedDay = DateTime.now();
                 });
               }
+
+              // Check if selected day is in the future
+              if (_isFutureDate(_selectedDay!)) {
+                _showFutureDateError();
+                return;
+              }
+
               _showFeelingsDialog();
             },
             backgroundColor: const Color(0xFF007AFF),
@@ -1486,12 +1533,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: TableCalendar(
         firstDay: DateTime.utc(2021, 1, 1),
-        lastDay: DateTime.utc(2030, 12, 31),
+        lastDay: DateTime.now(), // Prevent future date selection
         focusedDay: _focusedDay,
         calendarFormat: _calendarFormat,
         availableGestures: AvailableGestures.all,
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
         onDaySelected: (selectedDay, focusedDay) {
+          // Prevent selection of future dates
+          if (_isFutureDate(selectedDay)) {
+            _showFutureDateError();
+            return;
+          }
+
           setState(() {
             _selectedDay = selectedDay;
             _focusedDay = focusedDay;
@@ -2154,6 +2207,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   // Add a method to add or edit journal entries for existing logs
   void _addJournalToExistingLog(DailyLog log) {
+    // Prevent editing logs for future dates
+    if (_selectedDay != null && _isFutureDate(_selectedDay!)) {
+      _showFutureDateError();
+      return;
+    }
+
     TextEditingController journalController =
         TextEditingController(text: log.journal);
 
@@ -2340,6 +2399,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   // New method for the standalone journal entry
   void _showJournalDialog() {
     if (_selectedDay == null) return;
+
+    // Prevent logging for future dates
+    if (_isFutureDate(_selectedDay!)) {
+      _showFutureDateError();
+      return;
+    }
 
     TextEditingController journalController = TextEditingController();
     int charCount = 0;
@@ -2579,93 +2644,5 @@ class _CalendarScreenState extends State<CalendarScreen> {
         backgroundColor: Colors.purple,
       ),
     );
-  }
-
-  void _showClearAllDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear All Logs'),
-        content: const Text(
-            'This will permanently delete all your wellness logs from both your device and the cloud. This action cannot be undone.\n\nAre you sure you want to continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _clearAllData();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear All'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _clearAllData() async {
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Clearing all data...'),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      // 1. Clear local storage (SharedPreferences)
-      setState(() {
-        _dailyLogs.clear();
-      });
-      await _saveLogs(); // immediate flush on destructive clear
-
-      // 2. Clear data from Supabase (if user is authenticated)
-      if (_supabaseService.isAuthenticated) {
-        await _supabaseService.clearAllWellnessLogs();
-      }
-
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All logs cleared successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-
-      // Refresh the UI
-      setState(() {});
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-
-      // Show error message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error clearing logs: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-
-      print('Error clearing all data: $e');
-    }
   }
 }

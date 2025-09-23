@@ -412,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 16),
                     _buildHealthOption(
-                      title: 'Health Dashboard',
+                      title: 'Your Wearable',
                       subtitle: 'View real-time health metrics',
                       icon: Icons.dashboard,
                       onTap: () {

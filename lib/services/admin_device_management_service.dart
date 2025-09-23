@@ -17,24 +17,41 @@ class AdminDeviceManagementService {
     try {
       final user = _supabase.auth.currentUser;
       if (user == null) {
+        AppLogger.d('AdminDeviceManagementService: No authenticated user');
         return DeviceAssignmentStatus.notLoggedIn();
       }
 
+      AppLogger.d(
+          'AdminDeviceManagementService: Checking assignment for user: ${user.id}');
+
+      // First, let's see what devices exist in the table
+      final allDevices = await _supabase
+          .from('wearable_devices')
+          .select('device_id, user_id, is_active, status')
+          .limit(5);
+
+      AppLogger.d(
+          'AdminDeviceManagementService: All devices in table: $allDevices');
+
       // Query wearable_devices table managed by admin
+      // Look for ANY device assigned to the current user
       final response = await _supabase
           .from('wearable_devices')
           .select('*')
           .eq('user_id', user.id)
-          .eq('device_id', 'AnxieEase001') // Your testing device
           .maybeSingle();
 
+      AppLogger.d('AdminDeviceManagementService: Query response: $response');
+
       if (response == null) {
+        AppLogger.d('AdminDeviceManagementService: No device assignment found');
         return DeviceAssignmentStatus.notAssigned();
       }
 
       final device = response;
-      final assignmentStatus =
-          device['assignment_status'] as String? ?? 'available';
+      final assignmentStatus = device['status'] as String? ?? 'available';
+      AppLogger.d(
+          'AdminDeviceManagementService: Assignment status: $assignmentStatus');
       final assignedAt = device['assigned_at'] != null
           ? DateTime.parse(device['assigned_at'] as String)
           : null;
@@ -95,7 +112,6 @@ class AdminDeviceManagementService {
           .from('wearable_devices')
           .select('*')
           .eq('user_id', user.id)
-          .eq('device_id', 'AnxieEase001')
           .maybeSingle();
 
       return response;

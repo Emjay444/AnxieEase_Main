@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/device_service.dart';
+import '../services/admin_device_management_service.dart';
 import '../models/health_metrics.dart';
 import '../theme/app_theme.dart';
 import '../config/baseline_config.dart';
@@ -29,12 +30,46 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   bool _isInitialized = false;
   String? _errorMessage;
 
+  // Device assignment checking
+  bool _isCheckingAssignment = true;
+  bool _hasDeviceAssignment = false;
+  String? _assignmentError;
+
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
-    _initializeService();
-    _startPeriodicRefresh();
+    _checkDeviceAssignment();
+  }
+
+  Future<void> _checkDeviceAssignment() async {
+    try {
+      setState(() {
+        _isCheckingAssignment = true;
+        _assignmentError = null;
+      });
+
+      final adminDeviceService = AdminDeviceManagementService();
+      final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
+
+      setState(() {
+        _hasDeviceAssignment = assignmentStatus.isAssigned &&
+            (assignmentStatus.status == 'assigned' ||
+                assignmentStatus.status == 'active');
+        _isCheckingAssignment = false;
+      });
+
+      if (_hasDeviceAssignment) {
+        await _initializeService();
+        _startPeriodicRefresh();
+      }
+    } catch (e) {
+      setState(() {
+        _hasDeviceAssignment = false;
+        _isCheckingAssignment = false;
+        _assignmentError = 'Failed to check device assignment: $e';
+      });
+    }
   }
 
   void _initializeAnimations() {
@@ -132,7 +167,13 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
       appBar: _buildAppBar(),
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: _isInitialized ? _buildDashboard() : _buildLoadingView(),
+        child: _isCheckingAssignment
+            ? _buildCheckingAssignmentView()
+            : !_hasDeviceAssignment
+                ? _buildNoDeviceAssignmentView()
+                : _isInitialized
+                    ? _buildDashboard()
+                    : _buildLoadingView(),
       ),
     );
   }
@@ -142,7 +183,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
 
     return AppBar(
       title: const Text(
-        'Health Dashboard',
+        'Your Wearable',
         style: TextStyle(
           fontWeight: FontWeight.w600,
           color: Colors.white,
@@ -201,7 +242,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
           ),
           SizedBox(height: 16),
           Text(
-            'Initializing health dashboard...',
+            'Initializing your wearable...',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey,
@@ -1023,5 +1064,145 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
       default:
         return 'Unknown';
     }
+  }
+
+  Widget _buildCheckingAssignmentView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Checking Device Assignment...',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Please wait while we verify your device access.',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoDeviceAssignmentView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.dashboard_outlined,
+                size: 64,
+                color: Colors.orange.shade600,
+              ),
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'No Device Assigned',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'You need to have a wearable device assigned by an administrator to access your wearable dashboard.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.black54,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (_assignmentError != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(
+                  _assignmentError!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.red.shade700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _checkDeviceAssignment(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Check Again',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Go Back',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

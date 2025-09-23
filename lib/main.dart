@@ -39,6 +39,23 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
+// Top-level static method to handle background notification actions
+@pragma("vm:entry-point")
+Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
+  debugPrint('📱 Background AwesomeNotification action received: ${receivedAction.payload}');
+  
+  // Handle navigation or actions here
+  final payload = receivedAction.payload;
+  if (payload != null && payload['type'] == 'reminder' && payload['related_screen'] == 'breathing_screen') {
+    debugPrint('🫁 Background breathing exercise reminder action received');
+    
+    // Try to navigate if the app context is available
+    if (rootNavigatorKey.currentState != null) {
+      rootNavigatorKey.currentState?.pushNamed('/breathing');
+    }
+  }
+}
+
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -138,11 +155,41 @@ Future<void> _initializeRemainingServices(
     NotificationService notificationService,
     IoTSensorService iotSensorService) async {
   try {
+    // Add frame break to prevent UI blocking
+    await Future.delayed(Duration.zero);
+    
     // Clear only old notifications on app startup, preserve recent severity alerts
     await _clearNotificationsOnAppStartup();
 
+    // Add another frame break
+    await Future.delayed(Duration.zero);
+
     // Initialize notification service
     await notificationService.initialize();
+
+    // Add frame break to let UI breathe
+    await Future.delayed(Duration.zero);
+
+    // Set up AwesomeNotifications action listener for breathing exercise navigation
+    AwesomeNotifications().setListeners(
+      onActionReceivedMethod: onActionNotificationMethod, // Use the top-level static method
+      onNotificationCreatedMethod:
+          (ReceivedNotification receivedNotification) async {
+        debugPrint(
+            '📝 AwesomeNotification created: ${receivedNotification.title}');
+      },
+      onNotificationDisplayedMethod:
+          (ReceivedNotification receivedNotification) async {
+        debugPrint(
+            '📺 AwesomeNotification displayed: ${receivedNotification.title}');
+      },
+      onDismissActionReceivedMethod: (ReceivedAction receivedAction) async {
+        debugPrint('🗑️ AwesomeNotification dismissed: ${receivedAction.id}');
+      },
+    );
+
+    // Add frame break after notification setup
+    await Future.delayed(Duration.zero);
 
     // Enable Firebase listener for foreground notifications when app is open
     // This handles direct Firebase data changes (like manual severity updates)
@@ -152,25 +199,39 @@ Future<void> _initializeRemainingServices(
     // Cloud Functions handle real-time notifications now
     // BackgroundPollingService.startPolling(intervalSeconds: 60);
 
+    // Add frame break before permission requests
+    await Future.delayed(Duration.zero);
+
     // Request notification permissions
     final isAllowed = await notificationService.checkNotificationPermissions();
     if (!isAllowed) {
       await notificationService.requestNotificationPermissions();
     }
 
-    // Initialize storage service
-    await StorageService().init();
+    // Add frame break after permissions
+    await Future.delayed(Duration.zero);
+
+    // Initialize storage service with frame break and timeout handling
+    try {
+      await Future.any([
+        StorageService().init(),
+        Future.delayed(const Duration(seconds: 5), () {
+          AppLogger.w('! StorageService initialization timed out, continuing anyway');
+        })
+      ]);
+    } catch (e) {
+      AppLogger.w('StorageService initialization failed: $e, continuing anyway');
+    }
+    await Future.delayed(Duration.zero);
 
     // Initialize device manager (but don't auto-start sensors for real device mode)
     await iotSensorService.initialize();
+    await Future.delayed(Duration.zero);
 
     // REAL DEVICE MODE: Don't auto-start mock data generation
-    // Stop any mock data generation and prepare for real device
-    iotSensorService.enableMockDataGeneration(false);
-    await iotSensorService.stopSensors();
     // If you need to test without real device, manually call:
     // iotSensorService.enableMockDataGeneration(true);
-    // await iotSensorService.startSensors();
+    // iotSensorService.startSensors();
     AppLogger.i(
         'IoT Service initialized - mock data generation disabled for real device use');
 
@@ -197,7 +258,7 @@ Future<void> _clearNotificationsOnAppStartup() async {
       return;
     }
 
-    // Set a timeout for this operation
+    // Set a timeout for this operation and add frame break
     await Future.any([
       _doClearNotifications(supabaseService),
       Future.delayed(const Duration(seconds: 3), () {
@@ -205,6 +266,9 @@ Future<void> _clearNotificationsOnAppStartup() async {
         // Don't throw exception, just continue
       })
     ]);
+    
+    // Add frame break after clearing notifications
+    await Future.delayed(Duration.zero);
   } catch (e) {
     AppLogger.e('Error clearing old notifications on startup', e as Object?);
     // Don't rethrow - allow the app to continue even if clearing fails
@@ -631,9 +695,44 @@ Future<void> _configureFCM() async {
             '📥 Foreground FCM received: ${notification?.title} - ${notification?.body}');
         debugPrint('📊 FCM data: $data');
 
-        // Check if this is a wellness reminder
+        // Check if this is a wellness reminder or breathing exercise reminder
         final messageType = data['type'] ?? '';
-        if (messageType == 'wellness_reminder' ||
+        if (messageType == 'reminder' &&
+            (notification?.title?.contains('Breathing Exercise') == true ||
+                notification?.title?.contains('🫁') == true ||
+                data['related_screen'] == 'breathing_screen')) {
+          // Handle breathing exercise reminder
+          debugPrint('🫁 Breathing exercise reminder FCM received');
+
+          // Inline banner for instant feedback
+          _showInAppBanner(
+            title: notification?.title ?? '🫁 Breathing Exercise Reminder',
+            body: notification?.body ??
+                'Time for a breathing exercise! Take a moment to relax and breathe.',
+            color: Colors.blue,
+            icon: Icons.air,
+            actionLabel: 'Breathe',
+            onAction: () {
+              // Navigate to breathing screen
+              rootNavigatorKey.currentState?.pushNamed('/breathing');
+            },
+          );
+
+          // Also post a system notification as a fallback
+          final notificationService = NotificationService();
+          await notificationService.initialize();
+          await AwesomeNotifications().createNotification(
+            content: NotificationContent(
+              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              channelKey: 'wellness_reminders',
+              title: notification?.title ?? '🫁 Breathing Exercise Reminder',
+              body: notification?.body ??
+                  'Time for a breathing exercise! Take a moment to relax and breathe.',
+              notificationLayout: NotificationLayout.Default,
+              category: NotificationCategory.Reminder,
+            ),
+          );
+        } else if (messageType == 'wellness_reminder' ||
             notification?.title?.contains('Wellness') == true ||
             notification?.title?.contains('Anxiety Check-in') == true) {
           // Debug the timing
@@ -698,14 +797,62 @@ Future<void> _configureFCM() async {
     // When a notification is tapped and opens the app (foreground/background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint('📬 Notification tap opened app. Data: ${message.data}');
-      // Optionally: navigate based on severity/type using a navigatorKey
+
+      // Handle navigation based on message type
+      final messageType = message.data['type'] ?? '';
+      final relatedScreen = message.data['related_screen'] ?? '';
+
+      if ((messageType == 'reminder' && relatedScreen == 'breathing_screen') ||
+          message.notification?.title?.contains('Breathing Exercise') == true ||
+          message.notification?.title?.contains('🫁') == true) {
+        debugPrint('🫁 Navigating to breathing screen from notification tap');
+        rootNavigatorKey.currentState?.pushNamed('/breathing');
+      } else if (messageType == 'wellness_reminder') {
+        debugPrint(
+            '🍃 Navigating to breathing screen from wellness notification tap');
+        final dest = (message.data['action'] ?? 'breathing').toString();
+        final route = dest.contains('ground') ? '/grounding' : '/breathing';
+        rootNavigatorKey.currentState?.pushNamed(route);
+      } else if (messageType == 'anxiety_alert') {
+        debugPrint('⚠️ Navigating to notifications from anxiety alert tap');
+        rootNavigatorKey.currentState?.pushNamed('/notifications');
+      } else {
+        debugPrint(
+            '📱 Default navigation handling for message type: $messageType');
+      }
     });
 
     // If app was launched from a terminated state by tapping a notification
     final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMsg != null) {
       debugPrint('🚀 App launched from notification. Data: ${initialMsg.data}');
-      // Optionally: navigate to a screen based on payload
+
+      // Handle navigation based on message type when app launches from notification
+      final messageType = initialMsg.data['type'] ?? '';
+      final relatedScreen = initialMsg.data['related_screen'] ?? '';
+
+      // Use a slight delay to ensure the app is fully initialized
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if ((messageType == 'reminder' &&
+                relatedScreen == 'breathing_screen') ||
+            initialMsg.notification?.title?.contains('Breathing Exercise') ==
+                true ||
+            initialMsg.notification?.title?.contains('🫁') == true) {
+          debugPrint(
+              '🫁 App launched from breathing exercise notification - navigating to breathing screen');
+          rootNavigatorKey.currentState?.pushNamed('/breathing');
+        } else if (messageType == 'wellness_reminder') {
+          debugPrint(
+              '🍃 App launched from wellness notification - navigating to breathing screen');
+          final dest = (initialMsg.data['action'] ?? 'breathing').toString();
+          final route = dest.contains('ground') ? '/grounding' : '/breathing';
+          rootNavigatorKey.currentState?.pushNamed(route);
+        } else if (messageType == 'anxiety_alert') {
+          debugPrint(
+              '⚠️ App launched from anxiety alert - navigating to notifications');
+          rootNavigatorKey.currentState?.pushNamed('/notifications');
+        }
+      });
     }
   } catch (e) {
     debugPrint('❌ Error configuring FCM: $e');

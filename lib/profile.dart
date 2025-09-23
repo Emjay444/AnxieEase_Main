@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'dart:io';
@@ -237,6 +238,27 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Show date picker to select birth date
   // Date picker removed; birthdate is fixed after registration.
+
+  // Phone number validation function
+  String? _validatePhoneNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Required';
+    }
+
+    final phone = value.trim();
+
+    // Check if it contains only digits
+    if (!RegExp(r'^[0-9]+$').hasMatch(phone)) {
+      return 'Only numbers allowed';
+    }
+
+    // Check if it's exactly 11 digits
+    if (phone.length != 11) {
+      return 'Must be exactly 11 digits';
+    }
+
+    return null;
+  }
 
   @override
   void dispose() {
@@ -493,18 +515,22 @@ class _ProfilePageState extends State<ProfilePage> {
                                   icon: Icons.phone_outlined,
                                   controller: _contactNumberController,
                                   keyboardType: TextInputType.phone,
-                                  validator: (v) => (v == null || v.isEmpty)
-                                      ? 'Required'
-                                      : null,
+                                  validator: _validatePhoneNumber,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(11),
+                                  ],
                                 ),
                                 _field(
                                   label: 'Emergency Contact',
                                   icon: Icons.contact_phone_outlined,
                                   controller: _emergencyContactController,
                                   keyboardType: TextInputType.phone,
-                                  validator: (v) => (v == null || v.isEmpty)
-                                      ? 'Required'
-                                      : null,
+                                  validator: _validatePhoneNumber,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(11),
+                                  ],
                                 ),
                                 _fixedInfoRow(
                                   label: 'Email',
@@ -737,12 +763,14 @@ class _ProfilePageState extends State<ProfilePage> {
     String? Function(String?)? validator,
     TextInputType? keyboardType,
     bool enabled = true,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return TextFormField(
       controller: controller,
       validator: validator,
       keyboardType: keyboardType,
       enabled: enabled && _isEditing && label != 'Email',
+      inputFormatters: inputFormatters,
       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
       decoration: _decoration(label, icon),
     );
