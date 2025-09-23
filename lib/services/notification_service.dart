@@ -601,7 +601,8 @@ class NotificationService extends ChangeNotifier {
       // Check if user is authenticated before scheduling reminders
       final user = _supabaseService.client.auth.currentUser;
       if (user == null) {
-        debugPrint('User not authenticated - skipping anxiety reminder scheduling');
+        debugPrint(
+            'User not authenticated - skipping anxiety reminder scheduling');
         return;
       }
 
@@ -710,12 +711,14 @@ class NotificationService extends ChangeNotifier {
     if (user != null) {
       await _supabaseService.createNotification(
         title: message['title'] ?? 'Anxiety Check-in',
-        message: message['body'] ?? 'Take a moment to check how you\'re feeling.',
+        message:
+            message['body'] ?? 'Take a moment to check how you\'re feeling.',
         type: 'reminder',
         relatedScreen: 'breathing',
       );
     } else {
-      debugPrint('User not authenticated - skipping Supabase notification record');
+      debugPrint(
+          'User not authenticated - skipping Supabase notification record');
     }
 
     // Schedule the next notification with a new ID

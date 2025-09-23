@@ -42,13 +42,16 @@ final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
 // Top-level static method to handle background notification actions
 @pragma("vm:entry-point")
 Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
-  debugPrint('📱 Background AwesomeNotification action received: ${receivedAction.payload}');
-  
+  debugPrint(
+      '📱 Background AwesomeNotification action received: ${receivedAction.payload}');
+
   // Handle navigation or actions here
   final payload = receivedAction.payload;
-  if (payload != null && payload['type'] == 'reminder' && payload['related_screen'] == 'breathing_screen') {
+  if (payload != null &&
+      payload['type'] == 'reminder' &&
+      payload['related_screen'] == 'breathing_screen') {
     debugPrint('🫁 Background breathing exercise reminder action received');
-    
+
     // Try to navigate if the app context is available
     if (rootNavigatorKey.currentState != null) {
       rootNavigatorKey.currentState?.pushNamed('/breathing');
@@ -157,7 +160,7 @@ Future<void> _initializeRemainingServices(
   try {
     // Add frame break to prevent UI blocking
     await Future.delayed(Duration.zero);
-    
+
     // Clear only old notifications on app startup, preserve recent severity alerts
     await _clearNotificationsOnAppStartup();
 
@@ -172,7 +175,8 @@ Future<void> _initializeRemainingServices(
 
     // Set up AwesomeNotifications action listener for breathing exercise navigation
     AwesomeNotifications().setListeners(
-      onActionReceivedMethod: onActionNotificationMethod, // Use the top-level static method
+      onActionReceivedMethod:
+          onActionNotificationMethod, // Use the top-level static method
       onNotificationCreatedMethod:
           (ReceivedNotification receivedNotification) async {
         debugPrint(
@@ -216,11 +220,13 @@ Future<void> _initializeRemainingServices(
       await Future.any([
         StorageService().init(),
         Future.delayed(const Duration(seconds: 5), () {
-          AppLogger.w('! StorageService initialization timed out, continuing anyway');
+          AppLogger.w(
+              '! StorageService initialization timed out, continuing anyway');
         })
       ]);
     } catch (e) {
-      AppLogger.w('StorageService initialization failed: $e, continuing anyway');
+      AppLogger.w(
+          'StorageService initialization failed: $e, continuing anyway');
     }
     await Future.delayed(Duration.zero);
 
@@ -266,7 +272,7 @@ Future<void> _clearNotificationsOnAppStartup() async {
         // Don't throw exception, just continue
       })
     ]);
-    
+
     // Add frame break after clearing notifications
     await Future.delayed(Duration.zero);
   } catch (e) {
