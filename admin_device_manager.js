@@ -8,7 +8,7 @@ const admin = require('firebase-admin');
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(), // or use service account
-    databaseURL: "https://anxieease-sensors-default-rtdb.firebaseio.com"
+    databaseURL: "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app"
   });
 }
 

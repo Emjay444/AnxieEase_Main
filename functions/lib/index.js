@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -17,6 +17,12 @@ Object.defineProperty(exports, "copyDeviceCurrentToUserSession", { enumerable: t
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
 Object.defineProperty(exports, "getDeviceAssignment", { enumerable: true, get: function () { return deviceDataCopyService_1.getDeviceAssignment; } });
 Object.defineProperty(exports, "cleanupOldSessions", { enumerable: true, get: function () { return deviceDataCopyService_1.cleanupOldSessions; } });
+// Import auto history creator
+var autoHistoryCreator_1 = require("./autoHistoryCreator");
+Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, get: function () { return autoHistoryCreator_1.autoCreateDeviceHistory; } });
+// Import real-time sustained anxiety detection
+var realTimeSustainedAnxietyDetection_1 = require("./realTimeSustainedAnxietyDetection");
+Object.defineProperty(exports, "realTimeSustainedAnxietyDetection", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.realTimeSustainedAnxietyDetection; } });
 // Cloud Function to send FCM notifications when anxiety severity changes
 exports.onAnxietySeverityChangeV2 = functions.database
     .ref("/devices/AnxieEase001/current")

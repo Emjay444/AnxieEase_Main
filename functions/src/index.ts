@@ -20,6 +20,16 @@ export {
   cleanupOldSessions
 } from "./deviceDataCopyService";
 
+// Import auto history creator
+export {
+  autoCreateDeviceHistory
+} from "./autoHistoryCreator";
+
+// Import real-time sustained anxiety detection
+export {
+  realTimeSustainedAnxietyDetection
+} from "./realTimeSustainedAnxietyDetection";
+
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database
   .ref("/devices/AnxieEase001/current")

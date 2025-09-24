@@ -20,9 +20,11 @@ import 'theme/app_theme.dart';
 import 'screens/notifications_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'grounding_screen.dart';
 import 'screens/device_linking_screen.dart';
 import 'screens/device_setup_wizard_screen.dart';
@@ -670,6 +672,21 @@ Future<void> _configureFCM() async {
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
       debugPrint('🔑 FCM registration token: $token');
+
+      // Store FCM token in Firebase for Cloud Functions to use
+      try {
+        final userId = Supabase.instance.client.auth.currentUser?.id;
+        if (userId != null) {
+          await FirebaseDatabase.instance
+              .ref('/users/$userId/fcmToken')
+              .set(token);
+          debugPrint('✅ FCM token stored in Firebase for user: $userId');
+        } else {
+          debugPrint('⚠️ No current Supabase user found, FCM token not stored');
+        }
+      } catch (e) {
+        debugPrint('❌ Failed to store FCM token: $e');
+      }
 
       // Subscribe to anxiety alerts topic for push notifications
       try {
