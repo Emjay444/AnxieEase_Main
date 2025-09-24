@@ -24,12 +24,14 @@ While your Flutter app is building, here's the exact order to test everything:
 **This tests if FCM works at all:**
 
 1. **Edit `test_direct_notification.js`**:
+
    ```javascript
    // Line 22: Replace with your copied FCM token
    const USER_FCM_TOKEN = "your_real_token_here";
    ```
 
 2. **Run the test**:
+
    ```bash
    node test_direct_notification.js
    ```
@@ -55,15 +57,17 @@ While your Flutter app is building, here's the exact order to test everything:
 
 1. **Get User ID** from admin dashboard (the UUID of assigned user)
 2. **Edit `test_real_user_anxiety_detection.js`**:
+
    ```javascript
    // Line 29: Your FCM token from Step 1
    const USER_FCM_TOKEN = "your_real_token";
-   
-   // Line 30: User ID from admin dashboard  
+
+   // Line 30: User ID from admin dashboard
    const TEST_USER_ID = "uuid-from-admin-dashboard";
    ```
 
 3. **Run the test**:
+
    ```bash
    node test_real_user_anxiety_detection.js
    ```
@@ -92,7 +96,7 @@ This shows you exactly what data is stored in Firebase.
 # Test 1: Direct notification
 node test_direct_notification.js
 
-# Test 2: Debug what's in Firebase  
+# Test 2: Debug what's in Firebase
 node debug_firebase_data.js
 
 # Test 3: Full anxiety detection
@@ -104,12 +108,14 @@ node test_real_user_anxiety_detection.js
 ## **🎯 What to Expect**
 
 ### **✅ If Everything Works**:
+
 1. Direct notification appears on your phone
-2. Admin dashboard shows device assignment  
+2. Admin dashboard shows device assignment
 3. Anxiety test sends personalized alert
 4. Firebase shows user data under `/users/[USER_ID]/`
 
 ### **❌ Common Issues & Quick Fixes**:
+
 - **No FCM token**: Check Flutter console logs
 - **Token invalid**: Get fresh token from app
 - **No notification**: Check phone notification settings

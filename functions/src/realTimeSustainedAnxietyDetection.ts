@@ -13,11 +13,17 @@ export const realTimeSustainedAnxietyDetection = functions.database
   .onUpdate(async (change, context) => {
     const deviceId = context.params.deviceId;
     const afterData = change.after.val();
-    
-    console.log(`🔍 Device ${deviceId} data updated, checking for user assignment`);
+
+    console.log(
+      `🔍 Device ${deviceId} data updated, checking for user assignment`
+    );
 
     // Validate required data
-    if (!afterData || !afterData.heartRate || typeof afterData.heartRate !== 'number') {
+    if (
+      !afterData ||
+      !afterData.heartRate ||
+      typeof afterData.heartRate !== "number"
+    ) {
       console.log("❌ Missing or invalid heart rate data");
       return null;
     }
@@ -26,9 +32,11 @@ export const realTimeSustainedAnxietyDetection = functions.database
       // STEP 1: Check if device is assigned to a user
       const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
       const assignmentSnapshot = await assignmentRef.once("value");
-      
+
       if (!assignmentSnapshot.exists()) {
-        console.log(`⚠️ Device ${deviceId} not assigned to any user - skipping anxiety detection`);
+        console.log(
+          `⚠️ Device ${deviceId} not assigned to any user - skipping anxiety detection`
+        );
         return null;
       }
 
@@ -40,29 +48,39 @@ export const realTimeSustainedAnxietyDetection = functions.database
 
       const userId = assignment.assignedUser;
       const sessionId = assignment.activeSessionId;
-      
-      console.log(`👤 Device assigned to user: ${userId}, session: ${sessionId}`);
+
+      console.log(
+        `👤 Device assigned to user: ${userId}, session: ${sessionId}`
+      );
 
       // STEP 2: Get user's personal baseline from Supabase
       const userBaseline = await getUserBaseline(userId, deviceId);
       if (!userBaseline || !userBaseline.baselineHR) {
-        console.log(`⚠️ No baseline found for user ${userId} - skipping anxiety detection`);
+        console.log(
+          `⚠️ No baseline found for user ${userId} - skipping anxiety detection`
+        );
         return null;
       }
 
       console.log(`📊 User baseline: ${userBaseline.baselineHR} BPM`);
 
       // STEP 3: Get user's recent session history (not device history!)
-      const userHistoryData = await getUserSessionHistory(userId, sessionId, 40);
-      
+      const userHistoryData = await getUserSessionHistory(
+        userId,
+        sessionId,
+        40
+      );
+
       if (userHistoryData.length < 3) {
-        console.log(`⚠️ Not enough user session history (${userHistoryData.length} points) for sustained detection`);
+        console.log(
+          `⚠️ Not enough user session history (${userHistoryData.length} points) for sustained detection`
+        );
         return null;
       }
 
       // STEP 4: Analyze for sustained anxiety using USER-SPECIFIC data
       const sustainedAnalysis = analyzeUserSustainedAnxiety(
-        userHistoryData, 
+        userHistoryData,
         userBaseline.baselineHR,
         afterData,
         userId
@@ -71,8 +89,10 @@ export const realTimeSustainedAnxietyDetection = functions.database
       if (sustainedAnalysis.isSustained) {
         console.log(`🚨 SUSTAINED ANXIETY DETECTED FOR USER ${userId}`);
         console.log(`📊 Duration: ${sustainedAnalysis.sustainedSeconds}s`);
-        console.log(`💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`);
-        
+        console.log(
+          `💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`
+        );
+
         // STEP 5: Send FCM notification to SPECIFIC USER
         return await sendUserAnxietyAlert({
           userId: userId,
@@ -82,14 +102,15 @@ export const realTimeSustainedAnxietyDetection = functions.database
           heartRate: sustainedAnalysis.averageHR,
           baseline: userBaseline.baselineHR,
           duration: sustainedAnalysis.sustainedSeconds,
-          reason: sustainedAnalysis.reason
+          reason: sustainedAnalysis.reason,
         });
       } else {
-        console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 30s required)`);
+        console.log(
+          `✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 30s required)`
+        );
       }
 
       return null;
-
     } catch (error) {
       console.error("❌ Error in user-specific anxiety detection:", error);
       return null;
@@ -99,27 +120,35 @@ export const realTimeSustainedAnxietyDetection = functions.database
 /**
  * Get user's session history data (from user sessions, not raw device data)
  */
-async function getUserSessionHistory(userId: string, sessionId: string, seconds: number): Promise<Array<{
-  timestamp: number;
-  heartRate: number;
-  spo2?: number;
-  bodyTemp?: number;
-  worn?: number;
-}>> {
+async function getUserSessionHistory(
+  userId: string,
+  sessionId: string,
+  seconds: number
+): Promise<
+  Array<{
+    timestamp: number;
+    heartRate: number;
+    spo2?: number;
+    bodyTemp?: number;
+    worn?: number;
+  }>
+> {
   const userSessionRef = db.ref(`/users/${userId}/sessions/${sessionId}/data`);
-  const cutoffTime = Date.now() - (seconds * 1000);
-  
+  const cutoffTime = Date.now() - seconds * 1000;
+
   try {
     const snapshot = await userSessionRef
       .orderByChild("timestamp")
       .startAt(cutoffTime)
       .once("value");
-    
+
     if (!snapshot.exists()) {
-      console.log(`📊 No user session history found for ${userId}/${sessionId} in last ${seconds}s`);
+      console.log(
+        `📊 No user session history found for ${userId}/${sessionId} in last ${seconds}s`
+      );
       return [];
     }
-    
+
     const historyData: any[] = [];
     snapshot.forEach((childSnapshot) => {
       const data = childSnapshot.val();
@@ -129,17 +158,18 @@ async function getUserSessionHistory(userId: string, sessionId: string, seconds:
           heartRate: data.heartRate,
           spo2: data.spo2,
           bodyTemp: data.bodyTemp,
-          worn: data.worn || 1
+          worn: data.worn || 1,
         });
       }
     });
-    
+
     // Sort by timestamp (most recent first)
     historyData.sort((a, b) => b.timestamp - a.timestamp);
-    
-    console.log(`📊 Retrieved ${historyData.length} user session history points for analysis`);
+
+    console.log(
+      `📊 Retrieved ${historyData.length} user session history points for analysis`
+    );
     return historyData;
-    
   } catch (error) {
     console.error("❌ Error fetching user session history:", error);
     return [];
@@ -149,29 +179,39 @@ async function getUserSessionHistory(userId: string, sessionId: string, seconds:
 /**
  * Analyze sustained anxiety using USER-SPECIFIC data and baselines
  */
-function analyzeUserSustainedAnxiety(userHistoryData: any[], baselineHR: number, currentData: any, userId: string) {
+function analyzeUserSustainedAnxiety(
+  userHistoryData: any[],
+  baselineHR: number,
+  currentData: any,
+  userId: string
+) {
   if (userHistoryData.length < 3) {
     return { isSustained: false, durationSeconds: 0 };
   }
 
   // User-specific anxiety threshold (20% above their personal baseline)
-  const anxietyThreshold = baselineHR * 1.20;
+  const anxietyThreshold = baselineHR * 1.2;
   const now = Date.now();
-  
-  console.log(`📊 User ${userId} analysis: threshold=${anxietyThreshold} BPM, current=${currentData.heartRate} BPM`);
-  
+
+  console.log(
+    `📊 User ${userId} analysis: threshold=${anxietyThreshold} BPM, current=${currentData.heartRate} BPM`
+  );
+
   // Include current data point and sort by timestamp
-  const allData = [{ ...currentData, timestamp: now }, ...userHistoryData]
-    .sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically (oldest first)
-  
-  console.log(`📊 Analyzing ${allData.length} data points chronologically for user ${userId}`);
-  
+  const allData = [{ ...currentData, timestamp: now }, ...userHistoryData].sort(
+    (a, b) => a.timestamp - b.timestamp
+  ); // Sort chronologically (oldest first)
+
+  console.log(
+    `📊 Analyzing ${allData.length} data points chronologically for user ${userId}`
+  );
+
   // Find the longest continuous elevated period
   let longestSustainedDuration = 0;
   let currentSustainedStart = null;
   let currentElevatedPoints: any[] = [];
   let bestElevatedPoints: any[] = [];
-  
+
   for (const point of allData) {
     if (point.heartRate >= anxietyThreshold && point.worn !== 0) {
       // Heart rate is elevated
@@ -183,59 +223,78 @@ function analyzeUserSustainedAnxiety(userHistoryData: any[], baselineHR: number,
     } else {
       // Heart rate dropped below threshold - check if this was our best sustained period
       if (currentSustainedStart !== null) {
-        const sustainedDuration = (point.timestamp - currentSustainedStart) / 1000;
-        console.log(`📊 User ${userId}: Found elevated period of ${sustainedDuration}s (${currentElevatedPoints.length} points)`);
-        
+        const sustainedDuration =
+          (point.timestamp - currentSustainedStart) / 1000;
+        console.log(
+          `📊 User ${userId}: Found elevated period of ${sustainedDuration}s (${currentElevatedPoints.length} points)`
+        );
+
         if (sustainedDuration > longestSustainedDuration) {
           longestSustainedDuration = sustainedDuration;
           bestElevatedPoints = [...currentElevatedPoints];
         }
       }
-      
+
       // Reset for next potential period
       currentSustainedStart = null;
       currentElevatedPoints = [];
     }
   }
-  
+
   // Check if the current ongoing period is still elevated (might be our longest)
   if (currentSustainedStart !== null) {
     // For ongoing periods, use the latest data point's timestamp, not current time
-    const latestTimestamp = Math.max(...allData.map(p => p.timestamp));
-    const ongoingSustainedDuration = (latestTimestamp - currentSustainedStart) / 1000;
-    console.log(`📊 User ${userId}: Current ongoing elevated period: ${ongoingSustainedDuration}s (${currentElevatedPoints.length} points)`);
-    
+    const latestTimestamp = Math.max(...allData.map((p) => p.timestamp));
+    const ongoingSustainedDuration =
+      (latestTimestamp - currentSustainedStart) / 1000;
+    console.log(
+      `📊 User ${userId}: Current ongoing elevated period: ${ongoingSustainedDuration}s (${currentElevatedPoints.length} points)`
+    );
+
     if (ongoingSustainedDuration > longestSustainedDuration) {
       longestSustainedDuration = ongoingSustainedDuration;
       bestElevatedPoints = [...currentElevatedPoints];
     }
   }
-  
+
   // Check if we have 30+ seconds of sustained elevation
   if (longestSustainedDuration >= 30 && bestElevatedPoints.length > 0) {
-    const avgHR = bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) / bestElevatedPoints.length;
-    const percentageAbove = Math.round(((avgHR - baselineHR) / baselineHR) * 100);
-    
-    console.log(`🚨 User ${userId}: SUSTAINED ANXIETY DETECTED! ${longestSustainedDuration}s at avg ${avgHR} BPM`);
-    
+    const avgHR =
+      bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
+      bestElevatedPoints.length;
+    const percentageAbove = Math.round(
+      ((avgHR - baselineHR) / baselineHR) * 100
+    );
+
+    console.log(
+      `🚨 User ${userId}: SUSTAINED ANXIETY DETECTED! ${longestSustainedDuration}s at avg ${avgHR} BPM`
+    );
+
     return {
       isSustained: true,
       sustainedSeconds: Math.floor(longestSustainedDuration),
       averageHR: Math.round(avgHR),
       percentageAbove: percentageAbove,
       severity: getSeverityLevel(avgHR, baselineHR),
-      reason: `User ${userId}: Heart rate sustained ${percentageAbove}% above personal baseline for ${Math.floor(longestSustainedDuration)}+ seconds`
+      reason: `User ${userId}: Heart rate sustained ${percentageAbove}% above personal baseline for ${Math.floor(
+        longestSustainedDuration
+      )}+ seconds`,
     };
   }
-  
-  console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 30s required)`);
-  
-  return { 
-    isSustained: false, 
+
+  console.log(
+    `✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 30s required)`
+  );
+
+  return {
+    isSustained: false,
     durationSeconds: Math.floor(longestSustainedDuration),
-    reason: longestSustainedDuration > 0 ? 
-      `User ${userId}: Elevated for ${Math.floor(longestSustainedDuration)}s (need 30s)` : 
-      `User ${userId}: HR within normal range`
+    reason:
+      longestSustainedDuration > 0
+        ? `User ${userId}: Elevated for ${Math.floor(
+            longestSustainedDuration
+          )}s (need 30s)`
+        : `User ${userId}: HR within normal range`,
   };
 }
 
@@ -244,7 +303,7 @@ function analyzeUserSustainedAnxiety(userHistoryData: any[], baselineHR: number,
  */
 function getSeverityLevel(heartRate: number, baseline: number): string {
   const percentageAbove = ((heartRate - baseline) / baseline) * 100;
-  
+
   if (percentageAbove >= 50) return "severe";
   if (percentageAbove >= 30) return "moderate";
   return "mild";
@@ -254,12 +313,14 @@ function getSeverityLevel(heartRate: number, baseline: number): string {
  * Send FCM notification to specific user
  */
 async function sendUserAnxietyAlert(alertData: any) {
-  console.log(`🔔 Sending anxiety alert notification to user ${alertData.userId}`);
-  
+  console.log(
+    `🔔 Sending anxiety alert notification to user ${alertData.userId}`
+  );
+
   try {
     // Get user's FCM token from Supabase or Firebase
     const fcmToken = await getUserFCMToken(alertData.userId);
-    
+
     if (!fcmToken) {
       console.log(`⚠️ No FCM token found for user ${alertData.userId}`);
       return null;
@@ -280,27 +341,32 @@ async function sendUserAnxietyAlert(alertData: any) {
         severity: alertData.severity,
         heartRate: alertData.heartRate.toString(),
         baseline: alertData.baseline.toString(),
-        duration: alertData.duration.toString()
+        duration: alertData.duration.toString(),
       },
       android: {
         priority: "high" as const,
         notification: {
           color: notificationContent.color,
-          sound: "anxiety_alert"
-        }
-      }
+          sound: "anxiety_alert",
+        },
+      },
     };
 
     const response = await admin.messaging().send(message);
-    console.log(`✅ Notification sent successfully to user ${alertData.userId}:`, response);
-    
+    console.log(
+      `✅ Notification sent successfully to user ${alertData.userId}:`,
+      response
+    );
+
     // Store alert in user's personal history
     await storeUserAnxietyAlert(alertData);
-    
+
     return response;
-    
   } catch (error) {
-    console.error(`❌ Error sending anxiety notification to user ${alertData.userId}:`, error);
+    console.error(
+      `❌ Error sending anxiety notification to user ${alertData.userId}:`,
+      error
+    );
     return null;
   }
 }
@@ -312,11 +378,11 @@ async function getUserFCMToken(userId: string): Promise<string | null> {
   // First try Firebase user profile
   const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
   const tokenSnapshot = await userTokenRef.once("value");
-  
+
   if (tokenSnapshot.exists()) {
     return tokenSnapshot.val();
   }
-  
+
   // TODO: Implement Supabase query for FCM token if needed
   console.log(`⚠️ No FCM token found in Firebase for user ${userId}`);
   return null;
@@ -326,32 +392,34 @@ async function getUserFCMToken(userId: string): Promise<string | null> {
  * Get user-specific notification content based on severity
  */
 function getUserNotificationContent(alertData: any) {
-  const percentageText = `${Math.round(((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100)}%`;
-  
+  const percentageText = `${Math.round(
+    ((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100
+  )}%`;
+
   switch (alertData.severity) {
     case "severe":
       return {
         title: "🚨 Severe Anxiety Detected",
         body: `Your heart rate was sustained at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Consider deep breathing exercises.`,
-        color: "#FF0000"
+        color: "#FF0000",
       };
     case "moderate":
       return {
-        title: "⚠️ Moderate Anxiety Detected", 
+        title: "⚠️ Moderate Anxiety Detected",
         body: `Your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Take a moment to relax.`,
-        color: "#FF8C00"
+        color: "#FF8C00",
       };
     case "mild":
       return {
         title: "📊 Mild Anxiety Detected",
         body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Check in with yourself.`,
-        color: "#FFA500"
+        color: "#FFA500",
       };
     default:
       return {
         title: "📊 Anxiety Alert",
         body: `Heart rate: ${alertData.heartRate} BPM`,
-        color: "#4CAF50"
+        color: "#4CAF50",
       };
   }
 }
@@ -361,7 +429,7 @@ function getUserNotificationContent(alertData: any) {
  */
 async function storeUserAnxietyAlert(alertData: any) {
   const userAlertsRef = db.ref(`users/${alertData.userId}/alerts`).push();
-  
+
   await userAlertsRef.set({
     sessionId: alertData.sessionId,
     deviceId: alertData.deviceId,
@@ -372,24 +440,29 @@ async function storeUserAnxietyAlert(alertData: any) {
     reason: alertData.reason,
     timestamp: admin.database.ServerValue.TIMESTAMP,
     processed: true,
-    source: "cloud_function_sustained_detection"
+    source: "cloud_function_sustained_detection",
   });
-  
-  console.log(`📝 Stored user anxiety alert: ${userAlertsRef.key} for user ${alertData.userId}`);
+
+  console.log(
+    `📝 Stored user anxiety alert: ${userAlertsRef.key} for user ${alertData.userId}`
+  );
 }
 
 /**
  * Get user's baseline heart rate from Supabase or Firebase
  */
-async function getUserBaseline(userId: string, deviceId: string): Promise<{ baselineHR: number } | null> {
+async function getUserBaseline(
+  userId: string,
+  deviceId: string
+): Promise<{ baselineHR: number } | null> {
   // First try Firebase user profile
   const userBaselineRef = db.ref(`/users/${userId}/baseline/heartRate`);
   const baselineSnapshot = await userBaselineRef.once("value");
-  
+
   if (baselineSnapshot.exists()) {
     return { baselineHR: baselineSnapshot.val() };
   }
-  
+
   // TODO: Implement Supabase query for user baseline if needed
   // For now, return a reasonable default based on age/demographics
   console.log(`⚠️ No baseline found for user ${userId}, using default 70 BPM`);

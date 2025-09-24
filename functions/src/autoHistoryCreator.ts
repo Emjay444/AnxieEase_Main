@@ -25,28 +25,27 @@ export const autoCreateDeviceHistory = functions.database
     try {
       // Save current data to history
       const historyRef = db.ref(`/devices/AnxieEase001/history/${timestamp}`);
-      
+
       await historyRef.set({
         ...currentData,
         timestamp: timestamp,
         source: "auto_history_creator",
-        created_from_current: true
+        created_from_current: true,
       });
 
       console.log(`✅ History entry created successfully at ${timestamp}`);
       return { success: true, timestamp };
-
     } catch (error) {
       console.error("❌ Error creating history entry:", error);
-      
+
       // Log error for debugging
       await db.ref("/system/errors").push({
         type: "auto_history_creation_error",
         timestamp: admin.database.ServerValue.TIMESTAMP,
         error: error instanceof Error ? error.message : String(error),
-        currentData: currentData
+        currentData: currentData,
       });
-      
+
       throw error;
     }
   });

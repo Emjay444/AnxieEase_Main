@@ -17,18 +17,14 @@ export {
   copyDeviceCurrentToUserSession,
   assignDeviceToUser,
   getDeviceAssignment,
-  cleanupOldSessions
+  cleanupOldSessions,
 } from "./deviceDataCopyService";
 
 // Import auto history creator
-export {
-  autoCreateDeviceHistory
-} from "./autoHistoryCreator";
+export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 
 // Import real-time sustained anxiety detection
-export {
-  realTimeSustainedAnxietyDetection
-} from "./realTimeSustainedAnxietyDetection";
+export { realTimeSustainedAnxietyDetection } from "./realTimeSustainedAnxietyDetection";
 
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database
@@ -37,7 +33,9 @@ export const onAnxietySeverityChangeV2 = functions.database
     try {
       // Legacy function disabled - anxiety detection now requires personalized baseline
       // Use personalizedAnxietyDetection function instead
-      console.log("Legacy threshold-based detection disabled - requires baseline from personalizedAnxietyDetection function");
+      console.log(
+        "Legacy threshold-based detection disabled - requires baseline from personalizedAnxietyDetection function"
+      );
       return null;
     } catch (error) {
       console.error("❌ Error in onAnxietySeverityChangeV2:", error);

@@ -1,62 +1,68 @@
 // Simple Admin Interface for Device Assignment
 // Use this in your admin dashboard or as standalone scripts
 
-const admin = require('firebase-admin');
+const admin = require("firebase-admin");
 
 // Initialize Firebase Admin (add your service account key)
 // For production, use environment variables for the service account
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(), // or use service account
-    databaseURL: "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app"
+    databaseURL:
+      "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
   });
 }
 
 const db = admin.database();
 
 class AnxieEaseDeviceManager {
-  
   /**
    * Assign device to a user for testing
    * @param {string} userId - The user ID
    * @param {string} sessionDescription - Description of the test session
    * @returns {Promise<string>} - Returns the session ID
    */
-  async assignDeviceToUser(userId, sessionDescription = 'Device testing session') {
+  async assignDeviceToUser(
+    userId,
+    sessionDescription = "Device testing session"
+  ) {
     try {
       const sessionId = `session_${Date.now()}`;
-      
+
       // Check if device is already assigned
       const currentAssignment = await this.getDeviceAssignment();
       if (currentAssignment.assigned) {
-        throw new Error(`Device is already assigned to user: ${currentAssignment.userId}`);
+        throw new Error(
+          `Device is already assigned to user: ${currentAssignment.userId}`
+        );
       }
 
       // Assign device
-      await db.ref('devices/AnxieEase001/assignment').set({
+      await db.ref("devices/AnxieEase001/assignment").set({
         userId: userId,
         sessionId: sessionId,
         assignedAt: admin.database.ServerValue.TIMESTAMP,
-        assignedBy: 'admin',
+        assignedBy: "admin",
         description: sessionDescription,
-        status: 'active'
+        status: "active",
       });
 
       // Create user session
       await db.ref(`users/${userId}/sessions/${sessionId}/metadata`).set({
-        deviceId: 'AnxieEase001',
+        deviceId: "AnxieEase001",
         startTime: admin.database.ServerValue.TIMESTAMP,
-        status: 'active',
+        status: "active",
         description: sessionDescription,
         totalDataPoints: 0,
-        lastActivity: admin.database.ServerValue.TIMESTAMP
+        lastActivity: admin.database.ServerValue.TIMESTAMP,
       });
 
-      console.log(`✅ Device assigned to user ${userId} (Session: ${sessionId})`);
+      console.log(
+        `✅ Device assigned to user ${userId} (Session: ${sessionId})`
+      );
       return sessionId;
-      
     } catch (error) {
-      console.error('❌ Error assigning device:', error.message);
+      console.error("❌ Error assigning device:", error.message);
       throw error;
     }
   }
@@ -67,13 +73,15 @@ class AnxieEaseDeviceManager {
    */
   async getDeviceAssignment() {
     try {
-      const snapshot = await db.ref('devices/AnxieEase001/assignment').once('value');
+      const snapshot = await db
+        .ref("devices/AnxieEase001/assignment")
+        .once("value");
       const assignment = snapshot.val();
-      
+
       if (!assignment) {
         return {
           assigned: false,
-          message: 'Device is not assigned to any user'
+          message: "Device is not assigned to any user",
         };
       }
 
@@ -83,11 +91,10 @@ class AnxieEaseDeviceManager {
         sessionId: assignment.sessionId,
         assignedAt: assignment.assignedAt,
         description: assignment.description,
-        status: assignment.status
+        status: assignment.status,
       };
-      
     } catch (error) {
-      console.error('❌ Error getting assignment:', error.message);
+      console.error("❌ Error getting assignment:", error.message);
       throw error;
     }
   }
@@ -99,23 +106,30 @@ class AnxieEaseDeviceManager {
   async unassignDevice() {
     try {
       const currentAssignment = await this.getDeviceAssignment();
-      
+
       if (!currentAssignment.assigned) {
-        console.log('ℹ️ Device is not currently assigned');
+        console.log("ℹ️ Device is not currently assigned");
         return;
       }
 
       // Mark session as completed
-      await db.ref(`users/${currentAssignment.userId}/sessions/${currentAssignment.sessionId}/metadata/status`).set('completed');
-      await db.ref(`users/${currentAssignment.userId}/sessions/${currentAssignment.sessionId}/metadata/endTime`).set(admin.database.ServerValue.TIMESTAMP);
+      await db
+        .ref(
+          `users/${currentAssignment.userId}/sessions/${currentAssignment.sessionId}/metadata/status`
+        )
+        .set("completed");
+      await db
+        .ref(
+          `users/${currentAssignment.userId}/sessions/${currentAssignment.sessionId}/metadata/endTime`
+        )
+        .set(admin.database.ServerValue.TIMESTAMP);
 
       // Remove assignment
-      await db.ref('devices/AnxieEase001/assignment').remove();
-      
+      await db.ref("devices/AnxieEase001/assignment").remove();
+
       console.log(`✅ Device unassigned from user ${currentAssignment.userId}`);
-      
     } catch (error) {
-      console.error('❌ Error unassigning device:', error.message);
+      console.error("❌ Error unassigning device:", error.message);
       throw error;
     }
   }
@@ -128,17 +142,18 @@ class AnxieEaseDeviceManager {
    */
   async getUserSessionData(userId, sessionId) {
     try {
-      const snapshot = await db.ref(`users/${userId}/sessions/${sessionId}`).once('value');
+      const snapshot = await db
+        .ref(`users/${userId}/sessions/${sessionId}`)
+        .once("value");
       const sessionData = snapshot.val();
-      
+
       if (!sessionData) {
         throw new Error(`Session not found: ${sessionId} for user ${userId}`);
       }
 
       return sessionData;
-      
     } catch (error) {
-      console.error('❌ Error getting session data:', error.message);
+      console.error("❌ Error getting session data:", error.message);
       throw error;
     }
   }
@@ -150,20 +165,19 @@ class AnxieEaseDeviceManager {
    */
   async getUserSessions(userId) {
     try {
-      const snapshot = await db.ref(`users/${userId}/sessions`).once('value');
+      const snapshot = await db.ref(`users/${userId}/sessions`).once("value");
       const sessions = snapshot.val();
-      
+
       if (!sessions) {
         return [];
       }
 
-      return Object.keys(sessions).map(sessionId => ({
+      return Object.keys(sessions).map((sessionId) => ({
         sessionId,
-        ...sessions[sessionId].metadata
+        ...sessions[sessionId].metadata,
       }));
-      
     } catch (error) {
-      console.error('❌ Error getting user sessions:', error.message);
+      console.error("❌ Error getting user sessions:", error.message);
       throw error;
     }
   }
@@ -178,22 +192,23 @@ class AnxieEaseDeviceManager {
       const testData = {
         heartRate: data.heartRate || Math.floor(Math.random() * 40) + 60, // 60-100 BPM
         spo2: data.spo2 || Math.floor(Math.random() * 5) + 95, // 95-100%
-        temperature: data.temperature || (Math.random() * 2) + 97, // 97-99°F
+        temperature: data.temperature || Math.random() * 2 + 97, // 97-99°F
         movementLevel: data.movementLevel || Math.floor(Math.random() * 100), // 0-100
         timestamp: Date.now(),
-        batteryLevel: data.batteryLevel || Math.floor(Math.random() * 30) + 70 // 70-100%
+        batteryLevel: data.batteryLevel || Math.floor(Math.random() * 30) + 70, // 70-100%
       };
 
       // Send to current (real-time)
-      await db.ref('devices/AnxieEase001/current').set(testData);
-      
+      await db.ref("devices/AnxieEase001/current").set(testData);
+
       // Send to history
-      await db.ref(`devices/AnxieEase001/history/${testData.timestamp}`).set(testData);
-      
-      console.log('📤 Test data sent:', testData);
-      
+      await db
+        .ref(`devices/AnxieEase001/history/${testData.timestamp}`)
+        .set(testData);
+
+      console.log("📤 Test data sent:", testData);
     } catch (error) {
-      console.error('❌ Error sending test data:', error.message);
+      console.error("❌ Error sending test data:", error.message);
       throw error;
     }
   }
@@ -204,12 +219,12 @@ class AnxieEaseDeviceManager {
    * @returns {Function} - Unsubscribe function
    */
   monitorDataFlow(callback) {
-    const deviceCurrentRef = db.ref('devices/AnxieEase001/current');
-    
-    deviceCurrentRef.on('value', (snapshot) => {
+    const deviceCurrentRef = db.ref("devices/AnxieEase001/current");
+
+    deviceCurrentRef.on("value", (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        callback('device', data);
+        callback("device", data);
       }
     });
 
@@ -222,9 +237,9 @@ class AnxieEaseDeviceManager {
    * @returns {Function} - Unsubscribe function
    */
   monitorAssignmentStatus(callback) {
-    const assignmentRef = db.ref('devices/AnxieEase001/assignment');
-    
-    assignmentRef.on('value', (snapshot) => {
+    const assignmentRef = db.ref("devices/AnxieEase001/assignment");
+
+    assignmentRef.on("value", (snapshot) => {
       const assignment = snapshot.val();
       callback(assignment);
     });

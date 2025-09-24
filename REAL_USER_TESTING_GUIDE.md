@@ -13,7 +13,7 @@ Your anxiety detection system is **production-ready** and integrates with your *
    - Add admin notes (optional): "Anxiety detection testing"
    - Click **Assign Device**
 
-### **Step 2: User Gets FCM Token from Flutter App**  
+### **Step 2: User Gets FCM Token from Flutter App**
 
 1. **User opens Flutter app** on their device/emulator
 2. **User logs in** with their account (same user assigned by admin)
@@ -27,13 +27,15 @@ Your anxiety detection system is **production-ready** and integrates with your *
 
 1. **Open** `test_real_user_anxiety_detection.js`
 2. **Update the script**:
+
    ```javascript
    // Line 29: Replace with real FCM token
    const USER_FCM_TOKEN = "your_real_fcm_token_here";
-   
-   // Line 30: Use same user ID that admin assigned  
+
+   // Line 30: Use same user ID that admin assigned
    const TEST_USER_ID = "actual_user_id_from_admin_dashboard";
    ```
+
 3. **Run the test**:
    ```bash
    node test_real_user_anxiety_detection.js
@@ -99,7 +101,7 @@ Real IoT Device → Firebase Database → Cloud Function → User Analysis → F
 ### **✅ What Your Admin Dashboard Actually Does:**
 
 - **👤 User Selection**: Dropdown list of all registered users
-- **📝 Admin Notes**: Optional notes field for assignment tracking  
+- **📝 Admin Notes**: Optional notes field for assignment tracking
 - **🔄 Device Assignment**: Simple "Assign Device" button
 - **🔓 Device Release**: "Release Device" button to unassign
 - **📊 Real-time Status**: Shows current assignment and user info
@@ -107,6 +109,7 @@ Real IoT Device → Firebase Database → Cloud Function → User Analysis → F
 - **🔄 Auto-refresh**: Dashboard updates every 30 seconds
 
 ### **✅ Assignment Features:**
+
 - **Permanent Assignment**: No expiration date - lasts until admin releases
 - **Single User**: Device can only be assigned to one user at a time
 - **Admin Control**: Only admins can assign/release the device
