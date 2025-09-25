@@ -1239,11 +1239,13 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
               const SizedBox(height: 16),
               _buildQuickTestButton('🟢 Mild Alert', 'mild', Colors.green),
               const SizedBox(height: 8),
-              _buildQuickTestButton('🟠 Moderate Alert', 'moderate', Colors.orange),
+              _buildQuickTestButton(
+                  '🟠 Moderate Alert', 'moderate', Colors.orange),
               const SizedBox(height: 8),
               _buildQuickTestButton('🔴 Severe Alert', 'severe', Colors.red),
               const SizedBox(height: 8),
-              _buildQuickTestButton('🚨 Critical Alert', 'critical', Colors.red[900]!),
+              _buildQuickTestButton(
+                  '🚨 Critical Alert', 'critical', Colors.red[900]!),
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: () => _testAllSounds(context),
@@ -1301,10 +1303,10 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
       final notificationService = NotificationService();
       await notificationService.initialize();
       await notificationService.testSeverityNotification(
-        severity, 
+        severity,
         DateTime.now().millisecond,
       );
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$severity notification sent!'),
@@ -1327,14 +1329,15 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   Future<void> _testAllSounds(BuildContext context) async {
     try {
       Navigator.of(context).pop(); // Close dialog first
-      
+
       final notificationService = NotificationService();
       await notificationService.initialize();
       await notificationService.testAllSeverityNotifications();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('All severity notifications sent! Check your notification panel.'),
+          content: Text(
+              'All severity notifications sent! Check your notification panel.'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 4),
         ),

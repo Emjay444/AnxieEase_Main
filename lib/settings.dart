@@ -449,7 +449,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _buildSettingsTile(
                           icon: Icons.notifications_active,
                           title: 'Test Notification Sounds',
-                          subtitle: 'Test custom sounds for different anxiety levels',
+                          subtitle:
+                              'Test custom sounds for different anxiety levels',
                           onTap: () {
                             _showNotificationTestOptions(context);
                           },
@@ -831,11 +832,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 20),
               _buildQuickTestButton('🟢 Mild Alert', 'mild', Colors.green),
               const SizedBox(height: 8),
-              _buildQuickTestButton('🟠 Moderate Alert', 'moderate', Colors.orange),
+              _buildQuickTestButton(
+                  '🟠 Moderate Alert', 'moderate', Colors.orange),
               const SizedBox(height: 8),
               _buildQuickTestButton('🔴 Severe Alert', 'severe', Colors.red),
               const SizedBox(height: 8),
-              _buildQuickTestButton('🚨 Critical Alert', 'critical', Colors.red[900]!),
+              _buildQuickTestButton(
+                  '🚨 Critical Alert', 'critical', Colors.red[900]!),
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: () => _testAllNotificationSounds(context),
@@ -890,7 +893,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
-        child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        child: Text(title,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -900,14 +904,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await _notificationService.initialize();
       await _notificationService.testSeverityNotification(
-        severity, 
+        severity,
         DateTime.now().millisecond,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🔔 $severity notification sent! Check your notification panel.'),
+            content: Text(
+                '🔔 $severity notification sent! Check your notification panel.'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
@@ -930,14 +935,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _testAllNotificationSounds(BuildContext context) async {
     try {
       Navigator.of(context).pop(); // Close dialog first
-      
+
       await _notificationService.initialize();
       await _notificationService.testAllSeverityNotifications();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🎵 All severity notifications sent! Check your notification panel.'),
+            content: Text(
+                '🎵 All severity notifications sent! Check your notification panel.'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 4),
           ),

@@ -6,7 +6,8 @@ class NotificationSoundTester extends StatefulWidget {
   const NotificationSoundTester({Key? key}) : super(key: key);
 
   @override
-  _NotificationSoundTesterState createState() => _NotificationSoundTesterState();
+  _NotificationSoundTesterState createState() =>
+      _NotificationSoundTesterState();
 }
 
 class _NotificationSoundTesterState extends State<NotificationSoundTester> {
@@ -37,7 +38,7 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
-            
+
             // Individual severity test buttons
             _buildSeverityButton(
               '🟢 Test Mild Alert',
@@ -46,7 +47,7 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
               () => _testSeverity('mild'),
             ),
             const SizedBox(height: 12),
-            
+
             _buildSeverityButton(
               '🟠 Test Moderate Alert',
               'Clear tone for moderate anxiety levels',
@@ -54,7 +55,7 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
               () => _testSeverity('moderate'),
             ),
             const SizedBox(height: 12),
-            
+
             _buildSeverityButton(
               '🔴 Test Severe Alert',
               'Urgent sound for severe anxiety detection',
@@ -62,36 +63,36 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
               () => _testSeverity('severe'),
             ),
             const SizedBox(height: 12),
-            
+
             _buildSeverityButton(
               '🚨 Test Critical Alert',
               'Emergency tone for critical situations',
               Colors.red[900]!,
               () => _testSeverity('critical'),
             ),
-            
+
             const SizedBox(height: 30),
-            
+
             // Test all button
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _testAllSeverities,
-              icon: _isLoading 
-                ? const SizedBox(
-                    width: 20, 
-                    height: 20, 
-                    child: CircularProgressIndicator(strokeWidth: 2)
-                  )
-                : const Icon(Icons.play_arrow),
-              label: Text(_isLoading ? 'Testing...' : 'Test All Sounds (2s apart)'),
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.play_arrow),
+              label: Text(
+                  _isLoading ? 'Testing...' : 'Test All Sounds (2s apart)'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16.0),
@@ -100,12 +101,14 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
                   children: [
                     Text(
                       '💡 Important Notes:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     SizedBox(height: 8),
                     Text('• Make sure your device volume is turned up'),
                     Text('• Check that Do Not Disturb mode is off'),
-                    Text('• Custom sounds require actual MP3 files in assets/audio/'),
+                    Text(
+                        '• Custom sounds require actual MP3 files in assets/audio/'),
                     Text('• Each severity has unique vibration patterns too'),
                   ],
                 ),
@@ -118,11 +121,7 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
   }
 
   Widget _buildSeverityButton(
-    String title, 
-    String description, 
-    Color color, 
-    VoidCallback onPressed
-  ) {
+      String title, String description, Color color, VoidCallback onPressed) {
     return ElevatedButton(
       onPressed: _isLoading ? null : onPressed,
       style: ElevatedButton.styleFrom(
@@ -133,7 +132,9 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
       ),
       child: Column(
         children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text(description, style: const TextStyle(fontSize: 12)),
         ],
@@ -144,16 +145,18 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
   Future<void> _testSeverity(String severity) async {
     try {
       setState(() => _isLoading = true);
-      
+
       // Initialize notification service if not already done
       await _notificationService.initialize();
-      
+
       // Test individual severity
-      await _notificationService.testSeverityNotification(severity, DateTime.now().millisecond);
-      
+      await _notificationService.testSeverityNotification(
+          severity, DateTime.now().millisecond);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$severity notification sent! Check your notification panel.'),
+          content: Text(
+              '$severity notification sent! Check your notification panel.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -172,16 +175,17 @@ class _NotificationSoundTesterState extends State<NotificationSoundTester> {
   Future<void> _testAllSeverities() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // Initialize notification service if not already done
       await _notificationService.initialize();
-      
+
       // Test all severities with delay
       await _notificationService.testAllSeverityNotifications();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('All severity notifications sent! Check your notification panel.'),
+          content: Text(
+              'All severity notifications sent! Check your notification panel.'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 3),
         ),

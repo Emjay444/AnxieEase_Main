@@ -256,7 +256,7 @@ class NotificationService extends ChangeNotifier {
           enableVibration: true,
           icon: 'resource://drawable/launcher_icon',
         ),
-        
+
         // Severity-specific channels with custom sounds
         NotificationChannel(
           channelKey: 'mild_anxiety_alerts',
@@ -270,7 +270,7 @@ class NotificationService extends ChangeNotifier {
           soundSource: 'resource://raw/mild_alert', // Custom sound for mild
           icon: 'resource://drawable/launcher_icon',
         ),
-        
+
         NotificationChannel(
           channelKey: 'moderate_anxiety_alerts',
           channelName: 'Moderate Anxiety Alerts',
@@ -280,14 +280,16 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFFF9800),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/moderate_alert', // Custom sound for moderate
+          soundSource:
+              'resource://raw/moderate_alert', // Custom sound for moderate
           icon: 'resource://drawable/launcher_icon',
         ),
-        
+
         NotificationChannel(
           channelKey: 'severe_anxiety_alerts',
           channelName: 'Severe Anxiety Alerts',
-          channelDescription: 'High priority alerts for severe anxiety detection',
+          channelDescription:
+              'High priority alerts for severe anxiety detection',
           defaultColor: const Color(0xFFF44336), // Red
           importance: NotificationImportance.High, // Changed from Max to High
           ledColor: const Color(0xFFF44336),
@@ -297,21 +299,23 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
           // Removed criticalAlerts: true to prevent looping
         ),
-        
+
         NotificationChannel(
           channelKey: 'critical_anxiety_alerts',
           channelName: 'Critical Emergency Alerts',
           channelDescription: 'Emergency alerts requiring immediate attention',
           defaultColor: const Color(0xFFD32F2F), // Dark Red
-          importance: NotificationImportance.Max, // Keep Max for critical, but remove criticalAlerts
+          importance: NotificationImportance
+              .Max, // Keep Max for critical, but remove criticalAlerts
           ledColor: const Color(0xFFD32F2F),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/critical_alert', // Custom sound for critical
+          soundSource:
+              'resource://raw/critical_alert', // Custom sound for critical
           icon: 'resource://drawable/launcher_icon',
           // Removed criticalAlerts: true to prevent looping
         ),
-        
+
         // General alerts channel (fallback)
         NotificationChannel(
           channelKey: 'anxiety_alerts',
@@ -324,7 +328,7 @@ class NotificationService extends ChangeNotifier {
           playSound: true,
           icon: 'resource://drawable/launcher_icon',
         ),
-        
+
         // Wellness reminders
         NotificationChannel(
           channelKey: 'wellness_reminders',
@@ -535,9 +539,10 @@ class NotificationService extends ChangeNotifier {
 
     // Get severity-specific channel (override the passed channelKey)
     final severityChannelKey = _getChannelKeyForSeverity(severity);
-    
+
     // Determine notification behavior based on severity
-    final isHighPriority = ['severe', 'critical'].contains(severity.toLowerCase());
+    final isHighPriority =
+        ['severe', 'critical'].contains(severity.toLowerCase());
     final isCritical = severity.toLowerCase() == 'critical';
 
     // Send the notification with severity-specific enhancements
@@ -548,8 +553,9 @@ class NotificationService extends ChangeNotifier {
         title: title,
         body: body,
         notificationLayout: NotificationLayout.Default,
-        category: isHighPriority 
-            ? NotificationCategory.Reminder // Changed from Alarm to Reminder to prevent looping
+        category: isHighPriority
+            ? NotificationCategory
+                .Reminder // Changed from Alarm to Reminder to prevent looping
             : NotificationCategory.Reminder,
         wakeUpScreen: isHighPriority,
         // Removed fullScreenIntent and criticalAlert to prevent looping behavior
@@ -583,8 +589,9 @@ class NotificationService extends ChangeNotifier {
             ]
           : null,
     );
-    
-    debugPrint('🔔 Sent $severity notification with custom sound and channel: $severityChannelKey');
+
+    debugPrint(
+        '🔔 Sent $severity notification with custom sound and channel: $severityChannelKey');
   }
 
   // Method to manually trigger a notification based on current severity
@@ -797,21 +804,21 @@ class NotificationService extends ChangeNotifier {
   // Test all severity-specific notification sounds
   Future<void> testAllSeverityNotifications() async {
     const severities = ['mild', 'moderate', 'severe', 'critical'];
-    
+
     debugPrint('🔔 Testing all severity notification sounds...');
-    
+
     for (int i = 0; i < severities.length; i++) {
       final severity = severities[i];
-      
+
       // Wait 2 seconds between notifications
       if (i > 0) {
         await Future.delayed(const Duration(seconds: 2));
       }
-      
+
       await testSeverityNotification(severity, i + 1);
       debugPrint('✅ Sent $severity test notification');
     }
-    
+
     debugPrint('🎉 All severity notification tests completed!');
   }
 
@@ -823,12 +830,13 @@ class NotificationService extends ChangeNotifier {
         'body': 'Testing gentle notification sound for mild anxiety detection.'
       },
       'moderate': {
-        'title': '🟠 Moderate Alert Test', 
+        'title': '🟠 Moderate Alert Test',
         'body': 'Testing medium priority sound for moderate anxiety levels.'
       },
       'severe': {
         'title': '🔴 Severe Alert Test',
-        'body': 'Testing urgent notification sound for severe anxiety detection.'
+        'body':
+            'Testing urgent notification sound for severe anxiety detection.'
       },
       'critical': {
         'title': '🚨 Critical Alert Test',
@@ -837,13 +845,12 @@ class NotificationService extends ChangeNotifier {
     };
 
     final data = testData[severity] ?? testData['mild']!;
-    
+
     await _showSeverityNotification(
-      data['title']!, 
-      data['body']!, 
-      'test_channel', // This will be overridden by severity-specific channel
-      severity
-    );
+        data['title']!,
+        data['body']!,
+        'test_channel', // This will be overridden by severity-specific channel
+        severity);
   }
 
   // ANXIETY PREVENTION REMINDERS
