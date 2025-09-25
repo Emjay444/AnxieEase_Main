@@ -1362,7 +1362,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ElevatedButton.icon(
                           onPressed: () {
                             // Trigger a refresh by calling setState or notificationProvider
-                            final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+                            final notificationProvider =
+                                Provider.of<NotificationProvider>(context,
+                                    listen: false);
                             notificationProvider.triggerNotificationRefresh();
                           },
                           icon: const Icon(Icons.refresh, size: 18),
@@ -1525,7 +1527,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     // Determine if this is an important notification
-    bool isHighPriority = type == 'alert' || title.contains('🚨') || title.contains('Alert');
+    bool isHighPriority =
+        type == 'alert' || title.contains('🚨') || title.contains('Alert');
 
     // Check if this is a reminder notification (should not be clickable)
     bool isReminder = type == 'reminder' ||
@@ -1542,9 +1545,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: isHighPriority ? getBackgroundColor() : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: isHighPriority 
-          ? Border.all(color: getTypeColor().withOpacity(0.3), width: 1)
-          : null,
+        border: isHighPriority
+            ? Border.all(color: getTypeColor().withOpacity(0.3), width: 1)
+            : null,
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.08),
@@ -1616,7 +1619,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: getTypeColor().withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
@@ -2846,9 +2850,12 @@ class _HomeContentState extends State<HomeContent> {
                       Consumer<AuthProvider>(
                         builder: (context, authProvider, child) {
                           // Show loading state while authentication is being resolved
-                          if (authProvider.isLoading || !authProvider.isInitialized) {
+                          if (authProvider.isLoading ||
+                              !authProvider.isInitialized) {
                             return Container(
-                              height: screenWidth * 0.055 * 1.2, // Match text height
+                              height: screenWidth *
+                                  0.055 *
+                                  1.2, // Match text height
                               child: Row(
                                 children: [
                                   SizedBox(
@@ -2857,7 +2864,8 @@ class _HomeContentState extends State<HomeContent> {
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(
-                                        theme.colorScheme.primary.withOpacity(0.7),
+                                        theme.colorScheme.primary
+                                            .withOpacity(0.7),
                                       ),
                                     ),
                                   ),
@@ -2867,14 +2875,15 @@ class _HomeContentState extends State<HomeContent> {
                                     style: theme.textTheme.titleLarge?.copyWith(
                                       fontSize: screenWidth * 0.055,
                                       fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary.withOpacity(0.7),
+                                      color: theme.colorScheme.primary
+                                          .withOpacity(0.7),
                                     ),
                                   ),
                                 ],
                               ),
                             );
                           }
-                          
+
                           // Default to 'Guest' if no user or no first name
                           String firstName = 'Guest';
                           // Use firstName directly from user model
@@ -2883,7 +2892,7 @@ class _HomeContentState extends State<HomeContent> {
                               authProvider.currentUser!.firstName!.isNotEmpty) {
                             firstName = authProvider.currentUser!.firstName!;
                           }
-                          
+
                           return Text(
                             'Hello $firstName',
                             style: theme.textTheme.titleLarge?.copyWith(

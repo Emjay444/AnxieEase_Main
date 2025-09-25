@@ -1514,11 +1514,12 @@ class SupabaseService {
     try {
       // Set timeout and retry logic for connection issues
       final completer = Completer<List<Map<String, dynamic>>>();
-      
+
       // Start the query with a timeout
       Timer(const Duration(seconds: 10), () {
         if (!completer.isCompleted) {
-          completer.completeError(TimeoutException('Request timed out after 10 seconds'));
+          completer.completeError(
+              TimeoutException('Request timed out after 10 seconds'));
         }
       });
 
@@ -1540,7 +1541,8 @@ class SupabaseService {
 
           debugPrint(
               'getNotifications success - retrieved ${activeNotifications.length} notifications out of ${allNotifications.length} total');
-          completer.complete(List<Map<String, dynamic>>.from(activeNotifications));
+          completer
+              .complete(List<Map<String, dynamic>>.from(activeNotifications));
         }
       }).catchError((error) {
         if (!completer.isCompleted) {
@@ -1558,27 +1560,30 @@ class SupabaseService {
         debugPrint('Notifications table does not exist. Returning empty list.');
         return [];
       }
-      
-      if (e.toString().contains('Connection closed') || 
+
+      if (e.toString().contains('Connection closed') ||
           e.toString().contains('ClientException') ||
           e.toString().contains('timeout') ||
           e is TimeoutException) {
-        debugPrint('Network connectivity issue detected. Attempting retry in 2 seconds...');
-        
+        debugPrint(
+            'Network connectivity issue detected. Attempting retry in 2 seconds...');
+
         // Wait briefly and try once more with a simpler query
         await Future.delayed(const Duration(seconds: 2));
-        
+
         try {
           final retryQuery = client
               .from('notifications')
-              .select('id, title, message, type, read, created_at, related_screen')
+              .select(
+                  'id, title, message, type, read, created_at, related_screen')
               .eq('user_id', user.id)
               .isFilter('deleted_at', null)
               .order('created_at', ascending: false)
               .limit(20); // Limit results to reduce payload
-              
+
           final retryResult = await retryQuery;
-          debugPrint('getNotifications retry successful - retrieved ${retryResult.length} notifications');
+          debugPrint(
+              'getNotifications retry successful - retrieved ${retryResult.length} notifications');
           return List<Map<String, dynamic>>.from(retryResult);
         } catch (retryError) {
           debugPrint('getNotifications retry also failed: $retryError');
@@ -1586,7 +1591,7 @@ class SupabaseService {
           return [];
         }
       }
-      
+
       // For other errors, still return empty list to prevent app crashes
       debugPrint('Returning empty notifications list due to error: $e');
       return [];
@@ -1679,7 +1684,10 @@ class SupabaseService {
 
     // Normalize type to match DB enum values
     String normalizedType = type;
-    const allowedTypes = {'alert', 'reminder'}; // conservative set proven to work
+    const allowedTypes = {
+      'alert',
+      'reminder'
+    }; // conservative set proven to work
     if (!allowedTypes.contains(normalizedType)) {
       // map common aliases
       if (normalizedType == 'anxiety_log' ||
@@ -1692,15 +1700,18 @@ class SupabaseService {
           normalizedType == 'emergency' ||
           normalizedType == 'medication' ||
           normalizedType == 'log') {
-        debugPrint('ℹ️ Mapping notification type "$type" → "alert" to satisfy DB enum');
+        debugPrint(
+            'ℹ️ Mapping notification type "$type" → "alert" to satisfy DB enum');
         normalizedType = 'alert';
       } else if (normalizedType == 'wellness_reminder' ||
           normalizedType == 'breathing_reminder') {
-        debugPrint('ℹ️ Mapping notification type "$type" → "reminder" to satisfy DB enum');
+        debugPrint(
+            'ℹ️ Mapping notification type "$type" → "reminder" to satisfy DB enum');
         normalizedType = 'reminder';
       } else {
         // default fallback
-        debugPrint('ℹ️ Unknown notification type "$type". Falling back to "alert".');
+        debugPrint(
+            'ℹ️ Unknown notification type "$type". Falling back to "alert".');
         normalizedType = 'alert';
       }
     }
@@ -1726,10 +1737,10 @@ class SupabaseService {
     try {
       final inserted =
           await client.from('notifications').insert(row).select().single();
-    debugPrint('💾 createNotification inserted id: ' +
+      debugPrint('💾 createNotification inserted id: ' +
           (inserted['id']?.toString() ?? 'unknown') +
           ' type: ' +
-      normalizedType);
+          normalizedType);
     } catch (e) {
       debugPrint('❌ createNotification insert failed: ' + e.toString());
       rethrow;

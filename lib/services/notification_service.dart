@@ -100,19 +100,21 @@ class NotificationService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final key = '${lastNotificationPrefix}${type}';
       final contentKey = '${key}_content';
-      
+
       final lastTime = prefs.getInt(key) ?? 0;
       final lastContent = prefs.getString(contentKey) ?? '';
-      
+
       final now = DateTime.now().millisecondsSinceEpoch;
-      const duplicateWindow = duplicateWindowMinutes * 60 * 1000; // Convert to milliseconds
-      
+      const duplicateWindow =
+          duplicateWindowMinutes * 60 * 1000; // Convert to milliseconds
+
       // Check if same content was sent within the time window
       if (now - lastTime < duplicateWindow && lastContent == content.trim()) {
-        debugPrint('🚫 Duplicate notification blocked: $type (${duplicateWindowMinutes}min window)');
+        debugPrint(
+            '🚫 Duplicate notification blocked: $type (${duplicateWindowMinutes}min window)');
         return true; // It's a duplicate
       }
-      
+
       // Store this notification info for future duplicate checks
       await prefs.setInt(key, now);
       await prefs.setString(contentKey, content.trim());
@@ -136,7 +138,7 @@ class NotificationService extends ChangeNotifier {
     if (isDuplicate) {
       return false; // Notification was blocked
     }
-    
+
     // Send the notification
     try {
       await AwesomeNotifications().createNotification(
@@ -146,8 +148,8 @@ class NotificationService extends ChangeNotifier {
           title: title,
           body: body,
           notificationLayout: NotificationLayout.Default,
-          category: type == 'anxiety_alert' 
-              ? NotificationCategory.Alarm 
+          category: type == 'anxiety_alert'
+              ? NotificationCategory.Alarm
               : NotificationCategory.Reminder,
           payload: payload ?? {},
         ),
@@ -227,10 +229,9 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
-          channelKey: 'wellness_reminders', // Changed for consistency  
+          channelKey: 'wellness_reminders', // Changed for consistency
           channelName: 'Wellness Reminders',
-          channelDescription:
-              'Wellness and anxiety prevention reminders',
+          channelDescription: 'Wellness and anxiety prevention reminders',
           defaultColor: Colors.green,
           importance: NotificationImportance.High,
           ledColor: Colors.green,
@@ -444,14 +445,14 @@ class NotificationService extends ChangeNotifier {
   // Show a severity-based notification with deduplication
   Future<void> _showSeverityNotification(
       String title, String body, String channelKey, String severity) async {
-    
     // Check for duplicates before sending
-    final isDuplicate = await _isDuplicateNotification('anxiety_alert_$severity', '$title: $body');
+    final isDuplicate = await _isDuplicateNotification(
+        'anxiety_alert_$severity', '$title: $body');
     if (isDuplicate) {
       debugPrint('🚫 Duplicate $severity notification blocked');
       return;
     }
-    
+
     // Send the notification with enhanced features for severe alerts
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
@@ -549,7 +550,8 @@ class NotificationService extends ChangeNotifier {
       String dbType = type;
       if (dbType == 'anxiety_log' || dbType == 'anxiety_alert') {
         dbType = 'alert';
-      } else if (dbType == 'wellness_reminder' || dbType == 'breathing_reminder') {
+      } else if (dbType == 'wellness_reminder' ||
+          dbType == 'breathing_reminder') {
         dbType = 'reminder';
       }
 
@@ -822,7 +824,8 @@ class NotificationService extends ChangeNotifier {
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: notificationId,
-        channelKey: 'wellness_reminders', // Consistent with other wellness notifications
+        channelKey:
+            'wellness_reminders', // Consistent with other wellness notifications
         title: message['title'],
         body: message['body'],
         notificationLayout: NotificationLayout.Default,

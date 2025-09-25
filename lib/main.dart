@@ -592,14 +592,20 @@ void _showInAppBanner({
   messenger.clearSnackBars();
 
   // Determine notification type and styling
-  final isAlert = title.contains('Alert') || title.contains('🚨') || title.contains('anxiety');
-  final isWellness = title.contains('Wellness') || title.contains('💙') || title.contains('Check');
-  final isBreathing = title.contains('Breathing') || title.contains('🫁') || title.contains('🌬️');
-  
+  final isAlert = title.contains('Alert') ||
+      title.contains('🚨') ||
+      title.contains('anxiety');
+  final isWellness = title.contains('Wellness') ||
+      title.contains('💙') ||
+      title.contains('Check');
+  final isBreathing = title.contains('Breathing') ||
+      title.contains('🫁') ||
+      title.contains('🌬️');
+
   Color primaryColor;
   Color borderColor;
   IconData notificationIcon;
-  
+
   if (isAlert) {
     primaryColor = const Color(0xFFE57373); // Soft red
     borderColor = const Color(0xFFFFCDD2); // Light red border
@@ -708,7 +714,8 @@ void _showInAppBanner({
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                             ),
                             child: Text(
                               actionLabel!,
@@ -941,7 +948,8 @@ Future<void> _configureFCM() async {
 
           // IMPORTANT: Store anxiety alert in Supabase for notifications screen
           debugPrint('📱 Attempting to store anxiety alert notification...');
-          final stored = await _storeAnxietyAlertNotification(notification, data);
+          final stored =
+              await _storeAnxietyAlertNotification(notification, data);
           if (stored) {
             debugPrint('✅ Successfully stored anxiety alert notification');
           } else {
@@ -978,7 +986,7 @@ Future<void> _configureFCM() async {
       } else if (messageType == 'anxiety_alert') {
         final severity = message.data['severity'] ?? '';
         debugPrint('⚠️ Anxiety alert tapped - severity: $severity');
-        
+
         // Severity-specific navigation for better user experience
         switch (severity.toLowerCase()) {
           case 'mild':
@@ -1035,7 +1043,7 @@ Future<void> _configureFCM() async {
         } else if (messageType == 'anxiety_alert') {
           final severity = initialMsg.data['severity'] ?? '';
           debugPrint('🚀 App launched from $severity anxiety alert');
-          
+
           // Severity-specific navigation when app launches from notification
           switch (severity.toLowerCase()) {
             case 'mild':
@@ -1051,11 +1059,13 @@ Future<void> _configureFCM() async {
               rootNavigatorKey.currentState?.pushNamed('/grounding');
               break;
             case 'critical':
-              debugPrint('🔴 Critical alert launch → Notifications with urgent context');
+              debugPrint(
+                  '🔴 Critical alert launch → Notifications with urgent context');
               rootNavigatorKey.currentState?.pushNamed('/notifications');
               break;
             default:
-              debugPrint('⚠️ Unknown severity launch → Default notifications screen');
+              debugPrint(
+                  '⚠️ Unknown severity launch → Default notifications screen');
               rootNavigatorKey.currentState?.pushNamed('/notifications');
           }
         }
@@ -1117,12 +1127,13 @@ Future<bool> _storeAnxietyAlertNotification(
     debugPrint('   title: $title');
     debugPrint('   body: $body');
     debugPrint('   severity: $severity');
-    
+
     await supabaseService.createNotification(
       title: title,
       message: body,
       type: 'alert',
-      relatedScreen: 'notifications', // Changed to match where user gets redirected
+      relatedScreen:
+          'notifications', // Changed to match where user gets redirected
       relatedId: data['notificationId'],
     );
 
@@ -1226,9 +1237,10 @@ void _triggerNotificationRefresh() {
 Future<void> _subscribeToTopicsOnce() async {
   try {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Only subscribe to anxiety_alerts once per installation
-    bool subscribedToAnxiety = prefs.getBool('subscribed_anxiety_alerts') ?? false;
+    bool subscribedToAnxiety =
+        prefs.getBool('subscribed_anxiety_alerts') ?? false;
     if (!subscribedToAnxiety) {
       await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
       await prefs.setBool('subscribed_anxiety_alerts', true);
@@ -1236,9 +1248,10 @@ Future<void> _subscribeToTopicsOnce() async {
     } else {
       debugPrint('ℹ️ Already subscribed to anxiety_alerts topic');
     }
-    
-    // Only subscribe to wellness_reminders once per installation  
-    bool subscribedToWellness = prefs.getBool('subscribed_wellness_reminders') ?? false;
+
+    // Only subscribe to wellness_reminders once per installation
+    bool subscribedToWellness =
+        prefs.getBool('subscribed_wellness_reminders') ?? false;
     if (!subscribedToWellness) {
       await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
       await prefs.setBool('subscribed_wellness_reminders', true);

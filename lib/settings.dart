@@ -135,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // This prevents duplicate breathing reminders (local + cloud)
       debugPrint('ℹ️ Breathing reminders handled by Firebase cloud functions');
       debugPrint('ℹ️ Local scheduling disabled to prevent duplicates');
-      
+
       // Store preference for user settings, but don't schedule locally
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('breathing_reminders_enabled', true);
@@ -165,7 +165,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       */
 
-      debugPrint('✅ Breathing reminder preference saved (cloud-based reminders active)');
+      debugPrint(
+          '✅ Breathing reminder preference saved (cloud-based reminders active)');
     } catch (e) {
       debugPrint('❌ Error managing breathing reminders: $e');
     }
