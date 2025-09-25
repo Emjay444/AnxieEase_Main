@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -17,12 +17,21 @@ Object.defineProperty(exports, "copyDeviceCurrentToUserSession", { enumerable: t
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
 Object.defineProperty(exports, "getDeviceAssignment", { enumerable: true, get: function () { return deviceDataCopyService_1.getDeviceAssignment; } });
 Object.defineProperty(exports, "cleanupOldSessions", { enumerable: true, get: function () { return deviceDataCopyService_1.cleanupOldSessions; } });
+// Import and export enhanced rate limiting functions
+var enhancedRateLimiting_1 = require("./enhancedRateLimiting");
+Object.defineProperty(exports, "handleUserConfirmationResponse", { enumerable: true, get: function () { return enhancedRateLimiting_1.handleUserConfirmationResponse; } });
+Object.defineProperty(exports, "getRateLimitStatus", { enumerable: true, get: function () { return enhancedRateLimiting_1.getRateLimitStatus; } });
 // Import auto history creator
 var autoHistoryCreator_1 = require("./autoHistoryCreator");
 Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, get: function () { return autoHistoryCreator_1.autoCreateDeviceHistory; } });
 // Import real-time sustained anxiety detection
 var realTimeSustainedAnxietyDetection_1 = require("./realTimeSustainedAnxietyDetection");
 Object.defineProperty(exports, "realTimeSustainedAnxietyDetection", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.realTimeSustainedAnxietyDetection; } });
+// Import auto-cleanup functions
+var autoCleanup_1 = require("./autoCleanup");
+Object.defineProperty(exports, "autoCleanup", { enumerable: true, get: function () { return autoCleanup_1.autoCleanup; } });
+Object.defineProperty(exports, "manualCleanup", { enumerable: true, get: function () { return autoCleanup_1.manualCleanup; } });
+Object.defineProperty(exports, "getCleanupStats", { enumerable: true, get: function () { return autoCleanup_1.getCleanupStats; } });
 // Import device assignment sync functions
 var deviceAssignmentSync_1 = require("./deviceAssignmentSync");
 Object.defineProperty(exports, "syncDeviceAssignment", { enumerable: true, get: function () { return deviceAssignmentSync_1.syncDeviceAssignment; } });
@@ -170,6 +179,65 @@ exports.sendTestNotificationV2 = functions.https.onCall(async (data, context) =>
     catch (error) {
         console.error("❌ Error sending test notification:", error);
         throw new functions.https.HttpsError("internal", "Failed to send test notification");
+    }
+});
+// HTTP-based test notification function for easy testing
+exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
+    // Enable CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+    try {
+        const { severity = "mild", heartRate = 75 } = req.method === 'POST' ? req.body : req.query;
+        console.log(`📧 Testing notification: ${severity} alert with HR: ${heartRate}`);
+        const notificationData = getNotificationContent(severity, heartRate);
+        const message = {
+            data: {
+                type: "test_alert",
+                severity: severity,
+                heartRate: heartRate.toString(),
+                timestamp: Date.now().toString(),
+            },
+            notification: {
+                title: `[TEST] ${notificationData.title}`,
+                body: notificationData.body,
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: "anxiety_alerts",
+                    priority: "max",
+                    defaultSound: true,
+                },
+            },
+            topic: "anxiety_alerts",
+        };
+        const response = await admin.messaging().send(message);
+        console.log("✅ Test FCM notification sent successfully:", response);
+        res.status(200).json({
+            success: true,
+            messageId: response,
+            severity,
+            heartRate,
+            notification: {
+                title: message.notification.title,
+                body: message.notification.body
+            },
+            message: "Test notification sent successfully! Check your device."
+        });
+    }
+    catch (error) {
+        console.error("❌ Error sending test notification:", error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            message: "Failed to send test notification"
+        });
     }
 });
 // Wellness message categories with varied content for different times of day

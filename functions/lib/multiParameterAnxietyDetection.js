@@ -222,7 +222,7 @@ function applyTriggerLogic(hrAnalysis, spo2Analysis, movementAnalysis, abnormalC
         triggered = true;
         confidenceLevel = 0.85 + (abnormalCount - 2) * 0.1; // 0.85-1.0
         // Check if this falls into mild/moderate levels for confirmation requirement
-        const hrElevation = (metrics.currentHR - metrics.restingHR);
+        const hrElevation = metrics.currentHR - metrics.restingHR;
         const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
         const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
         // ALWAYS require confirmation for mild and moderate levels, even with multiple metrics
@@ -247,14 +247,14 @@ function applyTriggerLogic(hrAnalysis, spo2Analysis, movementAnalysis, abnormalC
         reason = "tremorDetected";
         confidenceLevel = 0.8; // High confidence for tremors
         // Check severity level even for tremors
-        const hrElevation = (metrics.currentHR - metrics.restingHR);
+        const hrElevation = metrics.currentHR - metrics.restingHR;
         const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
         const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
         // ALWAYS require confirmation for mild and moderate levels, even for tremors
         requiresUserConfirmation = isMildLevel || isModerateLevel;
         console.log("Tremor pattern detected - likely anxiety");
     }
-    // Single metric abnormal - Request confirmation  
+    // Single metric abnormal - Request confirmation
     else if (abnormalCount === 1) {
         triggered = true;
         confidenceLevel = 0.6;
@@ -269,7 +269,7 @@ function applyTriggerLogic(hrAnalysis, spo2Analysis, movementAnalysis, abnormalC
                 confidenceLevel = 0.75;
             }
             // Calculate severity level for confirmation requirements
-            const hrElevation = (metrics.currentHR - metrics.restingHR);
+            const hrElevation = metrics.currentHR - metrics.restingHR;
             const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
             const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
             // Special case: High HR while resting (very likely anxiety)
@@ -278,7 +278,7 @@ function applyTriggerLogic(hrAnalysis, spo2Analysis, movementAnalysis, abnormalC
                 // ALWAYS require confirmation for mild and moderate levels
                 if (isMildLevel || isModerateLevel) {
                     requiresUserConfirmation = true;
-                    console.log(`${isMildLevel ? 'Mild' : 'Moderate'} anxiety level detected - requesting user confirmation`);
+                    console.log(`${isMildLevel ? "Mild" : "Moderate"} anxiety level detected - requesting user confirmation`);
                 }
                 else {
                     requiresUserConfirmation = false;
@@ -481,7 +481,7 @@ async function getDeviceInfo(deviceId) {
                 return {
                     userId: assignment.assignedUser,
                     deviceId: deviceId,
-                    source: "assignment_sync"
+                    source: "assignment_sync",
                 };
             }
         }

@@ -93,6 +93,41 @@ class NotificationService extends ChangeNotifier {
     _onNotificationAdded = callback;
   }
 
+  /// Get the appropriate notification channel key based on severity level
+  String _getChannelKeyForSeverity(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'mild':
+        return 'mild_anxiety_alerts';
+      case 'moderate':
+        return 'moderate_anxiety_alerts';
+      case 'severe':
+        return 'severe_anxiety_alerts';
+      case 'critical':
+        return 'critical_anxiety_alerts';
+      case 'elevated':
+        return 'mild_anxiety_alerts'; // Use mild channel for elevated
+      default:
+        return 'anxiety_alerts'; // Fallback to general channel
+    }
+  }
+
+  /// Get custom sound resource path for severity level
+  String? _getCustomSoundPath(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'mild':
+      case 'elevated':
+        return 'resource://raw/mild_alert';
+      case 'moderate':
+        return 'resource://raw/moderate_alert';
+      case 'severe':
+        return 'resource://raw/severe_alert';
+      case 'critical':
+        return 'resource://raw/critical_alert';
+      default:
+        return null; // Use default system sound
+    }
+  }
+
   /// Check if a notification of this type was recently sent
   /// Returns true if it's a duplicate (should not send)
   Future<bool> _isDuplicateNotification(String type, String content) async {
@@ -151,6 +186,7 @@ class NotificationService extends ChangeNotifier {
           category: type == 'anxiety_alert'
               ? NotificationCategory.Alarm
               : NotificationCategory.Reminder,
+          icon: 'resource://drawable/ic_notification', // Add notification icon
           payload: payload ?? {},
         ),
       );
@@ -210,47 +246,90 @@ class NotificationService extends ChangeNotifier {
     await AwesomeNotifications().initialize(
       'resource://drawable/launcher_icon', // Use AnxieEase custom icon instead of Flutter default
       [
+        // General AnxieEase channel
         NotificationChannel(
           channelKey: 'anxiease_channel',
           channelName: 'AnxieEase Notifications',
-          channelDescription: 'Notifications from AnxieEase app',
+          channelDescription: 'General notifications from AnxieEase app',
           defaultColor: Colors.blue,
           importance: NotificationImportance.High,
           enableVibration: true,
           icon: 'resource://drawable/launcher_icon',
         ),
+        
+        // Severity-specific channels with custom sounds
         NotificationChannel(
-          channelKey: 'alerts_channel',
-          channelName: 'Alerts',
-          channelDescription: 'Notification alerts for severity levels',
-          defaultColor: Colors.red,
-          importance: NotificationImportance.High,
-          ledColor: Colors.white,
+          channelKey: 'mild_anxiety_alerts',
+          channelName: 'Mild Anxiety Alerts',
+          channelDescription: 'Gentle notifications for mild anxiety detection',
+          defaultColor: const Color(0xFF66BB6A), // Light Green
+          importance: NotificationImportance.Default,
+          ledColor: const Color(0xFF66BB6A),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
           icon: 'resource://drawable/launcher_icon',
         ),
+        
         NotificationChannel(
-          channelKey: 'wellness_reminders', // Changed for consistency
-          channelName: 'Wellness Reminders',
-          channelDescription: 'Wellness and anxiety prevention reminders',
-          defaultColor: Colors.green,
+          channelKey: 'moderate_anxiety_alerts',
+          channelName: 'Moderate Anxiety Alerts',
+          channelDescription: 'Medium priority alerts for moderate anxiety',
+          defaultColor: const Color(0xFFFF9800), // Orange
           importance: NotificationImportance.High,
-          ledColor: Colors.green,
+          ledColor: const Color(0xFFFF9800),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/moderate_alert', // Custom sound for moderate
           icon: 'resource://drawable/launcher_icon',
         ),
+        
+        NotificationChannel(
+          channelKey: 'severe_anxiety_alerts',
+          channelName: 'Severe Anxiety Alerts',
+          channelDescription: 'High priority alerts for severe anxiety detection',
+          defaultColor: const Color(0xFFF44336), // Red
+          importance: NotificationImportance.High, // Changed from Max to High
+          ledColor: const Color(0xFFF44336),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/severe_alert', // Custom sound for severe
+          icon: 'resource://drawable/launcher_icon',
+          // Removed criticalAlerts: true to prevent looping
+        ),
+        
+        NotificationChannel(
+          channelKey: 'critical_anxiety_alerts',
+          channelName: 'Critical Emergency Alerts',
+          channelDescription: 'Emergency alerts requiring immediate attention',
+          defaultColor: const Color(0xFFD32F2F), // Dark Red
+          importance: NotificationImportance.Max, // Keep Max for critical, but remove criticalAlerts
+          ledColor: const Color(0xFFD32F2F),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/critical_alert', // Custom sound for critical
+          icon: 'resource://drawable/launcher_icon',
+          // Removed criticalAlerts: true to prevent looping
+        ),
+        
+        // General alerts channel (fallback)
         NotificationChannel(
           channelKey: 'anxiety_alerts',
-          channelName: 'Anxiety Alerts',
-          channelDescription: 'Notifications for anxiety level alerts',
+          channelName: 'General Anxiety Alerts',
+          channelDescription: 'General anxiety level alerts',
           defaultColor: Colors.red,
           importance: NotificationImportance.High,
           ledColor: Colors.white,
+          enableVibration: true,
+          playSound: true,
           icon: 'resource://drawable/launcher_icon',
         ),
+        
+        // Wellness reminders
         NotificationChannel(
           channelKey: 'wellness_reminders',
           channelName: 'Wellness Reminders',
-          channelDescription:
-              'FCM-based wellness reminders that work when app is closed',
+          channelDescription: 'Wellness and anxiety prevention reminders',
           defaultColor: const Color(0xFF2D9254),
           importance: NotificationImportance.Default,
           ledColor: const Color(0xFF2D9254),
@@ -443,9 +522,10 @@ class NotificationService extends ChangeNotifier {
   }
 
   // Show a severity-based notification with deduplication
+  // Show a severity-based notification with custom sound and vibration
   Future<void> _showSeverityNotification(
       String title, String body, String channelKey, String severity) async {
-    // Check for duplicates before sending
+    // Check for duplicates before sending (30-minute window protection)
     final isDuplicate = await _isDuplicateNotification(
         'anxiety_alert_$severity', '$title: $body');
     if (isDuplicate) {
@@ -453,41 +533,58 @@ class NotificationService extends ChangeNotifier {
       return;
     }
 
-    // Send the notification with enhanced features for severe alerts
+    // Get severity-specific channel (override the passed channelKey)
+    final severityChannelKey = _getChannelKeyForSeverity(severity);
+    
+    // Determine notification behavior based on severity
+    final isHighPriority = ['severe', 'critical'].contains(severity.toLowerCase());
+    final isCritical = severity.toLowerCase() == 'critical';
+
+    // Send the notification with severity-specific enhancements
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-        channelKey: channelKey,
+        channelKey: severityChannelKey, // Use severity-specific channel
         title: title,
         body: body,
         notificationLayout: NotificationLayout.Default,
-        category: severity == 'severe'
-            ? NotificationCategory.Alarm
+        category: isHighPriority 
+            ? NotificationCategory.Reminder // Changed from Alarm to Reminder to prevent looping
             : NotificationCategory.Reminder,
-        wakeUpScreen: severity == 'severe',
-        fullScreenIntent: severity == 'severe',
-        criticalAlert: severity == 'severe',
+        wakeUpScreen: isHighPriority,
+        // Removed fullScreenIntent and criticalAlert to prevent looping behavior
+        icon: 'resource://drawable/ic_notification', // Add small icon
+        customSound: _getCustomSoundPath(severity), // Custom sound per severity
         payload: {
           'type': 'anxiety_alert',
           'severity': severity,
           'timestamp': DateTime.now().toIso8601String(),
         },
       ),
-      actionButtons: severity == 'severe'
+      actionButtons: isHighPriority
           ? [
               NotificationActionButton(
                 key: 'DISMISS',
-                label: 'Dismiss',
+                label: 'I\'m OK',
                 actionType: ActionType.DismissAction,
               ),
               NotificationActionButton(
                 key: 'VIEW_DETAILS',
-                label: 'View Details',
+                label: 'Open App',
                 actionType: ActionType.Default,
               ),
+              // Add emergency action for critical alerts
+              if (isCritical)
+                NotificationActionButton(
+                  key: 'EMERGENCY',
+                  label: 'Get Help',
+                  actionType: ActionType.Default,
+                ),
             ]
           : null,
     );
+    
+    debugPrint('🔔 Sent $severity notification with custom sound and channel: $severityChannelKey');
   }
 
   // Method to manually trigger a notification based on current severity
@@ -692,7 +789,60 @@ class NotificationService extends ChangeNotifier {
         title: 'AnxieEase',
         body: 'Notifications are working correctly!',
         notificationLayout: NotificationLayout.Default,
+        icon: 'resource://drawable/ic_notification', // Add notification icon
       ),
+    );
+  }
+
+  // Test all severity-specific notification sounds
+  Future<void> testAllSeverityNotifications() async {
+    const severities = ['mild', 'moderate', 'severe', 'critical'];
+    
+    debugPrint('🔔 Testing all severity notification sounds...');
+    
+    for (int i = 0; i < severities.length; i++) {
+      final severity = severities[i];
+      
+      // Wait 2 seconds between notifications
+      if (i > 0) {
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      
+      await testSeverityNotification(severity, i + 1);
+      debugPrint('✅ Sent $severity test notification');
+    }
+    
+    debugPrint('🎉 All severity notification tests completed!');
+  }
+
+  // Test individual severity notification sound (public method)
+  Future<void> testSeverityNotification(String severity, int id) async {
+    final Map<String, Map<String, String>> testData = {
+      'mild': {
+        'title': '🟢 Mild Alert Test',
+        'body': 'Testing gentle notification sound for mild anxiety detection.'
+      },
+      'moderate': {
+        'title': '🟠 Moderate Alert Test', 
+        'body': 'Testing medium priority sound for moderate anxiety levels.'
+      },
+      'severe': {
+        'title': '🔴 Severe Alert Test',
+        'body': 'Testing urgent notification sound for severe anxiety detection.'
+      },
+      'critical': {
+        'title': '🚨 Critical Alert Test',
+        'body': 'Testing emergency notification sound for critical situations.'
+      }
+    };
+
+    final data = testData[severity] ?? testData['mild']!;
+    
+    await _showSeverityNotification(
+      data['title']!, 
+      data['body']!, 
+      'test_channel', // This will be overridden by severity-specific channel
+      severity
     );
   }
 
@@ -830,6 +980,7 @@ class NotificationService extends ChangeNotifier {
         body: message['body'],
         notificationLayout: NotificationLayout.Default,
         category: NotificationCategory.Reminder,
+        icon: 'resource://drawable/ic_notification', // Add notification icon
       ),
       schedule: NotificationCalendar(
         hour: scheduledTime.hour,

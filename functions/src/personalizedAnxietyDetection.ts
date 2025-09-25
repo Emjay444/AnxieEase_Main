@@ -225,9 +225,9 @@ async function sendPersonalizedNotification(data: any) {
           ? ("high" as const)
           : ("normal" as const),
       notification: {
-        channelId: "anxiety_alerts",
-        // omit notification.priority to avoid type incompatibilities across SDK versions
-        defaultSound: true,
+        channelId: getAndroidChannelId(severity), // Use severity-specific channel
+        defaultSound: false, // We'll use custom sounds
+        sound: getCustomSoundName(severity), // Custom sound per severity
         defaultVibrateTimings: true,
         color: getNotificationColor(severity),
       },
@@ -307,6 +307,36 @@ function getPersonalizedNotificationContent(
     (templates as Record<string, { title: string; body: string }>)[severity] ||
     templates.mild
   );
+}
+
+/**
+ * Get Android channel ID based on severity
+ */
+function getAndroidChannelId(severity: string) {
+  const channelMap = {
+    mild: "mild_anxiety_alerts",
+    moderate: "moderate_anxiety_alerts", 
+    severe: "severe_anxiety_alerts",
+    critical: "critical_anxiety_alerts",
+    elevated: "mild_anxiety_alerts",
+  };
+  
+  return (channelMap as Record<string, string>)[severity] || "anxiety_alerts";
+}
+
+/**
+ * Get custom sound name for Android notifications
+ */
+function getCustomSoundName(severity: string) {
+  const soundMap = {
+    mild: "mild_alert",
+    moderate: "moderate_alert",
+    severe: "severe_alert", 
+    critical: "critical_alert",
+    elevated: "mild_alert",
+  };
+  
+  return (soundMap as Record<string, string>)[severity] || "default";
 }
 
 /**

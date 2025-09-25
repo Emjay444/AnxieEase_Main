@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/device_service.dart';
 import '../services/admin_device_management_service.dart';
+import '../services/notification_service.dart';
 import '../models/health_metrics.dart';
 import '../theme/app_theme.dart';
 import '../config/baseline_config.dart';
+import '../widgets/notification_sound_tester.dart';
 
 /// Real-time health metrics dashboard
 ///
@@ -192,6 +194,16 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
       backgroundColor: AppTheme.primaryColor,
       elevation: 0,
       actions: [
+        // Add notification sound test button
+        IconButton(
+          onPressed: () => _showNotificationTestDialog(context),
+          icon: const Icon(
+            Icons.notifications_active,
+            color: Colors.white,
+            size: 24,
+          ),
+          tooltip: 'Test Notification Sounds',
+        ),
         if (device != null)
           Container(
             margin: const EdgeInsets.only(right: 16),
@@ -1204,5 +1216,137 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
         ),
       ),
     );
+  }
+
+  /// Show notification sound test dialog
+  void _showNotificationTestDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          '🔔 Test Notification Sounds',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Test different severity notification sounds:',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              _buildQuickTestButton('🟢 Mild Alert', 'mild', Colors.green),
+              const SizedBox(height: 8),
+              _buildQuickTestButton('🟠 Moderate Alert', 'moderate', Colors.orange),
+              const SizedBox(height: 8),
+              _buildQuickTestButton('🔴 Severe Alert', 'severe', Colors.red),
+              const SizedBox(height: 8),
+              _buildQuickTestButton('🚨 Critical Alert', 'critical', Colors.red[900]!),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => _testAllSounds(context),
+                icon: const Icon(Icons.play_arrow, size: 18),
+                label: const Text('Test All (2s apart)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 36),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const NotificationSoundTester(),
+                ),
+              );
+            },
+            child: const Text('Open Full Tester'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build quick test button for individual severity
+  Widget _buildQuickTestButton(String title, String severity, Color color) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: () => _testIndividualSound(severity),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+        ),
+        child: Text(title, style: const TextStyle(fontSize: 12)),
+      ),
+    );
+  }
+
+  /// Test individual severity sound
+  Future<void> _testIndividualSound(String severity) async {
+    try {
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      await notificationService.testSeverityNotification(
+        severity, 
+        DateTime.now().millisecond,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$severity notification sent!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// Test all severity sounds with delays
+  Future<void> _testAllSounds(BuildContext context) async {
+    try {
+      Navigator.of(context).pop(); // Close dialog first
+      
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      await notificationService.testAllSeverityNotifications();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All severity notifications sent! Check your notification panel.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 }

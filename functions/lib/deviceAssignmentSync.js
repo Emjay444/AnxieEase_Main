@@ -20,11 +20,11 @@ const db = admin.database();
 exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
     var _a;
     // Enable CORS
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') {
-        res.status(200).send('');
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+        res.status(200).send("");
         return;
     }
     console.log("📡 Supabase webhook received for device assignment sync");
@@ -54,7 +54,7 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
         console.log(`   Active: ${isActive}`);
         // Step 1: Get current Firebase assignment
         const currentAssignmentRef = db.ref(`/devices/${deviceId}/assignment`);
-        const currentSnapshot = await currentAssignmentRef.once('value');
+        const currentSnapshot = await currentAssignmentRef.once("value");
         const currentAssignment = currentSnapshot.val();
         // Step 2: Check if sync is needed
         const needsSync = !currentAssignment ||
@@ -65,7 +65,7 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             res.status(200).json({
                 success: true,
                 message: "Already in sync",
-                currentUser: currentAssignment.assignedUser
+                currentUser: currentAssignment.assignedUser,
             });
             return;
         }
@@ -83,9 +83,9 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
                 syncedAt: admin.database.ServerValue.TIMESTAMP,
                 baselineHR: baselineHR,
                 webhookTrigger: true,
-                originalPayload: payload.type || "unknown"
+                originalPayload: payload.type || "unknown",
             },
-            previousAssignment: currentAssignment
+            previousAssignment: currentAssignment,
         };
         await currentAssignmentRef.set(newAssignment);
         console.log(`✅ Firebase assignment updated for ${deviceId}`);
@@ -95,7 +95,7 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             assignedUser: userId,
             deviceId: deviceId,
             lastSync: admin.database.ServerValue.TIMESTAMP,
-            source: "supabase_webhook_sync"
+            source: "supabase_webhook_sync",
         });
         console.log(`✅ Device metadata updated for anxiety detection`);
         // Step 4: Update user baseline
@@ -104,7 +104,7 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
                 heartRate: baselineHR,
                 timestamp: Date.now(),
                 source: "supabase_webhook_sync",
-                deviceId: deviceId
+                deviceId: deviceId,
             });
             console.log(`✅ User baseline updated: ${baselineHR} BPM`);
         }
@@ -115,7 +115,7 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
                 status: "active",
                 startTime: admin.database.ServerValue.TIMESTAMP,
                 source: "supabase_webhook_sync",
-                baselineHR: baselineHR
+                baselineHR: baselineHR,
             });
             console.log(`✅ User session initialized: ${newSessionId}`);
         }
@@ -126,10 +126,12 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             const oldUserId = currentAssignment.assignedUser;
             const oldSessionId = currentAssignment.activeSessionId;
             if (oldSessionId) {
-                await db.ref(`/users/${oldUserId}/sessions/${oldSessionId}/metadata`).update({
+                await db
+                    .ref(`/users/${oldUserId}/sessions/${oldSessionId}/metadata`)
+                    .update({
                     status: "ended",
                     endTime: admin.database.ServerValue.TIMESTAMP,
-                    endReason: "device_reassigned_by_admin_webhook"
+                    endReason: "device_reassigned_by_admin_webhook",
                 });
                 console.log(`✅ Old user session ended: ${oldUserId}`);
             }
@@ -142,14 +144,14 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             newUser: userId,
             newSession: newSessionId,
             baseline: baselineHR,
-            syncedAt: new Date().toISOString()
+            syncedAt: new Date().toISOString(),
         });
     }
     catch (error) {
         console.error("❌ Webhook sync failed:", error);
         res.status(500).json({
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: error instanceof Error ? error.message : "Unknown error",
         });
     }
 });
@@ -158,7 +160,9 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
  *
  * Runs every 5 minutes to check for any missed webhook updates
  */
-exports.periodicDeviceSync = functions.pubsub.schedule('every 5 minutes').onRun(async (context) => {
+exports.periodicDeviceSync = functions.pubsub
+    .schedule("every 5 minutes")
+    .onRun(async (context) => {
     console.log("⏰ Running periodic device assignment sync");
     try {
         // TODO: This would query Supabase to get all active device assignments
@@ -185,8 +189,8 @@ exports.testDeviceSync = functions.https.onRequest(async (req, res) => {
                 user_id: "e0997cb7-684f-41e5-929f-4480788d4ad0",
                 baseline_hr: 73.5,
                 is_active: true,
-                linked_at: new Date().toISOString()
-            }
+                linked_at: new Date().toISOString(),
+            },
         };
         // Process the test payload (reuse the webhook logic)
         const deviceId = testPayload.record.device_id;
@@ -199,7 +203,7 @@ exports.testDeviceSync = functions.https.onRequest(async (req, res) => {
             assignedAt: admin.database.ServerValue.TIMESTAMP,
             status: "active",
             assignedBy: "manual_test_sync",
-            testSync: true
+            testSync: true,
         });
         console.log("✅ Test sync completed");
         res.status(200).json({
@@ -209,15 +213,15 @@ exports.testDeviceSync = functions.https.onRequest(async (req, res) => {
             result: {
                 deviceId: deviceId,
                 userId: userId,
-                sessionId: newSessionId
-            }
+                sessionId: newSessionId,
+            },
         });
     }
     catch (error) {
         console.error("❌ Test sync failed:", error);
         res.status(500).json({
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: error instanceof Error ? error.message : "Unknown error",
         });
     }
 });

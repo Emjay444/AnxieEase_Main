@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPersonalizedNotificationContent = exports.getSeverityLevel = exports.calculatePersonalizedThresholds = exports.detectPersonalizedAnxiety = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 const db = admin.database();
 /**
  * Enhanced anxiety detection with personalized thresholds
@@ -44,9 +45,9 @@ exports.detectPersonalizedAnxiety = functions.database
             console.log("No significant severity change, skipping notification");
             return null;
         }
-        // Check rate limiting
-        if (await isRateLimited(deviceData.userId, newSeverity)) {
-            console.log("Rate limited, skipping notification");
+        // Check enhanced rate limiting (considers user confirmations)
+        if (await (0, enhancedRateLimiting_1.isRateLimitedWithConfirmation)(deviceData.userId, newSeverity)) {
+            console.log("Rate limited (considering user confirmations), skipping notification");
             return null;
         }
         // Send personalized notification
@@ -87,7 +88,7 @@ async function getDeviceInfo(deviceId) {
                 return {
                     userId: assignment.assignedUser,
                     deviceId: deviceId,
-                    source: "supabase_webhook_sync"
+                    source: "supabase_webhook_sync",
                 };
             }
         }
@@ -153,30 +154,7 @@ function getSeverityLevel(heartRate, thresholds) {
     return "normal";
 }
 exports.getSeverityLevel = getSeverityLevel;
-/**
- * Check if notifications are rate-limited for this user
- */
-async function isRateLimited(userId, severity) {
-    const now = Date.now();
-    const rateLimitRef = db.ref(`rateLimits/${userId}/${severity}`);
-    const snapshot = await rateLimitRef.once("value");
-    const limits = {
-        mild: 300000,
-        moderate: 180000,
-        severe: 60000,
-        critical: 30000, // 30 seconds
-    };
-    const limit = limits[severity] || 300000;
-    if (snapshot.exists()) {
-        const lastNotification = snapshot.val();
-        if (now - lastNotification < limit) {
-            return true;
-        }
-    }
-    // Update rate limit timestamp
-    await rateLimitRef.set(now);
-    return false;
-}
+// Rate limiting functionality moved to enhancedRateLimiting.ts
 /**
  * Send personalized notification with baseline context
  */
@@ -207,9 +185,9 @@ async function sendPersonalizedNotification(data) {
                 ? "high"
                 : "normal",
             notification: {
-                channelId: "anxiety_alerts",
-                // omit notification.priority to avoid type incompatibilities across SDK versions
-                defaultSound: true,
+                channelId: getAndroidChannelId(severity),
+                defaultSound: false,
+                sound: getCustomSoundName(severity),
                 defaultVibrateTimings: true,
                 color: getNotificationColor(severity),
             },
@@ -227,6 +205,8 @@ async function sendPersonalizedNotification(data) {
     try {
         await admin.messaging().send(message);
         console.log(`Personalized notification sent - ${severity}: ${heartRate} BPM (${bpmAbove} above baseline)`);
+        // Update rate limit timestamp after successful notification
+        await (0, enhancedRateLimiting_1.updateRateLimitTimestamp)(userId, severity);
         // Store alert in database
         await storeAlert(userId, deviceId, {
             heartRate,
@@ -274,6 +254,32 @@ function getPersonalizedNotificationContent(severity, heartRate, baseline, perce
         templates.mild);
 }
 exports.getPersonalizedNotificationContent = getPersonalizedNotificationContent;
+/**
+ * Get Android channel ID based on severity
+ */
+function getAndroidChannelId(severity) {
+    const channelMap = {
+        mild: "mild_anxiety_alerts",
+        moderate: "moderate_anxiety_alerts",
+        severe: "severe_anxiety_alerts",
+        critical: "critical_anxiety_alerts",
+        elevated: "mild_anxiety_alerts",
+    };
+    return channelMap[severity] || "anxiety_alerts";
+}
+/**
+ * Get custom sound name for Android notifications
+ */
+function getCustomSoundName(severity) {
+    const soundMap = {
+        mild: "mild_alert",
+        moderate: "moderate_alert",
+        severe: "severe_alert",
+        critical: "critical_alert",
+        elevated: "mild_alert",
+    };
+    return soundMap[severity] || "default";
+}
 /**
  * Get notification color based on severity
  */

@@ -32,6 +32,13 @@ export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 // Import real-time sustained anxiety detection
 export { realTimeSustainedAnxietyDetection } from "./realTimeSustainedAnxietyDetection";
 
+// Import auto-cleanup functions
+export {
+  autoCleanup,
+  manualCleanup,
+  getCleanupStats,
+} from "./autoCleanup";
+
 // Import device assignment sync functions
 export {
   syncDeviceAssignment,
@@ -214,6 +221,73 @@ export const sendTestNotificationV2 = functions.https.onCall(
     }
   }
 );
+
+// HTTP-based test notification function for easy testing
+export const testNotificationHTTP = functions.https.onRequest(async (req, res) => {
+  // Enable CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  try {
+    const { severity = "mild", heartRate = 75 } = req.method === 'POST' ? req.body : req.query;
+
+    console.log(`📧 Testing notification: ${severity} alert with HR: ${heartRate}`);
+
+    const notificationData = getNotificationContent(severity, heartRate);
+
+    const message = {
+      data: {
+        type: "test_alert",
+        severity: severity,
+        heartRate: heartRate.toString(),
+        timestamp: Date.now().toString(),
+      },
+      notification: {
+        title: `[TEST] ${notificationData.title}`,
+        body: notificationData.body,
+      },
+      android: {
+        priority: "high" as any,
+        notification: {
+          channelId: "anxiety_alerts",
+          priority: "max" as any,
+          defaultSound: true,
+        },
+      },
+      topic: "anxiety_alerts",
+    };
+
+    const response = await admin.messaging().send(message);
+    console.log("✅ Test FCM notification sent successfully:", response);
+
+    res.status(200).json({ 
+      success: true, 
+      messageId: response,
+      severity,
+      heartRate,
+      notification: {
+        title: message.notification.title,
+        body: message.notification.body
+      },
+      message: "Test notification sent successfully! Check your device."
+    });
+
+  } catch (error) {
+    console.error("❌ Error sending test notification:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      message: "Failed to send test notification"
+    });
+  }
+});
 
 // Wellness message categories with varied content for different times of day
 const WELLNESS_MESSAGES = {

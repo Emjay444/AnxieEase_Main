@@ -322,7 +322,7 @@ export const getRateLimitStatus = functions.https.onCall(
         const config = RATE_LIMIT_CONFIG[severity];
 
         let cooldownPeriod = config.baseCooldown;
-        if (data.lastUserResponse && !data.lastUserResponse.confirmed) {
+        if (data.lastUserResponse && data.lastUserResponse.response === "no") {
           const timeSinceResponse = now - data.lastUserResponse.timestamp;
           if (timeSinceResponse < config.maxCooldown) {
             cooldownPeriod = config.confirmedCooldown;
@@ -341,7 +341,7 @@ export const getRateLimitStatus = functions.https.onCall(
           remainingSeconds,
           lastResponse: data.lastUserResponse,
           cooldownType:
-            data.lastUserResponse?.confirmed === false ? "extended" : "normal",
+            data.lastUserResponse?.response === "no" ? "extended" : "normal",
         };
       }
     );
