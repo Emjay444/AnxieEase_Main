@@ -83,19 +83,37 @@ export const detectPersonalizedAnxiety = functions.database
   });
 
 /**
- * Get device information from Supabase
+ * Get device information with userId for notifications
  */
 async function getDeviceInfo(deviceId: string): Promise<any> {
   try {
-    // In a real implementation, you'd query Supabase here
-    // For now, we'll get it from Firebase device metadata
-    const deviceRef = db.ref(`devices/${deviceId}/metadata`);
-    const snapshot = await deviceRef.once("value");
-
-    if (snapshot.exists()) {
-      return snapshot.val();
+    // First, check metadata path
+    const metadataRef = db.ref(`devices/${deviceId}/metadata`);
+    const metadataSnapshot = await metadataRef.once("value");
+    
+    if (metadataSnapshot.exists()) {
+      const metadata = metadataSnapshot.val();
+      if (metadata.userId) {
+        return metadata;
+      }
     }
-
+    
+    // If no userId in metadata, check assignment path (from Supabase webhook sync)
+    const assignmentRef = db.ref(`devices/${deviceId}/assignment`);
+    const assignmentSnapshot = await assignmentRef.once("value");
+    
+    if (assignmentSnapshot.exists()) {
+      const assignment = assignmentSnapshot.val();
+      if (assignment.assignedUser) {
+        return {
+          userId: assignment.assignedUser,
+          deviceId: deviceId,
+          source: "supabase_webhook_sync"
+        };
+      }
+    }
+    
+    console.log(`⚠️ No user assigned to device ${deviceId}`);
     return null;
   } catch (error) {
     console.error("Error fetching device info:", error);

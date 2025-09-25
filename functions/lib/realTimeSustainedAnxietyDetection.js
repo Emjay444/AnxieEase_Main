@@ -16,7 +16,9 @@ exports.realTimeSustainedAnxietyDetection = functions.database
     const afterData = change.after.val();
     console.log(`🔍 Device ${deviceId} data updated, checking for user assignment`);
     // Validate required data
-    if (!afterData || !afterData.heartRate || typeof afterData.heartRate !== 'number') {
+    if (!afterData ||
+        !afterData.heartRate ||
+        typeof afterData.heartRate !== "number") {
         console.log("❌ Missing or invalid heart rate data");
         return null;
     }
@@ -64,7 +66,7 @@ exports.realTimeSustainedAnxietyDetection = functions.database
                 heartRate: sustainedAnalysis.averageHR,
                 baseline: userBaseline.baselineHR,
                 duration: sustainedAnalysis.sustainedSeconds,
-                reason: sustainedAnalysis.reason
+                reason: sustainedAnalysis.reason,
             });
         }
         else {
@@ -82,7 +84,7 @@ exports.realTimeSustainedAnxietyDetection = functions.database
  */
 async function getUserSessionHistory(userId, sessionId, seconds) {
     const userSessionRef = db.ref(`/users/${userId}/sessions/${sessionId}/data`);
-    const cutoffTime = Date.now() - (seconds * 1000);
+    const cutoffTime = Date.now() - seconds * 1000;
     try {
         const snapshot = await userSessionRef
             .orderByChild("timestamp")
@@ -101,7 +103,7 @@ async function getUserSessionHistory(userId, sessionId, seconds) {
                     heartRate: data.heartRate,
                     spo2: data.spo2,
                     bodyTemp: data.bodyTemp,
-                    worn: data.worn || 1
+                    worn: data.worn || 1,
                 });
             }
         });
@@ -123,12 +125,11 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
         return { isSustained: false, durationSeconds: 0 };
     }
     // User-specific anxiety threshold (20% above their personal baseline)
-    const anxietyThreshold = baselineHR * 1.20;
+    const anxietyThreshold = baselineHR * 1.2;
     const now = Date.now();
     console.log(`📊 User ${userId} analysis: threshold=${anxietyThreshold} BPM, current=${currentData.heartRate} BPM`);
     // Include current data point and sort by timestamp
-    const allData = [Object.assign(Object.assign({}, currentData), { timestamp: now }), ...userHistoryData]
-        .sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically (oldest first)
+    const allData = [Object.assign(Object.assign({}, currentData), { timestamp: now }), ...userHistoryData].sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically (oldest first)
     console.log(`📊 Analyzing ${allData.length} data points chronologically for user ${userId}`);
     // Find the longest continuous elevated period
     let longestSustainedDuration = 0;
@@ -162,7 +163,7 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
     // Check if the current ongoing period is still elevated (might be our longest)
     if (currentSustainedStart !== null) {
         // For ongoing periods, use the latest data point's timestamp, not current time
-        const latestTimestamp = Math.max(...allData.map(p => p.timestamp));
+        const latestTimestamp = Math.max(...allData.map((p) => p.timestamp));
         const ongoingSustainedDuration = (latestTimestamp - currentSustainedStart) / 1000;
         console.log(`📊 User ${userId}: Current ongoing elevated period: ${ongoingSustainedDuration}s (${currentElevatedPoints.length} points)`);
         if (ongoingSustainedDuration > longestSustainedDuration) {
@@ -172,7 +173,8 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
     }
     // Check if we have 30+ seconds of sustained elevation
     if (longestSustainedDuration >= 30 && bestElevatedPoints.length > 0) {
-        const avgHR = bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) / bestElevatedPoints.length;
+        const avgHR = bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
+            bestElevatedPoints.length;
         const percentageAbove = Math.round(((avgHR - baselineHR) / baselineHR) * 100);
         console.log(`🚨 User ${userId}: SUSTAINED ANXIETY DETECTED! ${longestSustainedDuration}s at avg ${avgHR} BPM`);
         return {
@@ -181,16 +183,16 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
             averageHR: Math.round(avgHR),
             percentageAbove: percentageAbove,
             severity: getSeverityLevel(avgHR, baselineHR),
-            reason: `User ${userId}: Heart rate sustained ${percentageAbove}% above personal baseline for ${Math.floor(longestSustainedDuration)}+ seconds`
+            reason: `User ${userId}: Heart rate sustained ${percentageAbove}% above personal baseline for ${Math.floor(longestSustainedDuration)}+ seconds`,
         };
     }
     console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 30s required)`);
     return {
         isSustained: false,
         durationSeconds: Math.floor(longestSustainedDuration),
-        reason: longestSustainedDuration > 0 ?
-            `User ${userId}: Elevated for ${Math.floor(longestSustainedDuration)}s (need 30s)` :
-            `User ${userId}: HR within normal range`
+        reason: longestSustainedDuration > 0
+            ? `User ${userId}: Elevated for ${Math.floor(longestSustainedDuration)}s (need 30s)`
+            : `User ${userId}: HR within normal range`,
     };
 }
 /**
@@ -230,15 +232,15 @@ async function sendUserAnxietyAlert(alertData) {
                 severity: alertData.severity,
                 heartRate: alertData.heartRate.toString(),
                 baseline: alertData.baseline.toString(),
-                duration: alertData.duration.toString()
+                duration: alertData.duration.toString(),
             },
             android: {
                 priority: "high",
                 notification: {
                     color: notificationContent.color,
-                    sound: "anxiety_alert"
-                }
-            }
+                    sound: "anxiety_alert",
+                },
+            },
         };
         const response = await admin.messaging().send(message);
         console.log(`✅ Notification sent successfully to user ${alertData.userId}:`, response);
@@ -275,25 +277,25 @@ function getUserNotificationContent(alertData) {
             return {
                 title: "🚨 Severe Anxiety Detected",
                 body: `Your heart rate was sustained at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Consider deep breathing exercises.`,
-                color: "#FF0000"
+                color: "#FF0000",
             };
         case "moderate":
             return {
                 title: "⚠️ Moderate Anxiety Detected",
                 body: `Your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Take a moment to relax.`,
-                color: "#FF8C00"
+                color: "#FF8C00",
             };
         case "mild":
             return {
                 title: "📊 Mild Anxiety Detected",
                 body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Check in with yourself.`,
-                color: "#FFA500"
+                color: "#FFA500",
             };
         default:
             return {
                 title: "📊 Anxiety Alert",
                 body: `Heart rate: ${alertData.heartRate} BPM`,
-                color: "#4CAF50"
+                color: "#4CAF50",
             };
     }
 }
@@ -312,7 +314,7 @@ async function storeUserAnxietyAlert(alertData) {
         reason: alertData.reason,
         timestamp: admin.database.ServerValue.TIMESTAMP,
         processed: true,
-        source: "cloud_function_sustained_detection"
+        source: "cloud_function_sustained_detection",
     });
     console.log(`📝 Stored user anxiety alert: ${userAlertsRef.key} for user ${alertData.userId}`);
 }

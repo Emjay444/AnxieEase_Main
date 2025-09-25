@@ -34,7 +34,7 @@ exports.autoCreateDeviceHistory = functions.database
             type: "auto_history_creation_error",
             timestamp: admin.database.ServerValue.TIMESTAMP,
             error: error instanceof Error ? error.message : String(error),
-            currentData: currentData
+            currentData: currentData,
         });
         throw error;
     }

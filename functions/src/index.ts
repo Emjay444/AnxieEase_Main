@@ -26,6 +26,13 @@ export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 // Import real-time sustained anxiety detection
 export { realTimeSustainedAnxietyDetection } from "./realTimeSustainedAnxietyDetection";
 
+// Import device assignment sync functions
+export { 
+  syncDeviceAssignment,
+  periodicDeviceSync,
+  testDeviceSync
+} from "./deviceAssignmentSync";
+
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database
   .ref("/devices/AnxieEase001/current")
