@@ -90,29 +90,29 @@ async function getDeviceInfo(deviceId: string): Promise<any> {
     // First, check metadata path
     const metadataRef = db.ref(`devices/${deviceId}/metadata`);
     const metadataSnapshot = await metadataRef.once("value");
-    
+
     if (metadataSnapshot.exists()) {
       const metadata = metadataSnapshot.val();
       if (metadata.userId) {
         return metadata;
       }
     }
-    
+
     // If no userId in metadata, check assignment path (from Supabase webhook sync)
     const assignmentRef = db.ref(`devices/${deviceId}/assignment`);
     const assignmentSnapshot = await assignmentRef.once("value");
-    
+
     if (assignmentSnapshot.exists()) {
       const assignment = assignmentSnapshot.val();
       if (assignment.assignedUser) {
         return {
           userId: assignment.assignedUser,
           deviceId: deviceId,
-          source: "supabase_webhook_sync"
+          source: "supabase_webhook_sync",
         };
       }
     }
-    
+
     console.log(`⚠️ No user assigned to device ${deviceId}`);
     return null;
   } catch (error) {

@@ -1,6 +1,6 @@
 /**
  * 🚀 SUPABASE WEBHOOK SETUP INSTRUCTIONS
- * 
+ *
  * This will enable real-time sync when admin changes device assignments
  */
 
@@ -23,7 +23,9 @@ console.log("Table: wearable_devices");
 console.log("Events: ☑️ Insert ☑️ Update ☑️ Delete");
 console.log("Type: HTTP Request");
 console.log("HTTP Method: POST");
-console.log("URL: https://us-central1-anxieease-sensors.cloudfunctions.net/syncDeviceAssignment");
+console.log(
+  "URL: https://us-central1-anxieease-sensors.cloudfunctions.net/syncDeviceAssignment"
+);
 
 console.log("\n📡 STEP 3: Test the Webhook");
 console.log("1. Save the webhook configuration");
@@ -33,12 +35,14 @@ console.log("4. Firebase should update automatically within 2 seconds!");
 
 console.log("\n🧪 ALTERNATIVE: Manual Test Right Now");
 console.log("=====================================");
-console.log("If you can't set up webhook immediately, let's test with a manual trigger:");
+console.log(
+  "If you can't set up webhook immediately, let's test with a manual trigger:"
+);
 
 console.log("\n💡 WHY IT'S NOT UPDATING AUTOMATICALLY:");
 console.log("=======================================");
 console.log("✅ Firebase Functions deployed successfully");
-console.log("✅ Auto-sync logic working (test passed)");  
+console.log("✅ Auto-sync logic working (test passed)");
 console.log("❌ Supabase webhook not configured yet");
 console.log("❌ No automatic trigger when you change assignments");
 
@@ -58,4 +62,6 @@ console.log("- Status: Ready for webhook connection!");
 
 console.log("\n📱 WEBHOOK URL TO USE:");
 console.log("======================");
-console.log("https://us-central1-anxieease-sensors.cloudfunctions.net/syncDeviceAssignment");
+console.log(
+  "https://us-central1-anxieease-sensors.cloudfunctions.net/syncDeviceAssignment"
+);

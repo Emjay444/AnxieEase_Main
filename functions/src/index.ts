@@ -27,10 +27,10 @@ export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 export { realTimeSustainedAnxietyDetection } from "./realTimeSustainedAnxietyDetection";
 
 // Import device assignment sync functions
-export { 
+export {
   syncDeviceAssignment,
   periodicDeviceSync,
-  testDeviceSync
+  testDeviceSync,
 } from "./deviceAssignmentSync";
 
 // Cloud Function to send FCM notifications when anxiety severity changes

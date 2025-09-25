@@ -80,13 +80,13 @@ instead of getting confused by inconsistent baseline data!
 `);
 
 // Simple verification without external dependencies
-console.log('\n🔍 MANUAL VERIFICATION STEPS:');
-console.log('=============================');
-console.log('1. Open Supabase dashboard');
-console.log('2. Go to SQL Editor'); 
-console.log('3. Run the SQL from fix_baseline_sync_supabase.sql');
-console.log('4. Go to wearable_devices table');
-console.log('5. Change user_id assignment for AnxieEase001');
-console.log('6. Check if baseline_hr automatically updates');
-console.log('7. Compare with baseline_heart_rates table');
-console.log('8. Both should show same baseline for the user!');
+console.log("\n🔍 MANUAL VERIFICATION STEPS:");
+console.log("=============================");
+console.log("1. Open Supabase dashboard");
+console.log("2. Go to SQL Editor");
+console.log("3. Run the SQL from fix_baseline_sync_supabase.sql");
+console.log("4. Go to wearable_devices table");
+console.log("5. Change user_id assignment for AnxieEase001");
+console.log("6. Check if baseline_hr automatically updates");
+console.log("7. Compare with baseline_heart_rates table");
+console.log("8. Both should show same baseline for the user!");

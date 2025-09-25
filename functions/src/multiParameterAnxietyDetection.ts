@@ -77,7 +77,7 @@ async function analyzeMultiParameterAnxiety(
   const currentHR = currentData.heartRate;
   const currentSpO2 = currentData.spo2;
   const bodyTemp = currentData.bodyTemp;
-  
+
   // Extract accelerometer and gyroscope data (real field names from device)
   const accelX = currentData.accelX || 0;
   const accelY = currentData.accelY || 0;
@@ -85,21 +85,30 @@ async function analyzeMultiParameterAnxiety(
   const gyroX = currentData.gyroX || 0;
   const gyroY = currentData.gyroY || 0;
   const gyroZ = currentData.gyroZ || 0;
-  
+
   // Calculate movement intensity from accelerometer data
   const currentMovement = calculateMovementIntensity(accelX, accelY, accelZ);
-  
+
   // Calculate gyroscope activity for tremor detection
   const gyroActivity = calculateGyroscopeActivity(gyroX, gyroY, gyroZ);
 
   console.log(
-    `Analyzing metrics - HR: ${currentHR} (baseline: ${restingHR}), SpO2: ${currentSpO2}, Movement: ${currentMovement.toFixed(1)}, Gyro: ${gyroActivity.toFixed(1)}`
+    `Analyzing metrics - HR: ${currentHR} (baseline: ${restingHR}), SpO2: ${currentSpO2}, Movement: ${currentMovement.toFixed(
+      1
+    )}, Gyro: ${gyroActivity.toFixed(1)}`
   );
 
   // Analyze each parameter
   const hrAnalysis = analyzeHeartRate(currentHR, restingHR, userId, deviceId);
   const spo2Analysis = analyzeSpO2(currentSpO2);
-  const movementAnalysis = analyzeMovement(currentMovement, gyroActivity, currentHR, restingHR, userId, deviceId);
+  const movementAnalysis = analyzeMovement(
+    currentMovement,
+    gyroActivity,
+    currentHR,
+    restingHR,
+    userId,
+    deviceId
+  );
 
   // Count abnormal metrics
   const abnormalMetrics = {
@@ -189,13 +198,19 @@ type DetectionResult = {
 /**
  * Calculate movement intensity from accelerometer data
  */
-function calculateMovementIntensity(accelX: number, accelY: number, accelZ: number): number {
+function calculateMovementIntensity(
+  accelX: number,
+  accelY: number,
+  accelZ: number
+): number {
   // Calculate magnitude of acceleration vector
-  const magnitude = Math.sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
-  
+  const magnitude = Math.sqrt(
+    accelX * accelX + accelY * accelY + accelZ * accelZ
+  );
+
   // Subtract gravity (approximately 9.8 m/s²) to get movement component
   const movementComponent = Math.abs(magnitude - 9.8);
-  
+
   // Scale to 0-100 for easier interpretation (multiply by 10 for sensitivity)
   return Math.min(100, movementComponent * 10);
 }
@@ -203,10 +218,14 @@ function calculateMovementIntensity(accelX: number, accelY: number, accelZ: numb
 /**
  * Calculate gyroscope activity level for tremor/restlessness detection
  */
-function calculateGyroscopeActivity(gyroX: number, gyroY: number, gyroZ: number): number {
+function calculateGyroscopeActivity(
+  gyroX: number,
+  gyroY: number,
+  gyroZ: number
+): number {
   // Calculate magnitude of rotational velocity
   const magnitude = Math.sqrt(gyroX * gyroX + gyroY * gyroY + gyroZ * gyroZ);
-  
+
   // Scale to 0-100 (multiply by 100 for sensitivity as gyro values are typically small)
   return Math.min(100, magnitude * 100);
 }
@@ -214,32 +233,40 @@ function calculateGyroscopeActivity(gyroX: number, gyroY: number, gyroZ: number)
 /**
  * Detect if current movement pattern indicates exercise
  */
-function isExercisePattern(movementIntensity: number, gyroActivity: number, heartRate: number, restingHR: number): boolean {
+function isExercisePattern(
+  movementIntensity: number,
+  gyroActivity: number,
+  heartRate: number,
+  restingHR: number
+): boolean {
   const hrElevation = (heartRate - restingHR) / restingHR;
-  
+
   // Exercise typically shows:
   // - Sustained high movement (>30)
   // - Moderate to high heart rate elevation (>20%)
   // - Relatively steady gyroscope activity (not erratic)
-  
+
   const sustainedMovement = movementIntensity > 30;
   const moderateHRIncrease = hrElevation > 0.2 && hrElevation < 0.8; // 20-80% increase
   const steadyActivity = gyroActivity < 50; // Not too erratic
-  
+
   return sustainedMovement && moderateHRIncrease && steadyActivity;
 }
 
 /**
  * Detect tremor patterns from gyroscope data
  */
-function isTremorPattern(gyroActivity: number, movementIntensity: number): boolean {
+function isTremorPattern(
+  gyroActivity: number,
+  movementIntensity: number
+): boolean {
   // Tremors typically show:
   // - High gyroscope activity (rapid rotational changes)
   // - Low to moderate movement intensity (small but rapid movements)
-  
+
   const highGyroActivity = gyroActivity > 40;
   const lowToModerateMovement = movementIntensity > 5 && movementIntensity < 30;
-  
+
   return highGyroActivity && lowToModerateMovement;
 }
 
@@ -291,24 +318,36 @@ function analyzeMovement(
   deviceId: string
 ): MovementAnalysis {
   // Enhanced movement analysis using real sensor data
-  
+
   // Detect sudden movement spikes (potential anxiety indicator)
   const hasSpikes = currentMovement > 40; // Threshold for movement spikes
-  
+
   // Check for tremor patterns (high gyro activity + moderate movement)
   const tremorDetected = isTremorPattern(gyroActivity, currentMovement);
-  
+
   // Check if this looks like exercise (should prevent false anxiety alerts)
-  const exerciseDetected = isExercisePattern(currentMovement, gyroActivity, heartRate, restingHR);
-  
+  const exerciseDetected = isExercisePattern(
+    currentMovement,
+    gyroActivity,
+    heartRate,
+    restingHR
+  );
+
   // Anxiety indicators:
   // - High heart rate with low movement (resting anxiety)
   // - Tremor patterns detected
   // - Movement spikes without exercise pattern
   const restingAnxiety = heartRate > restingHR * 1.2 && currentMovement < 15;
-  const indicatesAnxiety = tremorDetected || (hasSpikes && !exerciseDetected) || restingAnxiety;
+  const indicatesAnxiety =
+    tremorDetected || (hasSpikes && !exerciseDetected) || restingAnxiety;
 
-  console.log(`Movement analysis - Movement: ${currentMovement.toFixed(1)}, Gyro: ${gyroActivity.toFixed(1)}, Exercise: ${exerciseDetected}, Tremor: ${tremorDetected}, Anxiety: ${indicatesAnxiety}`);
+  console.log(
+    `Movement analysis - Movement: ${currentMovement.toFixed(
+      1
+    )}, Gyro: ${gyroActivity.toFixed(
+      1
+    )}, Exercise: ${exerciseDetected}, Tremor: ${tremorDetected}, Anxiety: ${indicatesAnxiety}`
+  );
 
   return {
     hasSpikes,
@@ -336,20 +375,24 @@ function applyTriggerLogic(
 
   // Check if this appears to be exercise first (prevents false alarms)
   const exerciseDetected = isExercisePattern(
-    metrics.currentMovement, 
-    gyroActivity, 
-    metrics.currentHR, 
+    metrics.currentMovement,
+    gyroActivity,
+    metrics.currentHR,
     metrics.restingHR
   );
-  
+
   // Check for tremor patterns (anxiety indicator)
   const tremorDetected = isTremorPattern(gyroActivity, metrics.currentMovement);
 
-  console.log(`Applying trigger logic - abnormal count: ${abnormalCount}, exercise: ${exerciseDetected}, tremor: ${tremorDetected}`);
+  console.log(
+    `Applying trigger logic - abnormal count: ${abnormalCount}, exercise: ${exerciseDetected}, tremor: ${tremorDetected}`
+  );
 
   // If exercise is detected, reduce likelihood of anxiety alert (unless other critical signs)
   if (exerciseDetected && !spo2Analysis.isAbnormal) {
-    console.log("Exercise pattern detected - suppressing anxiety alert unless critical");
+    console.log(
+      "Exercise pattern detected - suppressing anxiety alert unless critical"
+    );
     return {
       triggered: false,
       reason: "exerciseDetected",
@@ -375,12 +418,12 @@ function applyTriggerLogic(
   else if (abnormalCount >= 2) {
     triggered = true;
     confidenceLevel = 0.85 + (abnormalCount - 2) * 0.1; // 0.85-1.0
-    
+
     // Check if this falls into mild/moderate levels for confirmation requirement
-    const hrElevation = (metrics.currentHR - metrics.restingHR);
+    const hrElevation = metrics.currentHR - metrics.restingHR;
     const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
     const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
-    
+
     // ALWAYS require confirmation for mild and moderate levels, even with multiple metrics
     requiresUserConfirmation = isMildLevel || isModerateLevel;
 
@@ -400,17 +443,17 @@ function applyTriggerLogic(
     triggered = true;
     reason = "tremorDetected";
     confidenceLevel = 0.8; // High confidence for tremors
-    
+
     // Check severity level even for tremors
-    const hrElevation = (metrics.currentHR - metrics.restingHR);
+    const hrElevation = metrics.currentHR - metrics.restingHR;
     const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
     const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
-    
+
     // ALWAYS require confirmation for mild and moderate levels, even for tremors
     requiresUserConfirmation = isMildLevel || isModerateLevel;
     console.log("Tremor pattern detected - likely anxiety");
   }
-  // Single metric abnormal - Request confirmation  
+  // Single metric abnormal - Request confirmation
   else if (abnormalCount === 1) {
     triggered = true;
     confidenceLevel = 0.6;
@@ -425,19 +468,23 @@ function applyTriggerLogic(
       if (hrAnalysis.type === "veryHigh") {
         confidenceLevel = 0.75;
       }
-      
+
       // Calculate severity level for confirmation requirements
-      const hrElevation = (metrics.currentHR - metrics.restingHR);
+      const hrElevation = metrics.currentHR - metrics.restingHR;
       const isMildLevel = hrElevation >= 15 && hrElevation < 25; // +15 to +24 BPM
       const isModerateLevel = hrElevation >= 25 && hrElevation < 35; // +25 to +34 BPM
-      
+
       // Special case: High HR while resting (very likely anxiety)
       if (metrics.currentMovement < 15 && hrAnalysis.type === "high") {
         confidenceLevel = 0.85;
         // ALWAYS require confirmation for mild and moderate levels
         if (isMildLevel || isModerateLevel) {
           requiresUserConfirmation = true;
-          console.log(`${isMildLevel ? 'Mild' : 'Moderate'} anxiety level detected - requesting user confirmation`);
+          console.log(
+            `${
+              isMildLevel ? "Mild" : "Moderate"
+            } anxiety level detected - requesting user confirmation`
+          );
         } else {
           requiresUserConfirmation = false;
         }
@@ -671,30 +718,32 @@ async function getDeviceInfo(deviceId: string): Promise<any> {
     // First, check metadata path
     const metadataRef = db.ref(`devices/${deviceId}/metadata`);
     const metadataSnapshot = await metadataRef.once("value");
-    
+
     if (metadataSnapshot.exists()) {
       const metadata = metadataSnapshot.val();
       if (metadata.userId) {
         return metadata;
       }
     }
-    
+
     // If no userId in metadata, check assignment path (from webhook sync)
     const assignmentRef = db.ref(`devices/${deviceId}/assignment`);
     const assignmentSnapshot = await assignmentRef.once("value");
-    
+
     if (assignmentSnapshot.exists()) {
       const assignment = assignmentSnapshot.val();
       if (assignment.assignedUser) {
         return {
           userId: assignment.assignedUser,
           deviceId: deviceId,
-          source: "assignment_sync"
+          source: "assignment_sync",
         };
       }
     }
-    
-    console.log(`⚠️ No user assigned to device ${deviceId} in either metadata or assignment`);
+
+    console.log(
+      `⚠️ No user assigned to device ${deviceId} in either metadata or assignment`
+    );
     return null;
   } catch (error) {
     console.error("Error fetching device info:", error);

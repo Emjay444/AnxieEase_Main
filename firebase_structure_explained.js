@@ -1,6 +1,6 @@
 /**
  * 📚 FIREBASE DATABASE STRUCTURE EXPLAINED
- * 
+ *
  * Complete breakdown of every node in your AnxieEase Firebase database
  * This explains what each part does and whether you need it
  */
@@ -151,7 +151,9 @@ console.log("\n⚠️  CAN CLEAN UP (OPTIONAL):");
 console.log("============================");
 console.log("• /devices/AnxieEase001/history/       ← Old sensor data");
 console.log("• /users/{USER_ID}/sessions/.../data/  ← Detailed session data");
-console.log("• Old ended sessions                   ← Sessions with status='ended'");
+console.log(
+  "• Old ended sessions                   ← Sessions with status='ended'"
+);
 
 console.log("\n❌ SAFE TO REMOVE:");
 console.log("==================");
