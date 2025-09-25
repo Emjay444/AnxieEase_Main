@@ -23,6 +23,10 @@ class NotificationService extends ChangeNotifier {
   static const String reminderEnabledKey = 'anxiety_reminders_enabled';
   static const String reminderIntervalKey = 'anxiety_reminder_interval_hours';
 
+  // Deduplication constants
+  static const String lastNotificationPrefix = 'last_notification_';
+  static const int duplicateWindowMinutes = 30; // 30 minute window
+
   final SupabaseService _supabaseService = SupabaseService();
   DatabaseReference? _firebaseRef;
   String? _currentDeviceId;
@@ -87,6 +91,73 @@ class NotificationService extends ChangeNotifier {
 
   void setOnNotificationAddedCallback(VoidCallback callback) {
     _onNotificationAdded = callback;
+  }
+
+  /// Check if a notification of this type was recently sent
+  /// Returns true if it's a duplicate (should not send)
+  Future<bool> _isDuplicateNotification(String type, String content) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '${lastNotificationPrefix}${type}';
+      final contentKey = '${key}_content';
+      
+      final lastTime = prefs.getInt(key) ?? 0;
+      final lastContent = prefs.getString(contentKey) ?? '';
+      
+      final now = DateTime.now().millisecondsSinceEpoch;
+      const duplicateWindow = duplicateWindowMinutes * 60 * 1000; // Convert to milliseconds
+      
+      // Check if same content was sent within the time window
+      if (now - lastTime < duplicateWindow && lastContent == content.trim()) {
+        debugPrint('🚫 Duplicate notification blocked: $type (${duplicateWindowMinutes}min window)');
+        return true; // It's a duplicate
+      }
+      
+      // Store this notification info for future duplicate checks
+      await prefs.setInt(key, now);
+      await prefs.setString(contentKey, content.trim());
+      return false; // Not a duplicate
+    } catch (e) {
+      debugPrint('❌ Error checking notification deduplication: $e');
+      return false; // On error, allow the notification
+    }
+  }
+
+  /// Wrapper method to send notifications with deduplication
+  Future<bool> _sendNotificationWithDeduplication({
+    required String type,
+    required String title,
+    required String body,
+    required String channelKey,
+    Map<String, String>? payload,
+  }) async {
+    // Check for duplicates
+    final isDuplicate = await _isDuplicateNotification(type, '$title: $body');
+    if (isDuplicate) {
+      return false; // Notification was blocked
+    }
+    
+    // Send the notification
+    try {
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          channelKey: channelKey,
+          title: title,
+          body: body,
+          notificationLayout: NotificationLayout.Default,
+          category: type == 'anxiety_alert' 
+              ? NotificationCategory.Alarm 
+              : NotificationCategory.Reminder,
+          payload: payload ?? {},
+        ),
+      );
+      debugPrint('✅ Notification sent: $type - $title');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error sending notification: $e');
+      return false;
+    }
   }
 
   Future<void> initialize() async {
@@ -156,10 +227,10 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
         ),
         NotificationChannel(
-          channelKey: 'reminders_channel',
-          channelName: 'Local Anxiety Reminders',
+          channelKey: 'wellness_reminders', // Changed for consistency  
+          channelName: 'Wellness Reminders',
           channelDescription:
-              'Local scheduled reminders to help prevent anxiety attacks',
+              'Wellness and anxiety prevention reminders',
           defaultColor: Colors.green,
           importance: NotificationImportance.High,
           ledColor: Colors.green,
@@ -200,7 +271,7 @@ class NotificationService extends ChangeNotifier {
           await AwesomeNotifications().listScheduledNotifications();
 
       if (!activeReminders.any((notification) =>
-          notification.content?.channelKey == 'reminders_channel')) {
+          notification.content?.channelKey == 'wellness_reminders')) {
         final int intervalHours = await getAnxietyReminderInterval();
         await scheduleAnxietyReminders(intervalHours);
       } else {
@@ -337,9 +408,10 @@ class NotificationService extends ChangeNotifier {
             (nowMs - _lastLocalSeverityTimeMs) < cooldownMs)) {
           _lastLocalSeverity = severity;
           _lastLocalSeverityTimeMs = nowMs;
-          _showSeverityNotification(title, body, channelKey, severity);
-          _saveNotificationToSupabase(title, body, notificationType, severity);
-          _saveAnxietyLevelRecord(severity, false);
+
+          // Process notifications asynchronously without blocking the listener
+          _processNotificationAsync(
+              title, body, channelKey, notificationType, severity);
         } else {
           debugPrint(
               '🛑 Skipping duplicate $severity within ${cooldownMs ~/ 1000}s (client-side)');
@@ -348,9 +420,39 @@ class NotificationService extends ChangeNotifier {
     });
   }
 
-  // Show a severity-based notification
+  // Process notifications asynchronously to avoid blocking the Firebase listener
+  Future<void> _processNotificationAsync(String title, String body,
+      String channelKey, String notificationType, String severity) async {
+    try {
+      // Show local notification
+      await _showSeverityNotification(title, body, channelKey, severity);
+
+      // Store in Supabase for notifications screen
+      await _saveNotificationToSupabase(
+          title, body, notificationType, severity);
+
+      // Save anxiety level record
+      await _saveAnxietyLevelRecord(severity, false);
+
+      debugPrint(
+          '✅ Processed $severity notification: stored locally and in Supabase');
+    } catch (e) {
+      debugPrint('❌ Error processing $severity notification: $e');
+    }
+  }
+
+  // Show a severity-based notification with deduplication
   Future<void> _showSeverityNotification(
       String title, String body, String channelKey, String severity) async {
+    
+    // Check for duplicates before sending
+    final isDuplicate = await _isDuplicateNotification('anxiety_alert_$severity', '$title: $body');
+    if (isDuplicate) {
+      debugPrint('🚫 Duplicate $severity notification blocked');
+      return;
+    }
+    
+    // Send the notification with enhanced features for severe alerts
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
@@ -364,6 +466,11 @@ class NotificationService extends ChangeNotifier {
         wakeUpScreen: severity == 'severe',
         fullScreenIntent: severity == 'severe',
         criticalAlert: severity == 'severe',
+        payload: {
+          'type': 'anxiety_alert',
+          'severity': severity,
+          'timestamp': DateTime.now().toIso8601String(),
+        },
       ),
       actionButtons: severity == 'severe'
           ? [
@@ -438,16 +545,41 @@ class NotificationService extends ChangeNotifier {
   Future<void> _saveNotificationToSupabase(
       String title, String message, String type, String severity) async {
     try {
+      // Map incoming logical types to DB enum-compatible values
+      String dbType = type;
+      if (dbType == 'anxiety_log' || dbType == 'anxiety_alert') {
+        dbType = 'alert';
+      } else if (dbType == 'wellness_reminder' || dbType == 'breathing_reminder') {
+        dbType = 'reminder';
+      }
+
       await _supabaseService.createNotification(
         title: title,
         message: message,
-        type: type,
+        type: dbType,
         relatedScreen: severity == 'severe' ? 'breathing_screen' : 'metrics',
       );
       debugPrint('💾 Saved severity notification to Supabase: $title');
+
+      // Trigger UI refresh callbacks
       _onNotificationAdded?.call();
+
+      // Also trigger global notification refresh for home screen
+      _triggerGlobalNotificationRefresh();
     } catch (e) {
       debugPrint('❌ Error saving notification to Supabase: $e');
+    }
+  }
+
+  // Trigger global notification refresh
+  void _triggerGlobalNotificationRefresh() {
+    try {
+      // Import is handled at the top level in main.dart
+      // This will be called from there if needed
+      debugPrint(
+          '🔄 NotificationService: Requesting global notification refresh');
+    } catch (e) {
+      debugPrint('❌ Error triggering global notification refresh: $e');
     }
   }
 
@@ -633,7 +765,7 @@ class NotificationService extends ChangeNotifier {
   // Cancel all scheduled anxiety prevention reminders
   Future<void> cancelAnxietyReminders() async {
     await AwesomeNotifications()
-        .cancelNotificationsByChannelKey('reminders_channel');
+        .cancelNotificationsByChannelKey('wellness_reminders');
     debugPrint('Cancelled all anxiety prevention reminders');
   }
 
@@ -690,7 +822,7 @@ class NotificationService extends ChangeNotifier {
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
         id: notificationId,
-        channelKey: 'reminders_channel',
+        channelKey: 'wellness_reminders', // Consistent with other wellness notifications
         title: message['title'],
         body: message['body'],
         notificationLayout: NotificationLayout.Default,

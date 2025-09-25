@@ -1,5 +1,9 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import {
+  isRateLimitedWithConfirmation,
+  updateRateLimitTimestamp,
+} from "./enhancedRateLimiting";
 
 const db = admin.database();
 
@@ -61,9 +65,11 @@ export const detectPersonalizedAnxiety = functions.database
         return null;
       }
 
-      // Check rate limiting
-      if (await isRateLimited(deviceData.userId, newSeverity)) {
-        console.log("Rate limited, skipping notification");
+      // Check enhanced rate limiting (considers user confirmations)
+      if (await isRateLimitedWithConfirmation(deviceData.userId, newSeverity)) {
+        console.log(
+          "Rate limited (considering user confirmations), skipping notification"
+        );
         return null;
       }
 
@@ -176,34 +182,7 @@ function getSeverityLevel(heartRate: number, thresholds: any) {
   return "normal";
 }
 
-/**
- * Check if notifications are rate-limited for this user
- */
-async function isRateLimited(userId: string, severity: string) {
-  const now = Date.now();
-  const rateLimitRef = db.ref(`rateLimits/${userId}/${severity}`);
-  const snapshot = await rateLimitRef.once("value");
-
-  const limits = {
-    mild: 300000, // 5 minutes
-    moderate: 180000, // 3 minutes
-    severe: 60000, // 1 minute
-    critical: 30000, // 30 seconds
-  };
-
-  const limit = (limits as Record<string, number>)[severity] || 300000;
-
-  if (snapshot.exists()) {
-    const lastNotification = snapshot.val();
-    if (now - lastNotification < limit) {
-      return true;
-    }
-  }
-
-  // Update rate limit timestamp
-  await rateLimitRef.set(now);
-  return false;
-}
+// Rate limiting functionality moved to enhancedRateLimiting.ts
 
 /**
  * Send personalized notification with baseline context
@@ -269,6 +248,9 @@ async function sendPersonalizedNotification(data: any) {
     console.log(
       `Personalized notification sent - ${severity}: ${heartRate} BPM (${bpmAbove} above baseline)`
     );
+
+    // Update rate limit timestamp after successful notification
+    await updateRateLimitTimestamp(userId, severity);
 
     // Store alert in database
     await storeAlert(userId, deviceId, {

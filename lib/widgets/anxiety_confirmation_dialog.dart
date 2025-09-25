@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../services/supabase_service.dart';
 
 /// Dialog shown when anxiety is detected and requires user confirmation
@@ -92,6 +93,13 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
         reportedSeverity: _selectedSeverity,
         confidenceLevel: widget.confidenceLevel,
         responseTime: DateTime.now().toIso8601String(),
+      );
+
+      // Update rate limiting based on user confirmation
+      await _updateRateLimitingForConfirmation(
+        _selectedResponse!,
+        _selectedSeverity ?? 'mild',
+        widget.detectionData['notification_id']?.toString(),
       );
 
       if (mounted) {
@@ -481,5 +489,69 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
       checkmarkColor: color,
       side: BorderSide(color: isSelected ? color : Colors.grey.shade300),
     );
+  }
+
+  /// Update rate limiting based on user confirmation
+  Future<void> _updateRateLimitingForConfirmation(
+    String response,
+    String severity,
+    String? notificationId,
+  ) async {
+    try {
+      final functions = FirebaseFunctions.instance;
+      final callable =
+          functions.httpsCallable('handleUserConfirmationResponse');
+
+      final result = await callable.call({
+        'severity': severity,
+        'response': response,
+        'notificationId': notificationId,
+      });
+
+      debugPrint('✅ Rate limiting updated: ${result.data}');
+
+      // Show user feedback about cooldown period
+      if (mounted) {
+        final nextCooldown = result.data['nextCooldown'] as int?;
+        if (nextCooldown != null) {
+          String message;
+          Color backgroundColor;
+
+          switch (response) {
+            case 'yes':
+              message =
+                  'We\'ll continue monitoring closely. Help is available anytime.';
+              backgroundColor = Colors.green;
+              break;
+            case 'no':
+              final hours = (nextCooldown / (1000 * 60 * 60)).round();
+              message =
+                  'Thanks! We\'ll reduce $severity alerts for the next $hours hour${hours != 1 ? 's' : ''}.';
+              backgroundColor = Colors.blue;
+              break;
+            case 'not_now':
+              final minutes = (nextCooldown / (1000 * 60)).round();
+              message =
+                  'Understood. We\'ll give you $minutes minutes before the next $severity alert.';
+              backgroundColor = Colors.orange;
+              break;
+            default:
+              message = 'Response recorded. Thank you for the feedback.';
+              backgroundColor = Colors.grey;
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: backgroundColor,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating rate limiting: $e');
+      // Don't show error to user - this is a background operation
+    }
   }
 }

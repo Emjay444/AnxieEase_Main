@@ -1324,9 +1324,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    child: const Center(
-                      child: Text('Could not load notifications'),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.wifi_off_rounded,
+                          size: 48,
+                          color: Colors.orange[300],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Connection Error',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Unable to load notifications.\nCheck your internet connection.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            // Trigger a refresh by calling setState or notificationProvider
+                            final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+                            notificationProvider.triggerNotificationRefresh();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal[600],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else if (!snapshot.hasData || (snapshot.data?.isEmpty ?? true))
@@ -1458,6 +1511,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     }
 
+    Color getBackgroundColor() {
+      switch (type) {
+        case 'alert':
+          return const Color(0xFFFFF3E0); // Light orange/red background
+        case 'info':
+          return const Color(0xFFE3F2FD); // Light blue background
+        case 'warning':
+          return const Color(0xFFFFF8E1); // Light yellow background
+        default:
+          return const Color(0xFFF5F5F5); // Light grey background
+      }
+    }
+
+    // Determine if this is an important notification
+    bool isHighPriority = type == 'alert' || title.contains('🚨') || title.contains('Alert');
+
     // Check if this is a reminder notification (should not be clickable)
     bool isReminder = type == 'reminder' ||
         title.contains('Anxiety Check-in') ||
@@ -1471,14 +1540,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: isHighPriority ? getBackgroundColor() : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isHighPriority 
+          ? Border.all(color: getTypeColor().withOpacity(0.3), width: 1)
+          : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 0,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1486,10 +1558,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: getTypeColor().withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              color: getTypeColor().withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
@@ -1497,49 +1569,81 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               size: 24,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xFF1E2432),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: const Color(0xFF1E2432),
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      time,
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   message,
                   style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
+                    color: Colors.grey[650],
+                    fontSize: 13,
+                    height: 1.4,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      time,
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 12,
+                if (!isReminder) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: getTypeColor().withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'View details',
+                              style: TextStyle(
+                                color: getTypeColor(),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 10,
+                              color: getTypeColor(),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    // Only show arrow for clickable notifications
-                    if (!isReminder)
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 12,
-                        color: Colors.grey[400],
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -2741,6 +2845,36 @@ class _HomeContentState extends State<HomeContent> {
                     children: [
                       Consumer<AuthProvider>(
                         builder: (context, authProvider, child) {
+                          // Show loading state while authentication is being resolved
+                          if (authProvider.isLoading || !authProvider.isInitialized) {
+                            return Container(
+                              height: screenWidth * 0.055 * 1.2, // Match text height
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        theme.colorScheme.primary.withOpacity(0.7),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Loading...',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontSize: screenWidth * 0.055,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          
                           // Default to 'Guest' if no user or no first name
                           String firstName = 'Guest';
                           // Use firstName directly from user model
@@ -2749,6 +2883,7 @@ class _HomeContentState extends State<HomeContent> {
                               authProvider.currentUser!.firstName!.isNotEmpty) {
                             firstName = authProvider.currentUser!.firstName!;
                           }
+                          
                           return Text(
                             'Hello $firstName',
                             style: theme.textTheme.titleLarge?.copyWith(

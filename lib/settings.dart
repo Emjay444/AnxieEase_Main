@@ -131,6 +131,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Cancel any existing breathing reminders first
       await _cancelBreathingReminders();
 
+      // DISABLED LOCAL SCHEDULING - Using cloud-based reminders instead
+      // This prevents duplicate breathing reminders (local + cloud)
+      debugPrint('ℹ️ Breathing reminders handled by Firebase cloud functions');
+      debugPrint('ℹ️ Local scheduling disabled to prevent duplicates');
+      
+      // Store preference for user settings, but don't schedule locally
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('breathing_reminders_enabled', true);
+
+      /* COMMENTED OUT - CAUSES DUPLICATE NOTIFICATIONS WITH CLOUD FUNCTIONS
       // Schedule repeating notifications every 30 minutes
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
@@ -153,10 +163,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           repeats: true,
         ),
       );
+      */
 
-      debugPrint('✅ Breathing exercise reminders scheduled every 30 minutes');
+      debugPrint('✅ Breathing reminder preference saved (cloud-based reminders active)');
     } catch (e) {
-      debugPrint('❌ Error scheduling breathing reminders: $e');
+      debugPrint('❌ Error managing breathing reminders: $e');
     }
   }
 

@@ -1,94 +1,201 @@
-## 🧪 **TESTING YOUR ANXIETY DETECTION NOTIFICATIONS**
+# 🔔 Notification Testing Guide
 
-### **The Issue:**
+## 🎯 **What Was Fixed**
 
-You're clicking "Simulate 30s HR" but not receiving notifications, only the "Test Notification" button works.
+The issue was that **FCM notifications received while the app was open** were only showing in-app banners but **NOT being saved to Supabase** for display in the notifications screen.
 
-### **What I Fixed:**
+### **Before the Fix:**
 
-1. ✅ **Connected sustained HR detection to notification system**
-2. ✅ **Made sure anxiety detection triggers real notifications**
-3. ✅ **Fixed the 30-second simulation to call notification system**
+- ❌ FCM notifications (app open) → In-app banner only, no storage
+- ❌ Firebase realtime data → Local notification only, no storage
+- ✅ FCM notifications (app closed) → Worked fine (handled by Cloud Functions)
 
-### **How to Test Notifications Now:**
+### **After the Fix:**
 
-#### **🎯 Method 1: Using Sustained HR Simulation**
+- ✅ FCM notifications (app open) → In-app banner + Supabase storage
+- ✅ Firebase realtime data → Local notification + Supabase storage
+- ✅ FCM notifications (app closed) → Still works fine
+- ✅ All notifications now appear in notifications screen
 
-1. **Open your AnxieEase app**
-2. **Go to Settings → Developer Test**
-3. **Set up anxiety conditions:**
+## 🧪 **Testing Steps**
+
+### **Test 1: Anxiety Alert Notifications**
+
+1. **Trigger an anxiety alert:**
+
+   - Use your IoT device to send elevated heart rate data
+   - OR manually update Firebase: `/devices/{deviceId}/current/heartRate` to a high value
+
+2. **Expected Results:**
+
    ```
-   Heart Rate: 90 bpm
-   Baseline HR: 70 bpm (90 is 28% above 70 = triggers anxiety)
-   SpO2: 96%
-   Movement: 0.4
+   ✅ In-app banner appears (if app is open)
+   ✅ Local notification shows
+   ✅ Notification appears in Notifications Screen
+   ✅ Notification appears on Home Screen (Recent Notifications)
+   ✅ Notification count updates
    ```
-4. **Tap "⏱️ Simulate 30s HR"**
-5. **Expected:** After simulation completes, you should get a notification!
 
-#### **🎯 Method 2: Using Preset Buttons (Recommended)**
-
-**Test Mild Anxiety:**
-
-- Tap **"Mild Anxiety"** preset button
-- Should trigger: Confirmation-type notification (60-79% confidence)
-
-**Test Panic Attack:**
-
-- Tap **"Panic Attack"** preset button
-- Should trigger: Immediate alert notification (80%+ confidence)
-
-**Test Critical SpO2:**
-
-- Tap **"Critical SpO2"** preset button
-- Should trigger: Emergency notification (100% confidence)
-
-#### **🎯 Method 3: Manual Detection**
-
-1. **Set these values manually:**
+3. **Check Logs:**
    ```
-   For High Anxiety Detection:
-   Heart Rate: 105 bpm
-   Baseline HR: 70 bpm (105 is 50% above 70)
-   SpO2: 94%
-   Movement: 0.7
+   📥 Foreground FCM received: [title] - [body]
+   ✅ Stored anxiety alert in Supabase: [title]
+   ✅ Triggered notification refresh in home screen
    ```
-2. **Tap "🔍 Run Detection"**
-3. **Should get immediate notification**
 
-### **📱 What to Look For:**
+### **Test 2: Wellness Reminders**
 
-**After triggering anxiety detection, you should see:**
+1. **Trigger a wellness reminder:**
 
-1. **In the test log:** "🔔 Anxiety detected... sending notification"
-2. **Device notification:** Pull down notification panel to see alert
-3. **Notification sound/vibration** (if enabled)
+   - Wait for scheduled wellness reminder
+   - OR send FCM with `type: 'wellness_reminder'`
 
-### **🔍 Troubleshooting If Still No Notifications:**
+2. **Expected Results:**
+   ```
+   ✅ In-app banner appears
+   ✅ Local notification shows
+   ✅ Notification stored in Supabase
+   ✅ Appears in notifications screen
+   ```
 
-**Check App Permissions:**
+### **Test 3: Breathing Exercise Reminders**
 
-1. Go to Android Settings → Apps → AnxieEase
-2. Check "Notifications" are enabled
-3. Ensure "Anxiety Alerts" channel is enabled
+1. **Trigger breathing reminder:**
 
-**Check "Do Not Disturb":**
+   - Send FCM with `type: 'reminder'` and `related_screen: 'breathing_screen'`
 
-- Make sure Do Not Disturb mode is OFF
-- Check if sound/vibration is enabled
+2. **Expected Results:**
+   ```
+   ✅ In-app banner with "Breathe" button
+   ✅ Tapping "Breathe" navigates to breathing screen
+   ✅ Notification stored and visible in app
+   ```
 
-**Verify Anxiety Detection:**
+## 🔍 **Debugging Commands**
 
-- HR must be **20%+ above baseline** to trigger
-- For 70 bpm baseline: need 84+ bpm to trigger anxiety
-- Use values like: HR=90, Baseline=70 (28% increase)
+### **Check Firebase Data:**
 
-### **✅ Expected Behavior:**
+```javascript
+// In Firebase Console > Realtime Database
+/devices/AnxieEase001/current/heartRate = 95
+```
 
-**The notifications should now work because:**
+### **Send Test FCM:**
 
-1. 🔄 Sustained HR simulation → Calls anxiety detection → Sends notification
-2. 📋 Preset buttons → Run sustained simulation → Sends notification
-3. 🔍 Manual detection → If anxiety detected → Sends notification
+```bash
+# Use your FCM test script or Firebase Console
+{
+  "notification": {
+    "title": "🟠 Test Anxiety Alert",
+    "body": "Heart rate: 95 BPM (25% above baseline)"
+  },
+  "data": {
+    "type": "anxiety_alert",
+    "severity": "moderate",
+    "heartRate": "95",
+    "baseline": "70",
+    "percentageAbove": "25"
+  }
+}
+```
 
-**Try the "Panic Attack" preset button first - it should definitely send a notification!** 🚨
+### **Check Supabase:**
+
+```sql
+-- Check if notifications are being stored
+SELECT * FROM notifications
+WHERE user_id = 'your-user-id'
+ORDER BY created_at DESC;
+```
+
+## 📱 **UI Testing Checklist**
+
+### **Home Screen:**
+
+- [ ] "Recent Notifications" section shows new notifications
+- [ ] Notification count updates automatically
+- [ ] Tapping "See All" navigates to Notifications Screen
+
+### **Notifications Screen:**
+
+- [ ] All notification types appear (anxiety_alert, wellness_reminder, etc.)
+- [ ] Notifications are grouped by date
+- [ ] Unread notifications have visual indicators
+- [ ] Tapping notifications marks them as read
+- [ ] Filter chips work (All, Alerts, Reminders, etc.)
+
+### **In-App Experience:**
+
+- [ ] In-app banners appear for foreground notifications
+- [ ] Banners have appropriate colors (red for anxiety, blue for wellness)
+- [ ] Action buttons work (View, Breathe, etc.)
+- [ ] Banners auto-dismiss after 6 seconds
+
+## 🚨 **Common Issues & Solutions**
+
+### **Issue: Notifications not appearing in app**
+
+**Solution:** Check these logs:
+
+```
+❌ Error storing anxiety alert notification: [error]
+❌ Error triggering notification refresh: [error]
+```
+
+### **Issue: Duplicate notifications**
+
+**Solution:** Rate limiting is working - check cooldown periods:
+
+```
+🛑 Skipping duplicate moderate within 180s (client-side)
+📵 User [userId] previously responded "no" - using extended cooldown: 3600s
+```
+
+### **Issue: Home screen not refreshing**
+
+**Solution:** Check notification provider:
+
+```
+✅ Triggered notification refresh in home screen
+🔄 NotificationService: Requesting global notification refresh
+```
+
+## 🔄 **Notification Flow Summary**
+
+```
+1. IoT Device/Cloud Function → FCM Notification
+2. FCM received in app → _configureFCM() handler
+3. Handler processes message type → Shows in-app banner
+4. Handler calls _storeAnxietyAlertNotification()
+5. Notification stored in Supabase → createNotification()
+6. UI refresh triggered → _triggerNotificationRefresh()
+7. Home screen refreshes → Shows new notification
+8. Notifications screen shows → All stored notifications
+```
+
+## ✅ **Success Indicators**
+
+When everything is working correctly, you should see:
+
+1. **Console Logs:**
+
+   ```
+   📥 Foreground FCM received: 🟠 Moderate Alert - Heart rate: 95 BPM
+   ✅ Stored anxiety alert in Supabase: 🟠 Moderate Anxiety Alert
+   ✅ Triggered notification refresh in home screen
+   💾 Saved severity notification to Supabase: 🟠 Moderate Alert
+   ```
+
+2. **UI Updates:**
+
+   - In-app banner appears immediately
+   - Home screen "Recent Notifications" updates
+   - Notifications screen shows new entries
+   - Badge counts update correctly
+
+3. **Database:**
+   - New rows in `notifications` table
+   - Proper `type`, `title`, `message` fields
+   - Correct `user_id` association
+
+The notification system should now work seamlessly across all scenarios! 🎉

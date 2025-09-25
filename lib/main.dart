@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'auth.dart';
 import 'auth_wrapper.dart';
 import 'providers/theme_provider.dart';
@@ -590,66 +591,193 @@ void _showInAppBanner({
   // Dismiss any existing snackbars to avoid stacking
   messenger.clearSnackBars();
 
-  final ctx = rootNavigatorKey.currentContext;
-  final theme = ctx != null ? Theme.of(ctx) : null;
-  final bg = (color ?? Colors.blue).withOpacity(0.1);
-  final fg = color ?? theme?.colorScheme.primary ?? Colors.blue;
+  // Determine notification type and styling
+  final isAlert = title.contains('Alert') || title.contains('🚨') || title.contains('anxiety');
+  final isWellness = title.contains('Wellness') || title.contains('💙') || title.contains('Check');
+  final isBreathing = title.contains('Breathing') || title.contains('🫁') || title.contains('🌬️');
+  
+  Color primaryColor;
+  Color borderColor;
+  IconData notificationIcon;
+  
+  if (isAlert) {
+    primaryColor = const Color(0xFFE57373); // Soft red
+    borderColor = const Color(0xFFFFCDD2); // Light red border
+    notificationIcon = Icons.health_and_safety_rounded;
+  } else if (isWellness) {
+    primaryColor = const Color(0xFF4FC3F7); // Soft blue
+    borderColor = const Color(0xFFBBDEFB); // Light blue border
+    notificationIcon = Icons.favorite_rounded;
+  } else if (isBreathing) {
+    primaryColor = const Color(0xFF81C784); // Soft green
+    borderColor = const Color(0xFFC8E6C9); // Light green border
+    notificationIcon = Icons.air_rounded;
+  } else {
+    primaryColor = color ?? Colors.blue;
+    borderColor = (color ?? Colors.blue).withOpacity(0.25);
+    notificationIcon = icon ?? Icons.notifications_active_rounded;
+  }
 
   final snackBar = SnackBar(
     behavior: SnackBarBehavior.floating,
-    backgroundColor: bg,
-    elevation: 0,
-    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    backgroundColor: Colors.white,
+    elevation: 8,
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     shape: RoundedRectangleBorder(
-      side: BorderSide(color: fg.withOpacity(0.35), width: 1),
-      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: borderColor, width: 1.5),
+      borderRadius: BorderRadius.circular(16),
     ),
-    duration: const Duration(seconds: 6),
-    content: Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: fg.withOpacity(0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon ?? Icons.notifications_active, color: fg),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title,
-                  style: TextStyle(
-                    color: fg,
-                    fontWeight: FontWeight.w700,
-                  )),
-              const SizedBox(height: 2),
-              Text(
-                body,
-                style: TextStyle(
-                  color: (theme?.colorScheme.onSurface ?? Colors.black87)
-                      .withOpacity(0.8),
-                ),
+    duration: const Duration(seconds: 7),
+    content: Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Modern icon container with gradient
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor.withOpacity(0.15),
+                  primaryColor.withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
-          ),
-        ),
-        if (onAction != null && (actionLabel ?? '').isNotEmpty)
-          TextButton(
-            onPressed: () {
-              messenger.hideCurrentSnackBar();
-              onAction();
-            },
-            child: Text(
-              actionLabel!,
-              style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: primaryColor.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              notificationIcon,
+              color: primaryColor,
+              size: 28,
             ),
           ),
-      ],
+          const SizedBox(width: 16),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title with better typography
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: const Color(0xFF1E2432),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // Body text with improved styling
+                Text(
+                  body,
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 14,
+                    height: 1.4,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (onAction != null && (actionLabel ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  // Modern action button row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 36,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              messenger.hideCurrentSnackBar();
+                              onAction();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                            ),
+                            child: Text(
+                              actionLabel!,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Dismiss button
+                      Container(
+                        width: 36,
+                        height: 36,
+                        child: IconButton(
+                          onPressed: () {
+                            messenger.hideCurrentSnackBar();
+                          },
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: Colors.grey[500],
+                            size: 20,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.grey[50],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  const SizedBox(height: 8),
+                  // Just a dismiss button if no action
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        child: IconButton(
+                          onPressed: () {
+                            messenger.hideCurrentSnackBar();
+                          },
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: Colors.grey[400],
+                            size: 18,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.grey[50],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
@@ -688,21 +816,8 @@ Future<void> _configureFCM() async {
         debugPrint('❌ Failed to store FCM token: $e');
       }
 
-      // Subscribe to anxiety alerts topic for push notifications
-      try {
-        await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
-        debugPrint('✅ Subscribed to anxiety_alerts topic');
-      } catch (e) {
-        debugPrint('❌ Failed to subscribe to anxiety_alerts topic: $e');
-      }
-
-      // Subscribe to wellness reminders topic for FCM-based reminders
-      try {
-        await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
-        debugPrint('✅ Subscribed to wellness_reminders topic');
-      } catch (e) {
-        debugPrint('❌ Failed to subscribe to wellness_reminders topic: $e');
-      }
+      // Subscribe to topics only once per installation
+      await _subscribeToTopicsOnce();
     } else {
       debugPrint(
           '⚠️ FCM token is null (auto-init or Google services not ready yet)');
@@ -755,6 +870,9 @@ Future<void> _configureFCM() async {
               category: NotificationCategory.Reminder,
             ),
           );
+
+          // Store breathing exercise reminder in Supabase for notifications screen
+          await _storeBreathingReminderNotification(notification, data);
         } else if (messageType == 'wellness_reminder' ||
             notification?.title?.contains('Wellness') == true ||
             notification?.title?.contains('Anxiety Check-in') == true) {
@@ -795,8 +913,20 @@ Future<void> _configureFCM() async {
               category: NotificationCategory.Reminder,
             ),
           );
+
+          // Store wellness reminder in Supabase for notifications screen
+          await _storeWellnessReminderNotification(notification, data);
         } else if (messageType == 'anxiety_alert' ||
-            notification?.title?.toLowerCase().contains('anxiety') == true) {
+            notification?.title?.toLowerCase().contains('anxiety') == true ||
+            notification?.title?.toLowerCase().contains('alert') == true ||
+            data['severity'] != null) {
+          // Enhanced condition to catch anxiety alerts with better debugging
+          debugPrint('🚨 ANXIETY ALERT DETECTED:');
+          debugPrint('   messageType: $messageType');
+          debugPrint('   title: ${notification?.title}');
+          debugPrint('   severity: ${data['severity']}');
+          debugPrint('   data keys: ${data.keys.toList()}');
+
           // Show inline alert banner with action to view notifications
           _showInAppBanner(
             title: notification?.title ?? 'Anxiety Alert',
@@ -808,6 +938,15 @@ Future<void> _configureFCM() async {
               rootNavigatorKey.currentState?.pushNamed('/notifications');
             },
           );
+
+          // IMPORTANT: Store anxiety alert in Supabase for notifications screen
+          debugPrint('📱 Attempting to store anxiety alert notification...');
+          final stored = await _storeAnxietyAlertNotification(notification, data);
+          if (stored) {
+            debugPrint('✅ Successfully stored anxiety alert notification');
+          } else {
+            debugPrint('❌ Failed to store anxiety alert notification');
+          }
         } else {
           // For other FCM messages, keep default handling
           debugPrint('🔇 Other FCM - letting NotificationService handle it');
@@ -837,8 +976,31 @@ Future<void> _configureFCM() async {
         final route = dest.contains('ground') ? '/grounding' : '/breathing';
         rootNavigatorKey.currentState?.pushNamed(route);
       } else if (messageType == 'anxiety_alert') {
-        debugPrint('⚠️ Navigating to notifications from anxiety alert tap');
-        rootNavigatorKey.currentState?.pushNamed('/notifications');
+        final severity = message.data['severity'] ?? '';
+        debugPrint('⚠️ Anxiety alert tapped - severity: $severity');
+        
+        // Severity-specific navigation for better user experience
+        switch (severity.toLowerCase()) {
+          case 'mild':
+            debugPrint('🟢 Mild alert → Notifications screen');
+            rootNavigatorKey.currentState?.pushNamed('/notifications');
+            break;
+          case 'moderate':
+            debugPrint('🟡 Moderate alert → Breathing exercises');
+            rootNavigatorKey.currentState?.pushNamed('/breathing');
+            break;
+          case 'severe':
+            debugPrint('🟠 Severe alert → Grounding techniques');
+            rootNavigatorKey.currentState?.pushNamed('/grounding');
+            break;
+          case 'critical':
+            debugPrint('🔴 Critical alert → Notifications with urgent context');
+            rootNavigatorKey.currentState?.pushNamed('/notifications');
+            break;
+          default:
+            debugPrint('⚠️ Unknown severity → Default notifications screen');
+            rootNavigatorKey.currentState?.pushNamed('/notifications');
+        }
       } else {
         debugPrint(
             '📱 Default navigation handling for message type: $messageType');
@@ -871,13 +1033,220 @@ Future<void> _configureFCM() async {
           final route = dest.contains('ground') ? '/grounding' : '/breathing';
           rootNavigatorKey.currentState?.pushNamed(route);
         } else if (messageType == 'anxiety_alert') {
-          debugPrint(
-              '⚠️ App launched from anxiety alert - navigating to notifications');
-          rootNavigatorKey.currentState?.pushNamed('/notifications');
+          final severity = initialMsg.data['severity'] ?? '';
+          debugPrint('🚀 App launched from $severity anxiety alert');
+          
+          // Severity-specific navigation when app launches from notification
+          switch (severity.toLowerCase()) {
+            case 'mild':
+              debugPrint('🟢 Mild alert launch → Notifications screen');
+              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              break;
+            case 'moderate':
+              debugPrint('🟡 Moderate alert launch → Breathing exercises');
+              rootNavigatorKey.currentState?.pushNamed('/breathing');
+              break;
+            case 'severe':
+              debugPrint('🟠 Severe alert launch → Grounding techniques');
+              rootNavigatorKey.currentState?.pushNamed('/grounding');
+              break;
+            case 'critical':
+              debugPrint('🔴 Critical alert launch → Notifications with urgent context');
+              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              break;
+            default:
+              debugPrint('⚠️ Unknown severity launch → Default notifications screen');
+              rootNavigatorKey.currentState?.pushNamed('/notifications');
+          }
         }
       });
     }
   } catch (e) {
     debugPrint('❌ Error configuring FCM: $e');
+  }
+}
+
+/// Store anxiety alert notification in Supabase for notifications screen display
+Future<bool> _storeAnxietyAlertNotification(
+    RemoteNotification? notification, Map<String, dynamic> data) async {
+  try {
+    final supabaseService = SupabaseService();
+
+    // Extract information from FCM data
+    final severity = data['severity'] ?? 'unknown';
+    final heartRate = data['heartRate'] ?? 'N/A';
+    final baseline = data['baseline'];
+
+    String title = notification?.title ?? 'Anxiety Alert';
+    String body =
+        notification?.body ?? 'Anxiety detected. Please check your status.';
+
+    // Create more descriptive notification based on severity
+    if (severity != 'unknown') {
+      switch (severity.toLowerCase()) {
+        case 'mild':
+          title = '🟢 Mild Anxiety Alert';
+          break;
+        case 'moderate':
+          title = '🟠 Moderate Anxiety Alert';
+          break;
+        case 'severe':
+          title = '🔴 Severe Anxiety Alert';
+          break;
+        case 'critical':
+          title = '🚨 Critical Anxiety Alert';
+          break;
+      }
+
+      if (baseline != null) {
+        final percentageAbove = data['percentageAbove'];
+        if (percentageAbove != null) {
+          body =
+              'Heart rate: ${heartRate} BPM (${percentageAbove}% above your baseline of ${baseline} BPM)';
+        } else {
+          body = 'Heart rate: ${heartRate} BPM (baseline: ${baseline} BPM)';
+        }
+      } else {
+        body =
+            'Heart rate: ${heartRate} BPM - ${severity} anxiety level detected';
+      }
+    }
+
+    // Store in Supabase with enhanced debugging
+    debugPrint('💾 Storing anxiety alert with details:');
+    debugPrint('   title: $title');
+    debugPrint('   body: $body');
+    debugPrint('   severity: $severity');
+    
+    await supabaseService.createNotification(
+      title: title,
+      message: body,
+      type: 'alert',
+      relatedScreen: 'notifications', // Changed to match where user gets redirected
+      relatedId: data['notificationId'],
+    );
+
+    // Trigger notification refresh in home screen
+    debugPrint('🔄 Triggering notification refresh...');
+    _triggerNotificationRefresh();
+
+    debugPrint('✅ Stored anxiety alert in Supabase: $title');
+    return true;
+  } catch (e) {
+    debugPrint('❌ Error storing anxiety alert notification: $e');
+    // Notification display shouldn't fail if storage fails
+    return false;
+  }
+}
+
+/// Store wellness reminder notification in Supabase for notifications screen display
+Future<void> _storeWellnessReminderNotification(
+    RemoteNotification? notification, Map<String, dynamic> data) async {
+  try {
+    final supabaseService = SupabaseService();
+
+    String title = notification?.title ?? 'Wellness Reminder';
+    String body =
+        notification?.body ?? 'Take a moment to check how you\'re feeling.';
+
+    // Determine related screen based on data
+    String relatedScreen = 'breathing_screen'; // default
+    final action = data['action']?.toString() ?? '';
+    if (action.contains('ground')) {
+      relatedScreen = 'grounding_screen';
+    }
+
+    // Store in Supabase
+    await supabaseService.createNotification(
+      title: title,
+      message: body,
+      type: 'reminder',
+      relatedScreen: relatedScreen,
+      relatedId: data['timestamp']?.toString(),
+    );
+
+    // Trigger notification refresh in home screen
+    _triggerNotificationRefresh();
+
+    debugPrint('✅ Stored wellness reminder in Supabase: $title');
+  } catch (e) {
+    debugPrint('❌ Error storing wellness reminder notification: $e');
+    // Don't rethrow - notification display shouldn't fail if storage fails
+  }
+}
+
+/// Store breathing exercise reminder notification in Supabase for notifications screen display
+Future<void> _storeBreathingReminderNotification(
+    RemoteNotification? notification, Map<String, dynamic> data) async {
+  try {
+    final supabaseService = SupabaseService();
+
+    String title = notification?.title ?? '🫁 Breathing Exercise Reminder';
+    String body = notification?.body ??
+        'Time for a breathing exercise! Take a moment to relax and breathe.';
+
+    // Store in Supabase
+    await supabaseService.createNotification(
+      title: title,
+      message: body,
+      type: 'reminder',
+      relatedScreen: 'breathing_screen',
+      relatedId: data['timestamp']?.toString(),
+    );
+
+    // Trigger notification refresh in home screen
+    _triggerNotificationRefresh();
+
+    debugPrint('✅ Stored breathing reminder in Supabase: $title');
+  } catch (e) {
+    debugPrint('❌ Error storing breathing reminder notification: $e');
+    // Don't rethrow - notification display shouldn't fail if storage fails
+  }
+}
+
+/// Trigger notification refresh in home screen
+void _triggerNotificationRefresh() {
+  try {
+    // Get the current context from the navigator
+    final context = rootNavigatorKey.currentContext;
+    if (context != null) {
+      // Find the NotificationProvider and trigger refresh
+      final notificationProvider =
+          Provider.of<NotificationProvider>(context, listen: false);
+      notificationProvider.triggerNotificationRefresh();
+      debugPrint('✅ Triggered notification refresh in home screen');
+    }
+  } catch (e) {
+    debugPrint('❌ Error triggering notification refresh: $e');
+    // Don't rethrow - this is a UI update and shouldn't break notification storage
+  }
+}
+
+// Subscribe to FCM topics only once per installation
+Future<void> _subscribeToTopicsOnce() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Only subscribe to anxiety_alerts once per installation
+    bool subscribedToAnxiety = prefs.getBool('subscribed_anxiety_alerts') ?? false;
+    if (!subscribedToAnxiety) {
+      await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
+      await prefs.setBool('subscribed_anxiety_alerts', true);
+      debugPrint('✅ First-time subscription to anxiety_alerts topic');
+    } else {
+      debugPrint('ℹ️ Already subscribed to anxiety_alerts topic');
+    }
+    
+    // Only subscribe to wellness_reminders once per installation  
+    bool subscribedToWellness = prefs.getBool('subscribed_wellness_reminders') ?? false;
+    if (!subscribedToWellness) {
+      await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
+      await prefs.setBool('subscribed_wellness_reminders', true);
+      debugPrint('✅ First-time subscription to wellness_reminders topic');
+    } else {
+      debugPrint('ℹ️ Already subscribed to wellness_reminders topic');
+    }
+  } catch (e) {
+    debugPrint('❌ Failed to manage FCM topic subscriptions: $e');
   }
 }

@@ -20,6 +20,12 @@ export {
   cleanupOldSessions,
 } from "./deviceDataCopyService";
 
+// Import and export enhanced rate limiting functions
+export {
+  handleUserConfirmationResponse,
+  getRateLimitStatus,
+} from "./enhancedRateLimiting";
+
 // Import auto history creator
 export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 
