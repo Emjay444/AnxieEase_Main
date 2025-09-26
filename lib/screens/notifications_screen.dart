@@ -90,7 +90,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           final String title = (args['title'] ?? '').toString();
           final String message = (args['message'] ?? '').toString();
           final String type = (args['type'] ?? 'alert').toString();
-          final String createdAt = (args['createdAt'] ?? DateTime.now().toIso8601String()).toString();
+          final String createdAt =
+              (args['createdAt'] ?? DateTime.now().toIso8601String())
+                  .toString();
           final String severity = (args['severity'] ?? '').toString();
 
           // Build a synthetic notification map for dialogs

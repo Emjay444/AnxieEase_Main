@@ -133,7 +133,9 @@ async function getUserSessionHistory(
     worn?: number;
   }>
 > {
-  const userSessionRef = db.ref(`/users/${userId}/sessions/${sessionId}/history`);
+  const userSessionRef = db.ref(
+    `/users/${userId}/sessions/${sessionId}/history`
+  );
   const cutoffTime = Date.now() - seconds * 1000;
 
   try {
@@ -319,7 +321,10 @@ async function sendUserAnxietyAlert(alertData: any) {
 
   try {
     // Get user's FCM token from Firebase
-    const fcmToken = await getUserFCMToken(alertData.userId, alertData.deviceId);
+    const fcmToken = await getUserFCMToken(
+      alertData.userId,
+      alertData.deviceId
+    );
 
     if (!fcmToken) {
       console.log(`⚠️ No FCM token found for user ${alertData.userId}`);
@@ -375,14 +380,19 @@ async function sendUserAnxietyAlert(alertData: any) {
  * Get user's FCM token for notifications
  * Checks both device-level and user-level token storage
  */
-async function getUserFCMToken(userId: string, deviceId?: string): Promise<string | null> {
+async function getUserFCMToken(
+  userId: string,
+  deviceId?: string
+): Promise<string | null> {
   // First try device-level token (where Flutter app stores it)
   if (deviceId) {
     const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
     const deviceTokenSnapshot = await deviceTokenRef.once("value");
-    
+
     if (deviceTokenSnapshot.exists()) {
-      console.log(`✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`);
+      console.log(
+        `✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`
+      );
       return deviceTokenSnapshot.val();
     }
   }
@@ -396,7 +406,11 @@ async function getUserFCMToken(userId: string, deviceId?: string): Promise<strin
     return tokenSnapshot.val();
   }
 
-  console.log(`⚠️ No FCM token found in Firebase for user ${userId}${deviceId ? ` or device ${deviceId}` : ''}`);
+  console.log(
+    `⚠️ No FCM token found in Firebase for user ${userId}${
+      deviceId ? ` or device ${deviceId}` : ""
+    }`
+  );
   return null;
 }
 
@@ -468,12 +482,16 @@ async function getUserBaseline(
   deviceId: string
 ): Promise<{ baselineHR: number } | null> {
   // Try to get baseline from device assignment (where it's actually stored)
-  const deviceBaselineRef = db.ref(`/devices/${deviceId}/assignment/supabaseSync/baselineHR`);
+  const deviceBaselineRef = db.ref(
+    `/devices/${deviceId}/assignment/supabaseSync/baselineHR`
+  );
   const baselineSnapshot = await deviceBaselineRef.once("value");
 
   if (baselineSnapshot.exists()) {
     const baselineHR = baselineSnapshot.val();
-    console.log(`📊 Found user baseline: ${baselineHR} BPM from device assignment`);
+    console.log(
+      `📊 Found user baseline: ${baselineHR} BPM from device assignment`
+    );
     return { baselineHR: baselineHR };
   }
 

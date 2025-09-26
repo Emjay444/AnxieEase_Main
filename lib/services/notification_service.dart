@@ -477,7 +477,8 @@ class NotificationService extends ChangeNotifier {
             debugPrint('🔇 Initial Firebase read is normal; no notification.');
             return;
           } else {
-            debugPrint('⚡ Initial Firebase read with $severity - processing to reflect in app.');
+            debugPrint(
+                '⚡ Initial Firebase read with $severity - processing to reflect in app.');
           }
         }
 

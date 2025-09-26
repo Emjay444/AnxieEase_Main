@@ -18,7 +18,9 @@ async function setUserBaseline() {
   console.log(`✅ Set baseline for user ${userId}: 73 BPM`);
 }
 
-setUserBaseline().then(() => process.exit(0)).catch((e) => {
-  console.error("❌ Failed to set baseline:", e);
-  process.exit(1);
-});
+setUserBaseline()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("❌ Failed to set baseline:", e);
+    process.exit(1);
+  });

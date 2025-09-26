@@ -25,7 +25,9 @@ async function pushTestAlert() {
   console.log(`✅ Pushed test alert ${alertsRef.key} for ${deviceId}`);
 }
 
-pushTestAlert().then(() => process.exit(0)).catch((e) => {
-  console.error("❌ Failed to push alert:", e);
-  process.exit(1);
-});
+pushTestAlert()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("❌ Failed to push alert:", e);
+    process.exit(1);
+  });

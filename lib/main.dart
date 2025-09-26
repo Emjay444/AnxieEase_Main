@@ -1209,7 +1209,8 @@ Future<void> _configureFCM() async {
               arguments: {
                 'show': 'notification',
                 'title': message.notification?.title ?? 'Anxiety Alert',
-                'message': message.notification?.body ?? 'Please check your status.',
+                'message':
+                    message.notification?.body ?? 'Please check your status.',
                 'type': 'alert',
                 'severity': severity,
                 'createdAt': DateTime.now().toIso8601String(),
@@ -1231,7 +1232,8 @@ Future<void> _configureFCM() async {
               arguments: {
                 'show': 'notification',
                 'title': message.notification?.title ?? 'Anxiety Alert',
-                'message': message.notification?.body ?? 'Please check your status.',
+                'message':
+                    message.notification?.body ?? 'Please check your status.',
                 'type': 'alert',
                 'severity': severity,
                 'createdAt': DateTime.now().toIso8601String(),
@@ -1245,7 +1247,8 @@ Future<void> _configureFCM() async {
               arguments: {
                 'show': 'notification',
                 'title': message.notification?.title ?? 'Anxiety Alert',
-                'message': message.notification?.body ?? 'Please check your status.',
+                'message':
+                    message.notification?.body ?? 'Please check your status.',
                 'type': 'alert',
                 'severity': severity,
                 'createdAt': DateTime.now().toIso8601String(),
@@ -1327,7 +1330,8 @@ Future<void> _configureFCM() async {
                 arguments: {
                   'show': 'notification',
                   'title': initialMsg.notification?.title ?? 'Anxiety Alert',
-                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'message': initialMsg.notification?.body ??
+                      'Please check your status.',
                   'type': 'alert',
                   'severity': severity,
                   'createdAt': DateTime.now().toIso8601String(),
@@ -1350,7 +1354,8 @@ Future<void> _configureFCM() async {
                 arguments: {
                   'show': 'notification',
                   'title': initialMsg.notification?.title ?? 'Anxiety Alert',
-                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'message': initialMsg.notification?.body ??
+                      'Please check your status.',
                   'type': 'alert',
                   'severity': severity,
                   'createdAt': DateTime.now().toIso8601String(),
@@ -1358,13 +1363,15 @@ Future<void> _configureFCM() async {
               );
               break;
             default:
-              debugPrint('⚠️ Unknown severity launch → Default notifications screen');
+              debugPrint(
+                  '⚠️ Unknown severity launch → Default notifications screen');
               rootNavigatorKey.currentState?.pushNamed(
                 '/notifications',
                 arguments: {
                   'show': 'notification',
                   'title': initialMsg.notification?.title ?? 'Anxiety Alert',
-                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'message': initialMsg.notification?.body ??
+                      'Please check your status.',
                   'type': 'alert',
                   'severity': severity,
                   'createdAt': DateTime.now().toIso8601String(),
