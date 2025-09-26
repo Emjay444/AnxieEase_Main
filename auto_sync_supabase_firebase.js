@@ -100,7 +100,17 @@ async function syncFirebaseFromSupabase(deviceId) {
           linkedAt: supabaseAssignment.linked_at,
           batteryLevel: supabaseAssignment.battery_level,
         },
-        previousAssignment: currentFirebaseAssignment,
+        previousAssignment: currentFirebaseAssignment
+          ? {
+              assignedUser: currentFirebaseAssignment.assignedUser,
+              activeSessionId: currentFirebaseAssignment.activeSessionId,
+              assignedBy: currentFirebaseAssignment.assignedBy,
+              assignedAt: currentFirebaseAssignment.assignedAt,
+              status: currentFirebaseAssignment.status,
+              deviceId: currentFirebaseAssignment.deviceId,
+              // Intentionally exclude previousAssignment to prevent infinite nesting
+            }
+          : null,
       };
 
       await firebaseAssignmentRef.set(newFirebaseAssignment);

@@ -25,7 +25,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'firebase_options.dart';
 import 'services/background_messaging.dart';
 import 'breathing_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'grounding_screen.dart';
 import 'screens/device_linking_screen.dart';
 import 'screens/device_setup_wizard_screen.dart';
@@ -49,9 +48,63 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
       '📱 Background AwesomeNotification action received: ${receivedAction.payload}');
 
   // Handle navigation or actions here
-  final payload = receivedAction.payload;
-  if (payload != null &&
-      payload['type'] == 'reminder' &&
+  final payload = receivedAction.payload ?? {};
+
+  // When tapping anxiety alerts created in background, make sure they're synced to Supabase
+  if ((payload['type'] == 'anxiety_alert') || (payload['source'] == 'fcm_bg')) {
+    // Wait for auth to be ready so we can store the notification reliably
+    await _waitForAuthReady(ensureAuthenticated: true);
+
+    // Try to sync any locally stored pending notifications first
+    try {
+      await _syncPendingNotifications();
+    } catch (e) {
+      debugPrint('⚠️ Failed to sync pending notifications on tap: $e');
+    }
+
+    // Navigate to appropriate screen based on severity (default to notifications)
+    final severity = (payload['severity'] ?? '').toString().toLowerCase();
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator != null) {
+      switch (severity) {
+        case 'moderate':
+          navigator.pushNamed('/breathing');
+          break;
+        case 'severe':
+          navigator.pushNamed('/grounding');
+          break;
+        case 'critical':
+          navigator.pushNamed(
+            '/notifications',
+            arguments: {
+              'show': 'notification',
+              'title': receivedAction.title ?? 'Anxiety Alert',
+              'message': receivedAction.body ?? 'Please check your status.',
+              'type': 'alert',
+              'severity': severity,
+              'createdAt': DateTime.now().toIso8601String(),
+            },
+          );
+          break;
+        default:
+          navigator.pushNamed(
+            '/notifications',
+            arguments: {
+              'show': 'notification',
+              'title': receivedAction.title ?? 'Anxiety Alert',
+              'message': receivedAction.body ?? 'Please check your status.',
+              'type': 'alert',
+              'severity': severity,
+              'createdAt': DateTime.now().toIso8601String(),
+            },
+          );
+      }
+    }
+    return;
+  }
+
+  // Handle reminder taps
+  if (payload['type'] == 'reminder' &&
       payload['related_screen'] == 'breathing_screen') {
     debugPrint('🫁 Background breathing exercise reminder action received');
 
@@ -114,6 +167,10 @@ Future<void> _initializeServices() async {
     );
     await FirebaseMessaging.instance.setAutoInitEnabled(true);
     await SupabaseService().initialize(); // needed for AuthProvider
+
+    // Early sync attempt - try to sync notifications immediately after Supabase is ready
+    debugPrint('🔄 Early sync attempt during initialization...');
+    _syncPendingNotifications();
 
     // Create lightweight provider instances (heavy work deferred)
     final authProvider = AuthProvider();
@@ -247,6 +304,25 @@ Future<void> _initializeRemainingServices(
     // Configure Firebase Cloud Messaging (foreground listeners, token log)
     await _configureFCM();
 
+    // Another sync attempt after FCM is configured
+    debugPrint('🔄 Post-FCM sync attempt...');
+    _syncPendingNotifications();
+
+    // If the app was opened normally (not via tapping a push),
+    // make sure auth is ready and then sync any pending background-stored notifications
+    debugPrint('⏳ Normal app open: waiting for auth readiness...');
+
+    // Don't wait too long for auth - sync regardless
+    Future.any([
+      _waitForAuthReady(ensureAuthenticated: true),
+      Future.delayed(const Duration(seconds: 5), () {
+        debugPrint('⚠️ Auth timeout - proceeding with sync anyway');
+      })
+    ]).then((_) async {
+      debugPrint('✅ Normal app open: proceeding with sync...');
+      await _syncPendingNotifications();
+    });
+
     debugPrint('✅ All services initialized successfully');
   } catch (e) {
     AppLogger.e('Error during secondary service initialization', e as Object?);
@@ -334,7 +410,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late AppLinks _appLinks;
   // Use global navigator key so services/handlers can navigate safely
   final _navigatorKey = rootNavigatorKey;
@@ -343,12 +419,53 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // Add this widget as an observer for app lifecycle changes
+    WidgetsBinding.instance.addObserver(this);
     _initAppLinks();
     // Profile first frame scheduling
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final now = DateTime.now();
       debugPrint('🕒 First frame rendered at: ' + now.toIso8601String());
+
+      // After first frame, set up multiple sync strategies to be extra sure
+      _setupMultipleSyncStrategies();
     });
+  }
+
+  @override
+  void dispose() {
+    // Remove this widget as an observer
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint('📱 App lifecycle changed to: $state');
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App became active/foreground - sync notifications
+        debugPrint('🔄 App resumed - triggering notification sync...');
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          await _debugLocalNotifications(); // Debug what's in local storage
+          _syncPendingNotifications();
+        });
+        break;
+      case AppLifecycleState.paused:
+        debugPrint('⏸️ App paused');
+        break;
+      case AppLifecycleState.inactive:
+        debugPrint('😴 App inactive');
+        break;
+      case AppLifecycleState.detached:
+        debugPrint('🔌 App detached');
+        break;
+      case AppLifecycleState.hidden:
+        debugPrint('🙈 App hidden');
+        break;
+    }
   }
 
   Future<void> _initAppLinks() async {
@@ -370,6 +487,78 @@ class _MyAppState extends State<MyApp> {
     }, onError: (err) {
       print('Error handling app links: $err');
     });
+  }
+
+  /// Set up multiple strategies to ensure pending notifications are synced reliably
+  Future<void> _setupMultipleSyncStrategies() async {
+    debugPrint('🔄 Setting up multiple sync strategies...');
+
+    // Strategy 0: Immediate sync attempt (before auth is fully ready)
+    debugPrint('🔄 Strategy 0: Immediate sync attempt...');
+    await _debugLocalNotifications(); // Debug what's in local storage
+    _syncPendingNotifications();
+
+    // Strategy 1: AuthProvider listener (immediate when auth ready)
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // Track if we've already synced to avoid duplicates
+      bool hasAlreadySynced = false;
+
+      authProvider.addListener(() async {
+        debugPrint(
+            '🔐 Auth state changed: init=${authProvider.isInitialized}, auth=${authProvider.isAuthenticated}, alreadySynced=$hasAlreadySynced');
+
+        if (authProvider.isInitialized &&
+            authProvider.isAuthenticated &&
+            !hasAlreadySynced) {
+          hasAlreadySynced = true;
+          debugPrint(
+              '✅ Strategy 1: Auth ready after launch → syncing pending notifications');
+          await _debugLocalNotifications(); // Debug what's in local storage
+          await _syncPendingNotifications();
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ Could not attach auth listener for pending sync: $e');
+    }
+
+    // Strategy 2: Aggressive early retry (1 second)
+    Future.delayed(const Duration(seconds: 1), () async {
+      debugPrint('🔄 Strategy 2: Early sync attempt after 1 second...');
+      await _debugLocalNotifications(); // Debug what's in local storage
+      await _syncPendingNotifications();
+    });
+
+    // Strategy 3: Standard retry sync (3 seconds)
+    Future.delayed(const Duration(seconds: 3), () async {
+      debugPrint('🔄 Strategy 3: Standard sync attempt after 3 seconds...');
+      await _debugLocalNotifications(); // Debug what's in local storage
+      await _syncPendingNotifications();
+    });
+
+    // Strategy 4: Extended retry (8 seconds)
+    Future.delayed(const Duration(seconds: 8), () async {
+      debugPrint('🔄 Strategy 4: Extended sync attempt after 8 seconds...');
+      await _debugLocalNotifications(); // Debug what's in local storage
+      await _syncPendingNotifications();
+    });
+
+    // Strategy 5: Final fallback (15 seconds)
+    Future.delayed(const Duration(seconds: 15), () async {
+      debugPrint('🔄 Strategy 5: Final fallback sync after 15 seconds...');
+      await _debugLocalNotifications(); // Debug what's in local storage
+      await _syncPendingNotifications();
+    });
+
+    // Strategy 6: Periodic sync every 30 seconds for the first 2 minutes
+    for (int i = 1; i <= 4; i++) {
+      Future.delayed(Duration(seconds: 30 * i), () async {
+        debugPrint('🔄 Strategy 6.$i: Periodic sync at ${30 * i} seconds...');
+        await _debugLocalNotifications();
+        await _syncPendingNotifications();
+      });
+    }
   }
 
   void _handleAppLink(Uri uri) {
@@ -803,32 +992,17 @@ Future<void> _configureFCM() async {
       sound: true,
     );
 
-    // Get and log the FCM token (copy from logs to use in test_fcm.dart)
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) {
-      debugPrint('🔑 FCM registration token: $token');
+    // Get and store a fresh FCM token
+    await _refreshAndStoreToken();
 
-      // Store FCM token in Firebase for Cloud Functions to use
-      try {
-        final userId = Supabase.instance.client.auth.currentUser?.id;
-        if (userId != null) {
-          await FirebaseDatabase.instance
-              .ref('/users/$userId/fcmToken')
-              .set(token);
-          debugPrint('✅ FCM token stored in Firebase for user: $userId');
-        } else {
-          debugPrint('⚠️ No current Supabase user found, FCM token not stored');
-        }
-      } catch (e) {
-        debugPrint('❌ Failed to store FCM token: $e');
-      }
+    // Handle token refresh (tokens can change automatically)
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      debugPrint('🔄 FCM token refreshed: $newToken');
+      await _storeTokenAtDeviceLevel(newToken);
+    });
 
-      // Subscribe to topics only once per installation
-      await _subscribeToTopicsOnce();
-    } else {
-      debugPrint(
-          '⚠️ FCM token is null (auto-init or Google services not ready yet)');
-    }
+    // Subscribe to topics only once per installation
+    await _subscribeToTopicsOnce();
 
     // Foreground message handler: Handle FCM messages when app is open
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
@@ -942,7 +1116,17 @@ Future<void> _configureFCM() async {
             icon: Icons.health_and_safety,
             actionLabel: 'View',
             onAction: () {
-              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              rootNavigatorKey.currentState?.pushNamed(
+                '/notifications',
+                arguments: {
+                  'show': 'notification',
+                  'title': notification?.title ?? 'Anxiety Alert',
+                  'message': notification?.body ?? 'We\'re here to help.',
+                  'type': 'alert',
+                  'severity': (data['severity'] ?? '').toString(),
+                  'createdAt': DateTime.now().toIso8601String(),
+                },
+              );
             },
           );
 
@@ -965,12 +1149,41 @@ Future<void> _configureFCM() async {
     });
 
     // When a notification is tapped and opens the app (foreground/background)
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
       debugPrint('📬 Notification tap opened app. Data: ${message.data}');
+
+      // Ensure authentication is ready so storage/navigation don't race
+      await _waitForAuthReady(ensureAuthenticated: true);
+
+      // Ensure any background-stored notifications are synced when opened from tap
+      try {
+        await _syncPendingNotifications();
+      } catch (e) {
+        debugPrint('⚠️ Failed syncing pending after tap: $e');
+      }
 
       // Handle navigation based on message type
       final messageType = message.data['type'] ?? '';
       final relatedScreen = message.data['related_screen'] ?? '';
+
+      // If this was an anxiety alert displayed by the OS (not our bg handler),
+      // ensure it's stored in Supabase before navigation so it appears in-app.
+      final looksLikeAnxiety = messageType == 'anxiety_alert' ||
+          message.data['severity'] != null ||
+          (message.notification?.title?.toLowerCase().contains('anxiety') ??
+              false) ||
+          (message.notification?.title?.toLowerCase().contains('alert') ??
+              false);
+      if (looksLikeAnxiety) {
+        try {
+          final stored = await _storeAnxietyAlertNotification(
+              message.notification, message.data);
+          debugPrint(
+              '🧾 Stored tapped anxiety alert from OS notification: $stored');
+        } catch (e) {
+          debugPrint('⚠️ Could not store tapped anxiety alert: $e');
+        }
+      }
 
       if ((messageType == 'reminder' && relatedScreen == 'breathing_screen') ||
           message.notification?.title?.contains('Breathing Exercise') == true ||
@@ -991,7 +1204,17 @@ Future<void> _configureFCM() async {
         switch (severity.toLowerCase()) {
           case 'mild':
             debugPrint('🟢 Mild alert → Notifications screen');
-            rootNavigatorKey.currentState?.pushNamed('/notifications');
+            rootNavigatorKey.currentState?.pushNamed(
+              '/notifications',
+              arguments: {
+                'show': 'notification',
+                'title': message.notification?.title ?? 'Anxiety Alert',
+                'message': message.notification?.body ?? 'Please check your status.',
+                'type': 'alert',
+                'severity': severity,
+                'createdAt': DateTime.now().toIso8601String(),
+              },
+            );
             break;
           case 'moderate':
             debugPrint('🟡 Moderate alert → Breathing exercises');
@@ -1003,11 +1226,31 @@ Future<void> _configureFCM() async {
             break;
           case 'critical':
             debugPrint('🔴 Critical alert → Notifications with urgent context');
-            rootNavigatorKey.currentState?.pushNamed('/notifications');
+            rootNavigatorKey.currentState?.pushNamed(
+              '/notifications',
+              arguments: {
+                'show': 'notification',
+                'title': message.notification?.title ?? 'Anxiety Alert',
+                'message': message.notification?.body ?? 'Please check your status.',
+                'type': 'alert',
+                'severity': severity,
+                'createdAt': DateTime.now().toIso8601String(),
+              },
+            );
             break;
           default:
             debugPrint('⚠️ Unknown severity → Default notifications screen');
-            rootNavigatorKey.currentState?.pushNamed('/notifications');
+            rootNavigatorKey.currentState?.pushNamed(
+              '/notifications',
+              arguments: {
+                'show': 'notification',
+                'title': message.notification?.title ?? 'Anxiety Alert',
+                'message': message.notification?.body ?? 'Please check your status.',
+                'type': 'alert',
+                'severity': severity,
+                'createdAt': DateTime.now().toIso8601String(),
+              },
+            );
         }
       } else {
         debugPrint(
@@ -1020,12 +1263,43 @@ Future<void> _configureFCM() async {
     if (initialMsg != null) {
       debugPrint('🚀 App launched from notification. Data: ${initialMsg.data}');
 
+      // Ensure authentication is ready so storage/navigation don't race
+      await _waitForAuthReady(ensureAuthenticated: true);
+
+      // Sync pending notifications stored while app was terminated
+      try {
+        await _syncPendingNotifications();
+      } catch (e) {
+        debugPrint('⚠️ Failed syncing pending on cold start: $e');
+      }
+
       // Handle navigation based on message type when app launches from notification
       final messageType = initialMsg.data['type'] ?? '';
       final relatedScreen = initialMsg.data['related_screen'] ?? '';
 
-      // Use a slight delay to ensure the app is fully initialized
-      Future.delayed(const Duration(milliseconds: 500), () {
+      // Use a slight delay to ensure the app UI is fully built
+      Future.delayed(const Duration(milliseconds: 300), () async {
+        // Double-check auth readiness (best-effort)
+        await _waitForAuthReady(ensureAuthenticated: true);
+        // If this was an anxiety alert shown by the OS, store it before/while navigating
+        final looksLikeAnxiety = messageType == 'anxiety_alert' ||
+            initialMsg.data['severity'] != null ||
+            (initialMsg.notification?.title
+                    ?.toLowerCase()
+                    .contains('anxiety') ??
+                false) ||
+            (initialMsg.notification?.title?.toLowerCase().contains('alert') ??
+                false);
+        if (looksLikeAnxiety) {
+          try {
+            final stored = await _storeAnxietyAlertNotification(
+                initialMsg.notification, initialMsg.data);
+            debugPrint(
+                '🧾 Stored cold-start anxiety alert from OS notification: $stored');
+          } catch (e) {
+            debugPrint('⚠️ Could not store cold-start anxiety alert: $e');
+          }
+        }
         if ((messageType == 'reminder' &&
                 relatedScreen == 'breathing_screen') ||
             initialMsg.notification?.title?.contains('Breathing Exercise') ==
@@ -1048,7 +1322,17 @@ Future<void> _configureFCM() async {
           switch (severity.toLowerCase()) {
             case 'mild':
               debugPrint('🟢 Mild alert launch → Notifications screen');
-              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              rootNavigatorKey.currentState?.pushNamed(
+                '/notifications',
+                arguments: {
+                  'show': 'notification',
+                  'title': initialMsg.notification?.title ?? 'Anxiety Alert',
+                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'type': 'alert',
+                  'severity': severity,
+                  'createdAt': DateTime.now().toIso8601String(),
+                },
+              );
               break;
             case 'moderate':
               debugPrint('🟡 Moderate alert launch → Breathing exercises');
@@ -1061,12 +1345,31 @@ Future<void> _configureFCM() async {
             case 'critical':
               debugPrint(
                   '🔴 Critical alert launch → Notifications with urgent context');
-              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              rootNavigatorKey.currentState?.pushNamed(
+                '/notifications',
+                arguments: {
+                  'show': 'notification',
+                  'title': initialMsg.notification?.title ?? 'Anxiety Alert',
+                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'type': 'alert',
+                  'severity': severity,
+                  'createdAt': DateTime.now().toIso8601String(),
+                },
+              );
               break;
             default:
-              debugPrint(
-                  '⚠️ Unknown severity launch → Default notifications screen');
-              rootNavigatorKey.currentState?.pushNamed('/notifications');
+              debugPrint('⚠️ Unknown severity launch → Default notifications screen');
+              rootNavigatorKey.currentState?.pushNamed(
+                '/notifications',
+                arguments: {
+                  'show': 'notification',
+                  'title': initialMsg.notification?.title ?? 'Anxiety Alert',
+                  'message': initialMsg.notification?.body ?? 'Please check your status.',
+                  'type': 'alert',
+                  'severity': severity,
+                  'createdAt': DateTime.now().toIso8601String(),
+                },
+              );
           }
         }
       });
@@ -1217,6 +1520,9 @@ Future<void> _storeBreathingReminderNotification(
 
 /// Trigger notification refresh in home screen
 void _triggerNotificationRefresh() {
+  debugPrint(
+      '🔔 _triggerNotificationRefresh called at ${DateTime.now().toIso8601String()}');
+
   try {
     // Get the current context from the navigator
     final context = rootNavigatorKey.currentContext;
@@ -1225,12 +1531,82 @@ void _triggerNotificationRefresh() {
       final notificationProvider =
           Provider.of<NotificationProvider>(context, listen: false);
       notificationProvider.triggerNotificationRefresh();
-      debugPrint('✅ Triggered notification refresh in home screen');
+      debugPrint(
+          '✅ Triggered notification refresh in home screen successfully');
+
+      // Also trigger additional refreshes with delays to ensure UI updates
+      Future.delayed(const Duration(milliseconds: 500), () {
+        try {
+          notificationProvider.triggerNotificationRefresh();
+          debugPrint('✅ Triggered delayed notification refresh (500ms)');
+        } catch (e) {
+          debugPrint('⚠️ Delayed refresh failed: $e');
+        }
+      });
+
+      Future.delayed(const Duration(seconds: 1), () {
+        try {
+          notificationProvider.triggerNotificationRefresh();
+          debugPrint('✅ Triggered delayed notification refresh (1s)');
+        } catch (e) {
+          debugPrint('⚠️ Delayed refresh (1s) failed: $e');
+        }
+      });
+    } else {
+      debugPrint(
+          '⚠️ No context available for notification refresh - will retry');
+      // Retry after a short delay if context isn't available yet
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _triggerNotificationRefresh();
+      });
     }
   } catch (e) {
     debugPrint('❌ Error triggering notification refresh: $e');
     // Don't rethrow - this is a UI update and shouldn't break notification storage
+    // Try again after a delay
+    Future.delayed(const Duration(seconds: 1), () {
+      try {
+        debugPrint('🔄 Retrying notification refresh after error...');
+        _triggerNotificationRefresh();
+      } catch (retryError) {
+        debugPrint('❌ Notification refresh retry also failed: $retryError');
+      }
+    });
   }
+}
+
+/// Wait until authentication is initialized and optionally authenticated
+Future<void> _waitForAuthReady({
+  bool ensureAuthenticated = false,
+  Duration timeout = const Duration(seconds: 15), // Increased timeout
+}) async {
+  final start = DateTime.now();
+  debugPrint(
+      '🔐 _waitForAuthReady starting (ensureAuthenticated=$ensureAuthenticated)');
+
+  while (DateTime.now().difference(start) < timeout) {
+    try {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) {
+        final authProvider = Provider.of<AuthProvider>(ctx, listen: false);
+        final init = authProvider.isInitialized;
+        final authed = authProvider.isAuthenticated;
+
+        debugPrint('🔐 Auth status: initialized=$init, authenticated=$authed');
+
+        if (init && (!ensureAuthenticated || authed)) {
+          debugPrint(
+              '✅ Auth is ready! (took ${DateTime.now().difference(start).inMilliseconds}ms)');
+          return; // Ready
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error checking auth status: $e');
+    }
+    await Future.delayed(const Duration(milliseconds: 100)); // Faster polling
+  }
+  debugPrint(
+      '⏳ _waitForAuthReady timed out after ${timeout.inSeconds}s (ensureAuthenticated=$ensureAuthenticated)');
 }
 
 // Subscribe to FCM topics only once per installation
@@ -1261,5 +1637,193 @@ Future<void> _subscribeToTopicsOnce() async {
     }
   } catch (e) {
     debugPrint('❌ Failed to manage FCM topic subscriptions: $e');
+  }
+}
+
+// Get fresh FCM token and store it
+Future<void> _refreshAndStoreToken() async {
+  try {
+    // Force token refresh to get the latest token
+    await FirebaseMessaging.instance.deleteToken();
+    final token = await FirebaseMessaging.instance.getToken();
+
+    if (token != null) {
+      debugPrint('🔑 Fresh FCM registration token: $token');
+      await _storeTokenAtDeviceLevel(token);
+    } else {
+      debugPrint('⚠️ FCM token is null after refresh');
+    }
+  } catch (e) {
+    debugPrint('❌ Error refreshing FCM token: $e');
+  }
+}
+
+// Store FCM token at device level for Cloud Functions
+Future<void> _storeTokenAtDeviceLevel(String token) async {
+  try {
+    const deviceId = 'AnxieEase001'; // Your device ID
+    await FirebaseDatabase.instance
+        .ref('/devices/$deviceId/fcmToken')
+        .set(token);
+    debugPrint('✅ FCM token stored at device level: $deviceId');
+  } catch (e) {
+    debugPrint('❌ Failed to store device FCM token: $e');
+  }
+}
+
+// Add this new debugging function right after _syncPendingNotifications
+/// Debug function to check what's stored in SharedPreferences
+Future<void> _debugLocalNotifications() async {
+  try {
+    debugPrint('🔍 DEBUG: Checking local notification storage...');
+    final prefs = await SharedPreferences.getInstance();
+
+    // Check pending notifications
+    final pendingNotifications =
+        prefs.getStringList('pending_notifications') ?? [];
+    debugPrint(
+        '🔍 DEBUG: Found ${pendingNotifications.length} pending notifications in local storage:');
+    for (int i = 0; i < pendingNotifications.length; i++) {
+      debugPrint('   [$i]: ${pendingNotifications[i]}');
+    }
+
+    // Check all keys that might be related to notifications
+    final allKeys = prefs.getKeys();
+    final notificationKeys =
+        allKeys.where((key) => key.toLowerCase().contains('notif')).toList();
+    debugPrint(
+        '🔍 DEBUG: Notification-related keys in SharedPreferences: $notificationKeys');
+
+    for (final key in notificationKeys) {
+      final value = prefs.get(key);
+      debugPrint('🔍 DEBUG: $key = $value');
+    }
+  } catch (e) {
+    debugPrint('❌ DEBUG: Error checking local notifications: $e');
+  }
+}
+
+/// Sync pending notifications from local storage to Supabase
+Future<void> _syncPendingNotifications() async {
+  try {
+    final timestamp = DateTime.now().toIso8601String();
+    debugPrint('🔄 _syncPendingNotifications called at $timestamp');
+
+    final prefs = await SharedPreferences.getInstance();
+
+    debugPrint('🔄 Syncing pending notifications from local storage...');
+
+    // Get all pending notifications from SharedPreferences
+    final pendingNotifications =
+        prefs.getStringList('pending_notifications') ?? [];
+
+    debugPrint(
+        '📋 Total pending notifications found: ${pendingNotifications.length}');
+    if (pendingNotifications.isEmpty) {
+      debugPrint('📋 No pending notifications to sync');
+
+      // Even if no pending notifications, trigger UI refresh to show any new ones
+      debugPrint(
+          '🔄 Triggering UI refresh even with no pending notifications...');
+      _triggerNotificationRefresh();
+      return;
+    }
+
+    debugPrint(
+        '📥 Found ${pendingNotifications.length} pending notifications:');
+    for (int i = 0; i < pendingNotifications.length; i++) {
+      debugPrint('   [$i]: ${pendingNotifications[i]}');
+    }
+
+    // Try to get Supabase service - if it fails, we'll retry later
+    SupabaseService? supabaseService;
+    try {
+      supabaseService = SupabaseService();
+      // Test if Supabase is actually ready
+      final testNotifications = await supabaseService.getNotifications();
+      debugPrint(
+          '✅ Supabase service is ready for syncing (found ${testNotifications.length} existing notifications)');
+    } catch (e) {
+      debugPrint('⚠️ Supabase not ready yet, will retry later: $e');
+      // Schedule a retry in a few seconds
+      Future.delayed(const Duration(seconds: 3), () async {
+        debugPrint('🔄 Retrying sync after Supabase delay...');
+        await _syncPendingNotifications();
+      });
+      return;
+    }
+
+    int syncedCount = 0;
+    List<String> remainingNotifications = [];
+
+    // Process each pending notification
+    for (final notificationString in pendingNotifications) {
+      try {
+        // Parse the notification data (pipe-separated format)
+        final parts = notificationString.split('|');
+        if (parts.length >= 4) {
+          final title = parts[0];
+          final message = parts[1];
+          final severity = parts.length > 2 ? parts[2] : 'unknown';
+          final timestamp =
+              parts.length > 3 ? parts[3] : DateTime.now().toIso8601String();
+
+          debugPrint('💾 Syncing notification:');
+          debugPrint('   Title: $title');
+          debugPrint('   Message: $message');
+          debugPrint('   Severity: $severity');
+          debugPrint('   Timestamp: $timestamp');
+
+          // Store in Supabase
+          await supabaseService.createNotification(
+            title: title,
+            message: message,
+            type: 'alert',
+            relatedScreen: 'notifications',
+            relatedId: 'bg_${DateTime.now().millisecondsSinceEpoch}',
+          );
+
+          syncedCount++;
+          debugPrint('✅ Successfully synced: $title');
+        } else {
+          debugPrint('⚠️ Malformed notification format: $notificationString');
+          // Keep malformed notifications for retry
+          remainingNotifications.add(notificationString);
+        }
+      } catch (e) {
+        debugPrint('❌ Failed to sync individual notification: $e');
+        debugPrint('   Notification data: $notificationString');
+        // Keep failed notifications for retry
+        remainingNotifications.add(notificationString);
+      }
+    }
+
+    // Update SharedPreferences with remaining notifications
+    await prefs.setStringList('pending_notifications', remainingNotifications);
+
+    debugPrint('✅ Sync complete at ${DateTime.now().toIso8601String()}:');
+    debugPrint('   $syncedCount notifications synced to Supabase');
+    debugPrint(
+        '   ${remainingNotifications.length} notifications remain pending');
+
+    if (remainingNotifications.isNotEmpty) {
+      debugPrint('📝 Remaining pending notifications:');
+      for (int i = 0; i < remainingNotifications.length; i++) {
+        debugPrint('   [$i]: ${remainingNotifications[i]}');
+      }
+    }
+
+    // Trigger notification refresh in UI
+    debugPrint('🔔 Triggering UI refresh after sync...');
+    _triggerNotificationRefresh();
+    debugPrint('🔔 UI refresh triggered successfully');
+  } catch (e) {
+    debugPrint('❌ Error syncing pending notifications: $e');
+    debugPrint('❌ Stack trace: ${StackTrace.current}');
+    // Schedule a retry for failed sync
+    Future.delayed(const Duration(seconds: 5), () async {
+      debugPrint('🔄 Retrying sync after error...');
+      await _syncPendingNotifications();
+    });
   }
 }

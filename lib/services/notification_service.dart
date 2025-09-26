@@ -97,7 +97,7 @@ class NotificationService extends ChangeNotifier {
   String _getChannelKeyForSeverity(String severity) {
     switch (severity.toLowerCase()) {
       case 'mild':
-        return 'mild_anxiety_alerts';
+        return 'mild_anxiety_alerts_v3'; // Use ultra-aggressive test channel with popup settings
       case 'moderate':
         return 'moderate_anxiety_alerts';
       case 'severe':
@@ -105,7 +105,7 @@ class NotificationService extends ChangeNotifier {
       case 'critical':
         return 'critical_anxiety_alerts';
       case 'elevated':
-        return 'mild_anxiety_alerts'; // Use mild channel for elevated
+        return 'mild_anxiety_alerts_v3'; // Use ultra-aggressive test channel for elevated
       default:
         return 'anxiety_alerts'; // Fallback to general channel
     }
@@ -258,17 +258,57 @@ class NotificationService extends ChangeNotifier {
         ),
 
         // Severity-specific channels with custom sounds
+        // TESTING: Ultra-aggressive mild anxiety channel for popup testing
+        NotificationChannel(
+          channelKey: 'mild_anxiety_alerts_v3',
+          channelName: 'Mild Anxiety Emergency Test',
+          channelDescription:
+              'TESTING: Ultra-priority mild anxiety with forced popup',
+          defaultColor: const Color(0xFF66BB6A), // Light Green
+          importance: NotificationImportance.Max, // Maximum importance
+          ledColor: const Color(0xFF66BB6A),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
+          defaultPrivacy: NotificationPrivacy.Public, // Show on all screens
+          icon: 'resource://drawable/launcher_icon',
+          criticalAlerts: true, // Enable critical alerts
+          onlyAlertOnce: false, // Always alert, don't suppress
+        ),
+
+        // TESTING: New mild anxiety channel with maximum popup settings
+        NotificationChannel(
+          channelKey: 'mild_anxiety_alerts_v2',
+          channelName: 'Mild Anxiety Alerts V2',
+          channelDescription:
+              'Gentle notifications for mild anxiety detection with popup',
+          defaultColor: const Color(0xFF66BB6A), // Light Green
+          importance:
+              NotificationImportance.Max, // Maximum importance for popup
+          ledColor: const Color(0xFF66BB6A),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
+          defaultPrivacy:
+              NotificationPrivacy.Public, // Make sure it shows on lock screen
+          icon: 'resource://drawable/launcher_icon',
+          criticalAlerts: true, // Enable critical alerts for popup testing
+        ),
+
+        // Original mild anxiety channel (keep as backup)
         NotificationChannel(
           channelKey: 'mild_anxiety_alerts',
           channelName: 'Mild Anxiety Alerts',
           channelDescription: 'Gentle notifications for mild anxiety detection',
           defaultColor: const Color(0xFF66BB6A), // Light Green
-          importance: NotificationImportance.Default,
+          importance: NotificationImportance
+              .High, // Changed from Default to High for popup
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
           soundSource: 'resource://raw/mild_alert', // Custom sound for mild
           icon: 'resource://drawable/launcher_icon',
+          criticalAlerts: true, // Enable critical alerts for popup testing
         ),
 
         NotificationChannel(
@@ -427,12 +467,18 @@ class NotificationService extends ChangeNotifier {
           return;
         }
 
-        // Skip notification on first read (app startup)
+        // First read behavior at app startup:
+        // - If severity is normal/empty, skip.
+        // - If severity indicates an alert (mild/moderate/severe/critical), process immediately
+        //   so it reflects in the app even if user opens via app icon without tapping the OS notif.
         if (_isFirstRead) {
           _isFirstRead = false;
-          debugPrint(
-              '🔇 Skipping initial Firebase notification for: $severity (HR: $heartRate)');
-          return;
+          if (severity == 'normal' || severity.trim().isEmpty) {
+            debugPrint('🔇 Initial Firebase read is normal; no notification.');
+            return;
+          } else {
+            debugPrint('⚡ Initial Firebase read with $severity - processing to reflect in app.');
+          }
         }
 
         // Only send LOCAL notifications when app is open (since FCM won't show device notifications when app is foreground)
@@ -541,8 +587,12 @@ class NotificationService extends ChangeNotifier {
     final severityChannelKey = _getChannelKeyForSeverity(severity);
 
     // Determine notification behavior based on severity
-    final isHighPriority =
-        ['severe', 'critical'].contains(severity.toLowerCase());
+    final isHighPriority = [
+      'mild',
+      'moderate',
+      'severe',
+      'critical'
+    ].contains(severity.toLowerCase()); // Include all severity levels for popup
     final isCritical = severity.toLowerCase() == 'critical';
 
     // Send the notification with severity-specific enhancements
@@ -553,14 +603,15 @@ class NotificationService extends ChangeNotifier {
         title: title,
         body: body,
         notificationLayout: NotificationLayout.Default,
-        category: isHighPriority
-            ? NotificationCategory
-                .Reminder // Changed from Alarm to Reminder to prevent looping
-            : NotificationCategory.Reminder,
-        wakeUpScreen: isHighPriority,
-        // Removed fullScreenIntent and criticalAlert to prevent looping behavior
+        category: NotificationCategory
+            .Alarm, // Use Alarm category for all anxiety notifications to ensure popup
+        wakeUpScreen: true, // Always wake up screen for anxiety notifications
+        fullScreenIntent:
+            true, // Force full screen for all anxiety notifications (testing)
+        criticalAlert:
+            true, // Force critical alert for all anxiety notifications (testing)
         icon: 'resource://drawable/ic_notification', // Add small icon
-        customSound: _getCustomSoundPath(severity), // Custom sound per severity
+        // Removed customSound to let channel handle sound completely
         payload: {
           'type': 'anxiety_alert',
           'severity': severity,

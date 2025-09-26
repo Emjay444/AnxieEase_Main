@@ -3,6 +3,82 @@ import * as admin from "firebase-admin";
 
 const db = admin.database();
 
+// Helper function to get severity-specific notification configuration
+function getSeverityNotificationConfig(severity: string) {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return {
+        channelId: "mild_anxiety_alerts_v3", // Use ultra-aggressive test channel
+        sound: "mild_alert", // Matches raw/mild_alert.mp3
+        priority: "high" as any, // Changed from "normal" to "high" for popup
+        androidPriority: "max" as any, // Use max priority for testing
+      };
+    case "moderate":
+      return {
+        channelId: "moderate_anxiety_alerts",
+        sound: "moderate_alert", // Matches raw/moderate_alert.mp3
+        priority: "high" as any,
+        androidPriority: "high" as any,
+      };
+    case "severe":
+      return {
+        channelId: "severe_anxiety_alerts",
+        sound: "severe_alert", // Matches raw/severe_alert.mp3
+        priority: "high" as any,
+        androidPriority: "max" as any,
+      };
+    case "critical":
+      return {
+        channelId: "critical_anxiety_alerts",
+        sound: "critical_alert", // Matches raw/critical_alert.mp3
+        priority: "high" as any,
+        androidPriority: "max" as any,
+      };
+    default:
+      return {
+        channelId: "anxiety_alerts", // Fallback to generic channel
+        sound: "default",
+        priority: "normal" as any,
+        androidPriority: "default" as any,
+      };
+  }
+}
+
+// Helper function to map detection reason to severity level
+function mapReasonToSeverity(reason: string, confidenceLevel: number): string {
+  // High confidence critical situations
+  if (confidenceLevel >= 0.9) {
+    switch (reason) {
+      case "criticalSpO2":
+      case "multipleMetrics":
+        return "critical";
+      case "combinedHRSpO2":
+      case "combinedHRMovement":
+      case "tremorDetected":
+        return "severe";
+      default:
+        return "moderate";
+    }
+  }
+
+  // Medium-high confidence
+  if (confidenceLevel >= 0.7) {
+    switch (reason) {
+      case "criticalSpO2":
+        return "severe";
+      case "multipleMetrics":
+      case "combinedHRSpO2":
+      case "combinedHRMovement":
+        return "moderate";
+      default:
+        return "mild";
+    }
+  }
+
+  // Lower confidence
+  return "mild";
+}
+
 /**
  * Multi-parameter anxiety detection Cloud Function
  * Triggers when any health metric is updated
@@ -581,10 +657,15 @@ async function sendAnxietyNotification(
 ) {
   const notificationContent = getNotificationContent(result);
 
+  // Map reason and confidence to severity level for proper notification channel
+  const severity = mapReasonToSeverity(result.reason, result.confidenceLevel);
+  const notificationConfig = getSeverityNotificationConfig(severity);
+
   const message: admin.messaging.TopicMessage = {
     data: {
       type: "anxiety_alert_multiparameter",
       reason: result.reason,
+      severity: severity, // Add severity to data
       confidence: result.confidenceLevel.toString(),
       heartRate: result.metrics.currentHR.toString(),
       baselineHR: result.metrics.restingHR.toString(),
@@ -598,11 +679,12 @@ async function sendAnxietyNotification(
       body: notificationContent.body,
     },
     android: {
-      priority: result.confidenceLevel >= 0.8 ? "high" : "normal",
+      priority: notificationConfig.priority,
       notification: {
-        channelId: "anxiety_alerts",
-        // Admin SDK types don't include AndroidNotification.priority in some versions; omit to avoid type errors
-        defaultSound: true,
+        channelId: notificationConfig.channelId,
+        priority: notificationConfig.androidPriority,
+        defaultSound: false, // Disable default sound to use custom sound
+        sound: notificationConfig.sound, // Custom sound for this severity
         defaultVibrateTimings: true,
         color: getNotificationColor(result.reason),
       },
@@ -612,7 +694,7 @@ async function sendAnxietyNotification(
 
   await admin.messaging().send(message);
   console.log(
-    `Anxiety notification sent: ${result.reason} (confidence: ${result.confidenceLevel})`
+    `Anxiety notification sent: ${result.reason} -> ${severity} severity (confidence: ${result.confidenceLevel})`
   );
 }
 

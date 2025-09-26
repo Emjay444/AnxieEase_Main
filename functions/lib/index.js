@@ -184,16 +184,16 @@ exports.sendTestNotificationV2 = functions.https.onCall(async (data, context) =>
 // HTTP-based test notification function for easy testing
 exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
     // Enable CORS
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
     // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        res.status(204).send('');
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
         return;
     }
     try {
-        const { severity = "mild", heartRate = 75 } = req.method === 'POST' ? req.body : req.query;
+        const { severity = "mild", heartRate = 75 } = req.method === "POST" ? req.body : req.query;
         console.log(`📧 Testing notification: ${severity} alert with HR: ${heartRate}`);
         const notificationData = getNotificationContent(severity, heartRate);
         const message = {
@@ -226,17 +226,17 @@ exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
             heartRate,
             notification: {
                 title: message.notification.title,
-                body: message.notification.body
+                body: message.notification.body,
             },
-            message: "Test notification sent successfully! Check your device."
+            message: "Test notification sent successfully! Check your device.",
         });
     }
     catch (error) {
         console.error("❌ Error sending test notification:", error);
         res.status(500).json({
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            message: "Failed to send test notification"
+            error: error instanceof Error ? error.message : "Unknown error",
+            message: "Failed to send test notification",
         });
     }
 });

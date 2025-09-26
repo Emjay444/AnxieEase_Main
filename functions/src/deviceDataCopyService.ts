@@ -41,7 +41,7 @@ interface SensorData {
 
 /**
  * Cloud Function: Copy device history data to user sessions
- * 
+ *
  * Triggers when new data is written to /devices/AnxieEase001/history/{timestamp}
  * Automatically copies the data to the assigned user's session history
  */
@@ -57,31 +57,38 @@ export const copyDeviceDataToUserSession = functions.database
       // Get device assignment information
       const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
       const assignmentSnapshot = await assignmentRef.once("value");
-      
+
       if (!assignmentSnapshot.exists()) {
-        console.log("⚠️ No device assignment found - data will only stay in device history");
+        console.log(
+          "⚠️ No device assignment found - data will only stay in device history"
+        );
         return null;
       }
 
-      const assignment = assignmentSnapshot.val() as DeviceAssignment;
-      
-      if (!assignment.assignedUser || !assignment.activeSessionId) {
-        console.log("⚠️ Device not assigned to any user or no active session - skipping copy");
+      const rawAssignment = assignmentSnapshot.val() as any;
+      const assignedUser = rawAssignment?.assignedUser || rawAssignment?.userId;
+      const activeSessionId =
+        rawAssignment?.activeSessionId || rawAssignment?.sessionId;
+
+      if (!assignedUser || !activeSessionId) {
+        console.log(
+          "⚠️ Device not assigned to any user or no active session - skipping copy"
+        );
         return null;
       }
 
-      console.log(`👤 Device assigned to user: ${assignment.assignedUser}`);
-      console.log(`📋 Active session: ${assignment.activeSessionId}`);
+      console.log(`👤 Device assigned to user: ${assignedUser}`);
+      console.log(`📋 Active session: ${activeSessionId}`);
 
       // Validate sensor data
-      if (!sensorData || typeof sensorData !== 'object') {
+      if (!sensorData || typeof sensorData !== "object") {
         console.error("❌ Invalid sensor data received:", sensorData);
         return null;
       }
 
       // Copy data to user's session history
       const userSessionHistoryRef = db.ref(
-        `/users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/history/${timestamp}`
+        `/users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`
       );
 
       // Add metadata about the copy operation
@@ -89,38 +96,43 @@ export const copyDeviceDataToUserSession = functions.database
         ...sensorData,
         deviceId: "AnxieEase001",
         copiedAt: admin.database.ServerValue.TIMESTAMP,
-        sessionId: assignment.activeSessionId,
-        userId: assignment.assignedUser
+        sessionId: activeSessionId,
+        userId: assignedUser,
       };
 
       await userSessionHistoryRef.set(enrichedData);
 
       console.log(`✅ Data successfully copied to user session`);
-      console.log(`📍 Location: /users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/history/${timestamp}`);
+      console.log(
+        `📍 Location: /users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`
+      );
 
       // Update session metadata with latest activity
       const sessionMetadataRef = db.ref(
-        `/users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/metadata`
+        `/users/${assignedUser}/sessions/${activeSessionId}/metadata`
       );
-      
+
       await sessionMetadataRef.update({
         lastActivity: admin.database.ServerValue.TIMESTAMP,
         lastDataTimestamp: parseInt(timestamp),
-        totalDataPoints: admin.database.ServerValue.increment(1)
+        totalDataPoints: admin.database.ServerValue.increment(1),
       });
 
-      return { success: true, userId: assignment.assignedUser, sessionId: assignment.activeSessionId };
-
+      return {
+        success: true,
+        userId: assignedUser,
+        sessionId: activeSessionId,
+      };
     } catch (error) {
       console.error("❌ Error copying device data to user session:", error);
-      
+
       // Log error details for debugging
       await db.ref("/system/errors").push({
         type: "device_data_copy_error",
         timestamp: admin.database.ServerValue.TIMESTAMP,
         deviceTimestamp: timestamp,
         error: error instanceof Error ? error.message : String(error),
-        data: sensorData
+        data: sensorData,
       });
 
       throw error;
@@ -129,7 +141,7 @@ export const copyDeviceDataToUserSession = functions.database
 
 /**
  * Cloud Function: Copy device current data to user session (real-time)
- * 
+ *
  * Triggers when current data is updated on the device
  * Copies to user's current session for real-time monitoring
  */
@@ -149,38 +161,78 @@ export const copyDeviceCurrentToUserSession = functions.database
       // Get device assignment information
       const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
       const assignmentSnapshot = await assignmentRef.once("value");
-      
+
       if (!assignmentSnapshot.exists()) {
-        console.log("⚠️ No device assignment found - current data stays in device only");
+        console.log(
+          "⚠️ No device assignment found - current data stays in device only"
+        );
         return null;
       }
 
-      const assignment = assignmentSnapshot.val() as DeviceAssignment;
-      
-      if (!assignment.assignedUser || !assignment.activeSessionId) {
-        console.log("⚠️ Device not assigned or no active session - skipping current data copy");
+      const rawAssignment = assignmentSnapshot.val() as any;
+      const assignedUser = rawAssignment?.assignedUser || rawAssignment?.userId;
+      const activeSessionId =
+        rawAssignment?.activeSessionId || rawAssignment?.sessionId;
+
+      if (!assignedUser || !activeSessionId) {
+        console.log(
+          "⚠️ Device not assigned or no active session - skipping current data copy"
+        );
         return null;
       }
 
-      // Copy current data to user's session
+      // Copy current data to user's session (current)
       const userSessionCurrentRef = db.ref(
-        `/users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/current`
+        `/users/${assignedUser}/sessions/${activeSessionId}/current`
       );
 
       const enrichedCurrentData = {
         ...currentData,
         deviceId: "AnxieEase001",
         lastUpdated: admin.database.ServerValue.TIMESTAMP,
-        sessionId: assignment.activeSessionId,
-        userId: assignment.assignedUser
+        sessionId: activeSessionId,
+        userId: assignedUser,
       };
 
       await userSessionCurrentRef.set(enrichedCurrentData);
 
-      console.log(`✅ Current data copied to user session: ${assignment.assignedUser}/${assignment.activeSessionId}`);
+      console.log(
+        `✅ Current data copied to user session: ${assignedUser}/${activeSessionId}`
+      );
 
-      return { success: true, userId: assignment.assignedUser, sessionId: assignment.activeSessionId };
+      // Also append to user's session history to build sustained analysis window
+      try {
+        let ts = currentData.timestamp || Date.now();
+        
+        // Convert string timestamp to numeric if needed
+        if (typeof ts === 'string') {
+          // Convert "2025-09-26 21:40:23" format to milliseconds
+          ts = new Date(ts).getTime();
+          console.log(`🔄 Converted string timestamp to numeric: ${ts}`);
+        }
+        
+        const userSessionHistoryRef = db.ref(
+          `/users/${assignedUser}/sessions/${activeSessionId}/history/${ts}`
+        );
+        const enrichedHistoryData = {
+          ...currentData,
+          deviceId: "AnxieEase001",
+          timestamp: ts, // Use numeric timestamp
+          copiedAt: admin.database.ServerValue.TIMESTAMP,
+          sessionId: activeSessionId,
+          userId: assignedUser,
+        };
+        await userSessionHistoryRef.set(enrichedHistoryData);
+        console.log(`📝 Appended current data to history at ${ts}`);
+      } catch (err) {
+        console.warn("⚠️ Failed to append current to history:", err);
+      }
 
+      return {
+        success: true,
+        userId: assignedUser,
+        sessionId: activeSessionId,
+      };
     } catch (error) {
       console.error("❌ Error copying current data to user session:", error);
       throw error;
@@ -189,139 +241,153 @@ export const copyDeviceCurrentToUserSession = functions.database
 
 /**
  * Cloud Function: Manage device assignment
- * 
+ *
  * HTTP function to assign/unassign device to users
  * Called by admin interface or testing system
  */
-export const assignDeviceToUser = functions.https.onCall(async (data, context) => {
-  // Verify admin authentication (implement your auth logic)
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      'unauthenticated',
-      'User must be authenticated to assign devices'
-    );
-  }
-
-  const { userId, sessionId, action, adminNotes } = data;
-
-  try {
-    const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
-
-    if (action === "assign") {
-      if (!userId || !sessionId) {
-        throw new functions.https.HttpsError(
-          'invalid-argument',
-          'userId and sessionId are required for assignment'
-        );
-      }
-
-      const assignmentData: DeviceAssignment = {
-        assignedUser: userId,
-        activeSessionId: sessionId,
-        assignedAt: Date.now(),
-        assignedBy: context.auth.uid
-      };
-
-      await assignmentRef.set(assignmentData);
-
-      // Initialize user session
-      const sessionRef = db.ref(`/users/${userId}/sessions/${sessionId}`);
-      await sessionRef.update({
-        metadata: {
-          deviceId: "AnxieEase001",
-          startTime: admin.database.ServerValue.TIMESTAMP,
-          assignedBy: context.auth.uid,
-          status: "active",
-          adminNotes: adminNotes || "",
-          totalDataPoints: 0
-        }
-      });
-
-      console.log(`✅ Device assigned to user ${userId}, session ${sessionId}`);
-      return { success: true, message: "Device assigned successfully", userId, sessionId };
-
-    } else if (action === "unassign") {
-      // End current session before unassigning
-      const currentAssignment = await assignmentRef.once("value");
-      if (currentAssignment.exists()) {
-        const assignment = currentAssignment.val() as DeviceAssignment;
-        
-        // Mark session as completed
-        if (assignment.assignedUser && assignment.activeSessionId) {
-          const sessionMetadataRef = db.ref(
-            `/users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/metadata`
-          );
-          await sessionMetadataRef.update({
-            endTime: admin.database.ServerValue.TIMESTAMP,
-            status: "completed",
-            unassignedBy: context.auth.uid
-          });
-        }
-      }
-
-      await assignmentRef.remove();
-      console.log(`✅ Device unassigned`);
-      return { success: true, message: "Device unassigned successfully" };
-
-    } else {
+export const assignDeviceToUser = functions.https.onCall(
+  async (data, context) => {
+    // Verify admin authentication (implement your auth logic)
+    if (!context.auth) {
       throw new functions.https.HttpsError(
-        'invalid-argument',
-        'Action must be "assign" or "unassign"'
+        "unauthenticated",
+        "User must be authenticated to assign devices"
       );
     }
 
-  } catch (error) {
-    console.error("❌ Error managing device assignment:", error);
-    throw new functions.https.HttpsError(
-      'internal',
-      `Failed to ${action} device: ${error instanceof Error ? error.message : String(error)}`
-    );
+    const { userId, sessionId, action, adminNotes } = data;
+
+    try {
+      const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
+
+      if (action === "assign") {
+        if (!userId || !sessionId) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "userId and sessionId are required for assignment"
+          );
+        }
+
+        const assignmentData: DeviceAssignment = {
+          assignedUser: userId,
+          activeSessionId: sessionId,
+          assignedAt: Date.now(),
+          assignedBy: context.auth.uid,
+        };
+
+        await assignmentRef.set(assignmentData);
+
+        // Initialize user session
+        const sessionRef = db.ref(`/users/${userId}/sessions/${sessionId}`);
+        await sessionRef.update({
+          metadata: {
+            deviceId: "AnxieEase001",
+            startTime: admin.database.ServerValue.TIMESTAMP,
+            assignedBy: context.auth.uid,
+            status: "active",
+            adminNotes: adminNotes || "",
+            totalDataPoints: 0,
+          },
+        });
+
+        console.log(
+          `✅ Device assigned to user ${userId}, session ${sessionId}`
+        );
+        return {
+          success: true,
+          message: "Device assigned successfully",
+          userId,
+          sessionId,
+        };
+      } else if (action === "unassign") {
+        // End current session before unassigning
+        const currentAssignment = await assignmentRef.once("value");
+        if (currentAssignment.exists()) {
+          const assignment = currentAssignment.val() as DeviceAssignment;
+
+          // Mark session as completed
+          if (assignment.assignedUser && assignment.activeSessionId) {
+            const sessionMetadataRef = db.ref(
+              `/users/${assignment.assignedUser}/sessions/${assignment.activeSessionId}/metadata`
+            );
+            await sessionMetadataRef.update({
+              endTime: admin.database.ServerValue.TIMESTAMP,
+              status: "completed",
+              unassignedBy: context.auth.uid,
+            });
+          }
+        }
+
+        await assignmentRef.remove();
+        console.log(`✅ Device unassigned`);
+        return { success: true, message: "Device unassigned successfully" };
+      } else {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          'Action must be "assign" or "unassign"'
+        );
+      }
+    } catch (error) {
+      console.error("❌ Error managing device assignment:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        `Failed to ${action} device: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
-});
+);
 
 /**
  * Cloud Function: Get device assignment status
- * 
+ *
  * HTTP function to check current device assignment
  */
-export const getDeviceAssignment = functions.https.onCall(async (data, context) => {
-  try {
-    const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
-    const snapshot = await assignmentRef.once("value");
+export const getDeviceAssignment = functions.https.onCall(
+  async (data, context) => {
+    try {
+      const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
+      const snapshot = await assignmentRef.once("value");
 
-    if (!snapshot.exists()) {
-      return { assigned: false, message: "Device is not assigned to any user" };
+      if (!snapshot.exists()) {
+        return {
+          assigned: false,
+          message: "Device is not assigned to any user",
+        };
+      }
+
+      const assignment = snapshot.val() as DeviceAssignment;
+      return {
+        assigned: true,
+        assignedUser: assignment.assignedUser,
+        activeSessionId: assignment.activeSessionId,
+        assignedAt: assignment.assignedAt,
+        assignedBy: assignment.assignedBy,
+      };
+    } catch (error) {
+      console.error("❌ Error getting device assignment:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        `Failed to get device assignment: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
-
-    const assignment = snapshot.val() as DeviceAssignment;
-    return {
-      assigned: true,
-      assignedUser: assignment.assignedUser,
-      activeSessionId: assignment.activeSessionId,
-      assignedAt: assignment.assignedAt,
-      assignedBy: assignment.assignedBy
-    };
-
-  } catch (error) {
-    console.error("❌ Error getting device assignment:", error);
-    throw new functions.https.HttpsError(
-      'internal',
-      `Failed to get device assignment: ${error instanceof Error ? error.message : String(error)}`
-    );
   }
-});
+);
 
 /**
  * Cloud Function: Clean up old session data
- * 
+ *
  * Scheduled function to clean up completed sessions older than 30 days
  */
 export const cleanupOldSessions = functions.pubsub
   .schedule("every 24 hours")
   .timeZone("UTC")
   .onRun(async (context) => {
-    const cutoffTime = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days ago
-    
+    const cutoffTime = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+
     try {
       const usersRef = db.ref("/users");
       const usersSnapshot = await usersRef.once("value");
@@ -330,7 +396,7 @@ export const cleanupOldSessions = functions.pubsub
 
       if (usersSnapshot.exists()) {
         const users = usersSnapshot.val();
-        
+
         for (const userId in users) {
           const userSessions = users[userId].sessions;
           if (!userSessions) continue;
@@ -340,10 +406,11 @@ export const cleanupOldSessions = functions.pubsub
             const sessionMetadata = session.metadata;
 
             // Clean up completed sessions older than cutoff
-            if (sessionMetadata?.status === "completed" && 
-                sessionMetadata?.endTime && 
-                sessionMetadata.endTime < cutoffTime) {
-              
+            if (
+              sessionMetadata?.status === "completed" &&
+              sessionMetadata?.endTime &&
+              sessionMetadata.endTime < cutoffTime
+            ) {
               await db.ref(`/users/${userId}/sessions/${sessionId}`).remove();
               cleanedSessions++;
               console.log(`🗑️ Cleaned up old session: ${userId}/${sessionId}`);
@@ -352,9 +419,10 @@ export const cleanupOldSessions = functions.pubsub
         }
       }
 
-      console.log(`✅ Session cleanup completed. Removed ${cleanedSessions} old sessions.`);
+      console.log(
+        `✅ Session cleanup completed. Removed ${cleanedSessions} old sessions.`
+      );
       return { cleanedSessions };
-
     } catch (error) {
       console.error("❌ Error during session cleanup:", error);
       throw error;

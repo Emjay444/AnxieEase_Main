@@ -6,6 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../services/notification_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/notification_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../search.dart';
 import '../widgets/anxiety_confirmation_dialog.dart';
@@ -25,11 +26,103 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String? _selectedFilter;
   final _dateFormatter = DateFormat('MMM d, y, h:mm a');
   int _unreadCount = 0;
+  int _lastRefreshCounter = 0;
+  bool _handledInitialRouteArgs = false; // prevent double handling
 
   @override
   void initState() {
     super.initState();
+    debugPrint(
+        '🔄 NotificationsScreen: initState - loading notifications and triggering sync');
+
+    // Trigger a sync when the notifications screen loads
+    _triggerSyncFromNotificationsScreen();
+
     _loadNotifications();
+  }
+
+  // Helper method to trigger sync from notifications screen
+  void _triggerSyncFromNotificationsScreen() {
+    try {
+      // Try to call the global sync function if available
+      debugPrint('🔄 NotificationsScreen: Attempting to trigger sync...');
+      // Since _syncPendingNotifications is in main.dart, we can't call it directly
+      // But we can trigger a refresh which should cause the main app to sync
+
+      // Use the notification provider to signal that a refresh is needed
+      Future.delayed(const Duration(milliseconds: 100), () {
+        final notificationProvider =
+            Provider.of<NotificationProvider>(context, listen: false);
+        notificationProvider.triggerNotificationRefresh();
+        debugPrint('✅ NotificationsScreen: Triggered refresh via provider');
+      });
+    } catch (e) {
+      debugPrint('⚠️ NotificationsScreen: Could not trigger sync: $e');
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Listen for notification refresh triggers
+    final notificationProvider = Provider.of<NotificationProvider>(context);
+    if (notificationProvider.refreshCounter != _lastRefreshCounter) {
+      _lastRefreshCounter = notificationProvider.refreshCounter;
+      debugPrint(
+          '🔄 NotificationsScreen: Detected refresh trigger, reloading notifications...');
+      // Add a small delay to ensure sync operations complete
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _loadNotifications();
+        }
+      });
+    }
+
+    // Handle immediate display if navigated with payload arguments
+    if (!_handledInitialRouteArgs) {
+      final route = ModalRoute.of(context);
+      final args = route?.settings.arguments;
+      if (args is Map) {
+        final show = (args['show'] ?? args['open'])?.toString();
+        if (show == 'notification') {
+          _handledInitialRouteArgs = true; // guard
+          final String title = (args['title'] ?? '').toString();
+          final String message = (args['message'] ?? '').toString();
+          final String type = (args['type'] ?? 'alert').toString();
+          final String createdAt = (args['createdAt'] ?? DateTime.now().toIso8601String()).toString();
+          final String severity = (args['severity'] ?? '').toString();
+
+          // Build a synthetic notification map for dialogs
+          final synthetic = <String, dynamic>{
+            'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
+            'title': title,
+            'message': message,
+            'type': type,
+            'created_at': createdAt,
+            'read': false,
+          };
+
+          // Defer UI until after current frame
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            // If looks like an anxiety alert, show confirmation dialog; else details sheet
+            if (title.toLowerCase().contains('anxiety') ||
+                type == 'alert' && (severity.isNotEmpty)) {
+              await _showAnxietyConfirmationDialog(synthetic);
+            } else {
+              _showNotificationDetails(
+                title,
+                message,
+                _getDisplayTime(createdAt),
+                type,
+                synthetic,
+              );
+            }
+          });
+        }
+      }
+    }
   }
 
   // Color utilities for nicer gradients/contrast
@@ -1088,90 +1181,111 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final grouped = _groupNotifications();
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F9),
-      appBar: AppBar(
-        elevation: 0,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const SizedBox(width: 8),
-            const Text('Notifications'),
-            if (_unreadCount > 0)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(12),
+    return Consumer<NotificationProvider>(
+      builder: (context, notificationProvider, child) {
+        // Check if we need to refresh notifications
+        if (notificationProvider.refreshCounter != _lastRefreshCounter) {
+          _lastRefreshCounter = notificationProvider.refreshCounter;
+          debugPrint(
+              '🔄 Consumer: Detected refresh trigger ${notificationProvider.refreshCounter}, scheduling reload...');
+          // Schedule notification reload
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isLoading) {
+              _loadNotifications();
+            }
+          });
+        }
+
+        final grouped = _groupNotifications();
+        return Scaffold(
+          backgroundColor: const Color(0xFFF6F7F9),
+          appBar: AppBar(
+            elevation: 0,
+            titleSpacing: 0,
+            title: Row(
+              children: [
+                const SizedBox(width: 8),
+                const Text('Notifications'),
+                if (_unreadCount > 0)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _unreadCount.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              if (_notifications.any((n) => !n['read']))
+                IconButton(
+                  icon: const Icon(Icons.done_all),
+                  onPressed: _markAllAsRead,
+                  tooltip: 'Mark all as read',
                 ),
-                child: Text(
-                  _unreadCount.toString(),
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+              if (_notifications.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep),
+                  onPressed: _clearAllNotifications,
+                  tooltip: 'Clear all',
+                ),
+            ],
+          ),
+          body: Column(
+            children: [
+              const SizedBox(height: 8),
+              _buildFilterChips(),
+              const SizedBox(height: 4),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _loadNotifications,
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _notifications.isEmpty
+                          ? _buildEmptyState()
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: grouped.entries.length,
+                              itemBuilder: (context, groupIndex) {
+                                final entry =
+                                    grouped.entries.elementAt(groupIndex);
+                                final groupLabel = entry.key;
+                                final items = entry.value;
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          20, 20, 20, 4),
+                                      child: Text(
+                                        groupLabel,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.5,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ),
+                                    ...items
+                                        .map(_buildNotificationItem)
+                                        .toList(),
+                                  ],
+                                );
+                              },
+                            ),
                 ),
               ),
-          ],
-        ),
-        actions: [
-          if (_notifications.any((n) => !n['read']))
-            IconButton(
-              icon: const Icon(Icons.done_all),
-              onPressed: _markAllAsRead,
-              tooltip: 'Mark all as read',
-            ),
-          if (_notifications.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_sweep),
-              onPressed: _clearAllNotifications,
-              tooltip: 'Clear all',
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: 8),
-          _buildFilterChips(),
-          const SizedBox(height: 4),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadNotifications,
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _notifications.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: grouped.entries.length,
-                          itemBuilder: (context, groupIndex) {
-                            final entry = grouped.entries.elementAt(groupIndex);
-                            final groupLabel = entry.key;
-                            final items = entry.value;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 20, 20, 4),
-                                  child: Text(
-                                    groupLabel,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ),
-                                ...items.map(_buildNotificationItem).toList(),
-                              ],
-                            );
-                          },
-                        ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

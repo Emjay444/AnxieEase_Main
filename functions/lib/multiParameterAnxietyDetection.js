@@ -4,6 +4,78 @@ exports.applyTriggerLogic = exports.analyzeMovement = exports.analyzeSpO2 = expo
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const db = admin.database();
+// Helper function to get severity-specific notification configuration
+function getSeverityNotificationConfig(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return {
+                channelId: "mild_anxiety_alerts_v3",
+                sound: "mild_alert",
+                priority: "high",
+                androidPriority: "max", // Use max priority for testing
+            };
+        case "moderate":
+            return {
+                channelId: "moderate_anxiety_alerts",
+                sound: "moderate_alert",
+                priority: "high",
+                androidPriority: "high",
+            };
+        case "severe":
+            return {
+                channelId: "severe_anxiety_alerts",
+                sound: "severe_alert",
+                priority: "high",
+                androidPriority: "max",
+            };
+        case "critical":
+            return {
+                channelId: "critical_anxiety_alerts",
+                sound: "critical_alert",
+                priority: "high",
+                androidPriority: "max",
+            };
+        default:
+            return {
+                channelId: "anxiety_alerts",
+                sound: "default",
+                priority: "normal",
+                androidPriority: "default",
+            };
+    }
+}
+// Helper function to map detection reason to severity level
+function mapReasonToSeverity(reason, confidenceLevel) {
+    // High confidence critical situations
+    if (confidenceLevel >= 0.9) {
+        switch (reason) {
+            case "criticalSpO2":
+            case "multipleMetrics":
+                return "critical";
+            case "combinedHRSpO2":
+            case "combinedHRMovement":
+            case "tremorDetected":
+                return "severe";
+            default:
+                return "moderate";
+        }
+    }
+    // Medium-high confidence
+    if (confidenceLevel >= 0.7) {
+        switch (reason) {
+            case "criticalSpO2":
+                return "severe";
+            case "multipleMetrics":
+            case "combinedHRSpO2":
+            case "combinedHRMovement":
+                return "moderate";
+            default:
+                return "mild";
+        }
+    }
+    // Lower confidence
+    return "mild";
+}
 /**
  * Multi-parameter anxiety detection Cloud Function
  * Triggers when any health metric is updated
@@ -348,10 +420,14 @@ async function storeAnxietyDetection(result, userId, deviceId, timestamp) {
  */
 async function sendAnxietyNotification(result, userId, deviceId) {
     const notificationContent = getNotificationContent(result);
+    // Map reason and confidence to severity level for proper notification channel
+    const severity = mapReasonToSeverity(result.reason, result.confidenceLevel);
+    const notificationConfig = getSeverityNotificationConfig(severity);
     const message = {
         data: {
             type: "anxiety_alert_multiparameter",
             reason: result.reason,
+            severity: severity,
             confidence: result.confidenceLevel.toString(),
             heartRate: result.metrics.currentHR.toString(),
             baselineHR: result.metrics.restingHR.toString(),
@@ -365,11 +441,12 @@ async function sendAnxietyNotification(result, userId, deviceId) {
             body: notificationContent.body,
         },
         android: {
-            priority: result.confidenceLevel >= 0.8 ? "high" : "normal",
+            priority: notificationConfig.priority,
             notification: {
-                channelId: "anxiety_alerts",
-                // Admin SDK types don't include AndroidNotification.priority in some versions; omit to avoid type errors
-                defaultSound: true,
+                channelId: notificationConfig.channelId,
+                priority: notificationConfig.androidPriority,
+                defaultSound: false,
+                sound: notificationConfig.sound,
                 defaultVibrateTimings: true,
                 color: getNotificationColor(result.reason),
             },
@@ -377,7 +454,7 @@ async function sendAnxietyNotification(result, userId, deviceId) {
         topic: `user_${userId}`,
     };
     await admin.messaging().send(message);
-    console.log(`Anxiety notification sent: ${result.reason} (confidence: ${result.confidenceLevel})`);
+    console.log(`Anxiety notification sent: ${result.reason} -> ${severity} severity (confidence: ${result.confidenceLevel})`);
 }
 /**
  * Send confirmation request notification

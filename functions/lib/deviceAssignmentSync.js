@@ -85,7 +85,17 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
                 webhookTrigger: true,
                 originalPayload: payload.type || "unknown",
             },
-            previousAssignment: currentAssignment,
+            previousAssignment: currentAssignment
+                ? {
+                    assignedUser: currentAssignment.assignedUser,
+                    activeSessionId: currentAssignment.activeSessionId,
+                    assignedBy: currentAssignment.assignedBy,
+                    assignedAt: currentAssignment.assignedAt,
+                    status: currentAssignment.status,
+                    deviceId: currentAssignment.deviceId,
+                    // Intentionally exclude previousAssignment to prevent infinite nesting
+                }
+                : null,
         };
         await currentAssignmentRef.set(newAssignment);
         console.log(`✅ Firebase assignment updated for ${deviceId}`);

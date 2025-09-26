@@ -27,21 +27,24 @@ async function checkDeviceAssignment() {
     const assignmentSnapshot = await db
       .ref("/devices/AnxieEase001/assignment")
       .once("value");
-    const assignment = assignmentSnapshot.val();
-
-    if (assignment) {
+    const raw = assignmentSnapshot.val();
+    if (raw) {
+      const assignedUser = raw.assignedUser || raw.userId || "(missing)";
+      const activeSessionId =
+        raw.activeSessionId || raw.sessionId || "(missing)";
       console.log("✅ Device AnxieEase001 is assigned!");
-      console.log(`   Assigned to user: ${assignment.userId}`);
-      console.log(`   Session ID: ${assignment.sessionId}`);
-      console.log(`   Status: ${assignment.status}`);
-      console.log(
-        `   Assigned at: ${new Date(assignment.assignedAt).toLocaleString()}`
-      );
-      console.log(`   Admin notes: ${assignment.adminNotes || "None"}`);
+      console.log(`   Assigned to user: ${assignedUser}`);
+      console.log(`   Session ID: ${activeSessionId}`);
+      if (raw.status) console.log(`   Status: ${raw.status}`);
+      if (raw.assignedAt)
+        console.log(
+          `   Assigned at: ${new Date(raw.assignedAt).toLocaleString()}`
+        );
+      if (raw.adminNotes) console.log(`   Admin notes: ${raw.adminNotes}`);
 
       // Return the user ID so you can use it in your test
       console.log(`\n📋 COPY THIS USER ID FOR YOUR TEST:`);
-      console.log(`   TEST_USER_ID = "${assignment.userId}"`);
+      console.log(`   TEST_USER_ID = "${assignedUser}"`);
     } else {
       console.log("❌ No device assignment found for AnxieEase001");
       console.log(

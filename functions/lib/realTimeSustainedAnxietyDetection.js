@@ -38,7 +38,7 @@ exports.realTimeSustainedAnxietyDetection = functions.database
         const userId = assignment.assignedUser;
         const sessionId = assignment.activeSessionId;
         console.log(`👤 Device assigned to user: ${userId}, session: ${sessionId}`);
-        // STEP 2: Get user's personal baseline from Supabase
+        // STEP 2: Get user's personal baseline
         const userBaseline = await getUserBaseline(userId, deviceId);
         if (!userBaseline || !userBaseline.baselineHR) {
             console.log(`⚠️ No baseline found for user ${userId} - skipping anxiety detection`);
@@ -83,7 +83,7 @@ exports.realTimeSustainedAnxietyDetection = functions.database
  * Get user's session history data (from user sessions, not raw device data)
  */
 async function getUserSessionHistory(userId, sessionId, seconds) {
-    const userSessionRef = db.ref(`/users/${userId}/sessions/${sessionId}/data`);
+    const userSessionRef = db.ref(`/users/${userId}/sessions/${sessionId}/history`);
     const cutoffTime = Date.now() - seconds * 1000;
     try {
         const snapshot = await userSessionRef
@@ -171,8 +171,8 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
             bestElevatedPoints = [...currentElevatedPoints];
         }
     }
-    // Check if we have 30+ seconds of sustained elevation
-    if (longestSustainedDuration >= 30 && bestElevatedPoints.length > 0) {
+    // Check if we have 10+ seconds of sustained elevation (reduced for testing)
+    if (longestSustainedDuration >= 10 && bestElevatedPoints.length > 0) {
         const avgHR = bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
             bestElevatedPoints.length;
         const percentageAbove = Math.round(((avgHR - baselineHR) / baselineHR) * 100);
@@ -186,12 +186,12 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
             reason: `User ${userId}: Heart rate sustained ${percentageAbove}% above personal baseline for ${Math.floor(longestSustainedDuration)}+ seconds`,
         };
     }
-    console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 30s required)`);
+    console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 10s required)`);
     return {
         isSustained: false,
         durationSeconds: Math.floor(longestSustainedDuration),
         reason: longestSustainedDuration > 0
-            ? `User ${userId}: Elevated for ${Math.floor(longestSustainedDuration)}s (need 30s)`
+            ? `User ${userId}: Elevated for ${Math.floor(longestSustainedDuration)}s (need 10s)`
             : `User ${userId}: HR within normal range`,
     };
 }
@@ -212,8 +212,8 @@ function getSeverityLevel(heartRate, baseline) {
 async function sendUserAnxietyAlert(alertData) {
     console.log(`🔔 Sending anxiety alert notification to user ${alertData.userId}`);
     try {
-        // Get user's FCM token from Supabase or Firebase
-        const fcmToken = await getUserFCMToken(alertData.userId);
+        // Get user's FCM token from Firebase
+        const fcmToken = await getUserFCMToken(alertData.userId, alertData.deviceId);
         if (!fcmToken) {
             console.log(`⚠️ No FCM token found for user ${alertData.userId}`);
             return null;
@@ -255,16 +255,26 @@ async function sendUserAnxietyAlert(alertData) {
 }
 /**
  * Get user's FCM token for notifications
+ * Checks both device-level and user-level token storage
  */
-async function getUserFCMToken(userId) {
-    // First try Firebase user profile
+async function getUserFCMToken(userId, deviceId) {
+    // First try device-level token (where Flutter app stores it)
+    if (deviceId) {
+        const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
+        const deviceTokenSnapshot = await deviceTokenRef.once("value");
+        if (deviceTokenSnapshot.exists()) {
+            console.log(`✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`);
+            return deviceTokenSnapshot.val();
+        }
+    }
+    // Fallback to user profile token
     const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
     const tokenSnapshot = await userTokenRef.once("value");
     if (tokenSnapshot.exists()) {
+        console.log(`✅ Found FCM token at user level: /users/${userId}/fcmToken`);
         return tokenSnapshot.val();
     }
-    // TODO: Implement Supabase query for FCM token if needed
-    console.log(`⚠️ No FCM token found in Firebase for user ${userId}`);
+    console.log(`⚠️ No FCM token found in Firebase for user ${userId}${deviceId ? ` or device ${deviceId}` : ''}`);
     return null;
 }
 /**
@@ -319,16 +329,25 @@ async function storeUserAnxietyAlert(alertData) {
     console.log(`📝 Stored user anxiety alert: ${userAlertsRef.key} for user ${alertData.userId}`);
 }
 /**
- * Get user's baseline heart rate from Supabase or Firebase
+ * Get user's baseline heart rate
  */
 async function getUserBaseline(userId, deviceId) {
-    // First try Firebase user profile
-    const userBaselineRef = db.ref(`/users/${userId}/baseline/heartRate`);
-    const baselineSnapshot = await userBaselineRef.once("value");
+    // Try to get baseline from device assignment (where it's actually stored)
+    const deviceBaselineRef = db.ref(`/devices/${deviceId}/assignment/supabaseSync/baselineHR`);
+    const baselineSnapshot = await deviceBaselineRef.once("value");
     if (baselineSnapshot.exists()) {
-        return { baselineHR: baselineSnapshot.val() };
+        const baselineHR = baselineSnapshot.val();
+        console.log(`📊 Found user baseline: ${baselineHR} BPM from device assignment`);
+        return { baselineHR: baselineHR };
     }
-    // TODO: Implement Supabase query for user baseline if needed
+    // Fallback: try Firebase user profile
+    const userBaselineRef = db.ref(`/users/${userId}/baseline/heartRate`);
+    const userBaselineSnapshot = await userBaselineRef.once("value");
+    if (userBaselineSnapshot.exists()) {
+        const baselineHR = userBaselineSnapshot.val();
+        console.log(`📊 Found user baseline: ${baselineHR} BPM from user profile`);
+        return { baselineHR: baselineHR };
+    }
     // For now, return a reasonable default based on age/demographics
     console.log(`⚠️ No baseline found for user ${userId}, using default 70 BPM`);
     return { baselineHR: 70 };
