@@ -3,6 +3,10 @@ import * as admin from "firebase-admin";
 
 const db = admin.database();
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+const rateLimit = new Map<string, number>(); // userId -> lastNotificationTime
+
 /**
  * Real-time anxiety detection with user-specific analysis
  * Triggers when device current data is updated
@@ -92,6 +96,24 @@ export const realTimeSustainedAnxietyDetection = functions.database
         console.log(
           `💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`
         );
+
+        // Rate limiting check - prevent duplicate notifications
+        const now = Date.now();
+        const lastNotification = rateLimit.get(userId) || 0;
+        const timeSinceLastNotification = now - lastNotification;
+
+        if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+          const remainingMinutes = Math.ceil((RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / (60 * 1000));
+          console.log(
+            `⏱️ Rate limit: User ${userId} was notified ${Math.floor(timeSinceLastNotification / 1000)}s ago. ` +
+            `Skipping notification (${remainingMinutes}min remaining in cooldown)`
+          );
+          return null;
+        }
+
+        // Update rate limit timestamp
+        rateLimit.set(userId, now);
+        console.log(`✅ Rate limit passed for user ${userId}, sending notification`);
 
         // STEP 5: Send FCM notification to SPECIFIC USER
         return await sendUserAnxietyAlert({
@@ -306,9 +328,50 @@ function analyzeUserSustainedAnxiety(
 function getSeverityLevel(heartRate: number, baseline: number): string {
   const percentageAbove = ((heartRate - baseline) / baseline) * 100;
 
+  // Critical: 80%+ above baseline (emergency level)
+  if (percentageAbove >= 80) return "critical";
+  // Severe: 50-79% above baseline  
   if (percentageAbove >= 50) return "severe";
+  // Moderate: 30-49% above baseline
   if (percentageAbove >= 30) return "moderate";
+  // Mild: 20-29% above baseline
   return "mild";
+}
+
+/**
+ * Get the correct channel ID for severity level to match Flutter app
+ */
+function getChannelIdForSeverity(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return "mild_anxiety_alerts_v3"; // Use the ultra-aggressive test channel
+    case "moderate":
+      return "moderate_anxiety_alerts";
+    case "severe":
+      return "severe_anxiety_alerts";
+    case "critical":
+      return "critical_anxiety_alerts";
+    default:
+      return "anxiease_channel"; // Fallback to general channel
+  }
+}
+
+/**
+ * Get the correct sound file for severity level to match Flutter app
+ */
+function getSoundForSeverity(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return "mild_alert.mp3";
+    case "moderate":
+      return "moderate_alert.mp3";
+    case "severe":
+      return "severe_alert.mp3";
+    case "critical":
+      return "critical_alert.mp3";
+    default:
+      return "default"; // System default sound
+  }
 }
 
 /**
@@ -335,10 +398,7 @@ async function sendUserAnxietyAlert(alertData: any) {
 
     const message = {
       token: fcmToken,
-      notification: {
-        title: notificationContent.title,
-        body: notificationContent.body,
-      },
+      // DATA-ONLY PAYLOAD - No 'notification' key for 100% reliability
       data: {
         type: "anxiety_alert",
         userId: alertData.userId,
@@ -347,12 +407,29 @@ async function sendUserAnxietyAlert(alertData: any) {
         heartRate: alertData.heartRate.toString(),
         baseline: alertData.baseline.toString(),
         duration: alertData.duration.toString(),
+        // Flutter will use these fields to create local notification
+        title: notificationContent.title,
+        message: notificationContent.body,
+        timestamp: Date.now().toString(),
+        reason: alertData.reason || "Sustained elevated heart rate detected",
+        deviceId: alertData.deviceId || "",
+        color: notificationContent.color,
+        channelId: getChannelIdForSeverity(alertData.severity),
+        sound: getSoundForSeverity(alertData.severity),
       },
       android: {
         priority: "high" as const,
-        notification: {
-          color: notificationContent.color,
-          sound: "anxiety_alert",
+        // Remove notification config since we're data-only
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10", // High priority for iOS
+        },
+        payload: {
+          aps: {
+            "content-available": 1, // Silent push for iOS data-only
+            category: "ANXIETY_ALERT",
+          },
         },
       },
     };
@@ -423,29 +500,40 @@ function getUserNotificationContent(alertData: any) {
   )}%`;
 
   switch (alertData.severity) {
+    case "critical":
+      return {
+        title: "🚨 CRITICAL Anxiety Alert",
+        body: `EMERGENCY: Heart rate ${alertData.heartRate} BPM (${percentageText} above baseline) sustained for ${alertData.duration}s. Seek immediate help if needed.`,
+        color: "#FF0000", // RED for critical
+        sound: "critical_alert", // Use existing critical_alert.mp3
+      };
     case "severe":
       return {
-        title: "🚨 Severe Anxiety Detected",
+        title: "� Severe Anxiety Detected",
         body: `Your heart rate was sustained at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Consider deep breathing exercises.`,
-        color: "#FF0000",
+        color: "#FF8C00", // ORANGE for severe
+        sound: "severe_alert", // Use existing severe_alert.mp3
       };
     case "moderate":
       return {
-        title: "⚠️ Moderate Anxiety Detected",
+        title: "🟡 Moderate Anxiety Detected",
         body: `Your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Take a moment to relax.`,
-        color: "#FF8C00",
+        color: "#FFFF00", // YELLOW for moderate
+        sound: "moderate_alert", // Use existing moderate_alert.mp3
       };
     case "mild":
       return {
-        title: "📊 Mild Anxiety Detected",
+        title: "� Mild Anxiety Detected",
         body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Check in with yourself.`,
-        color: "#FFA500",
+        color: "#00FF00", // GREEN for mild
+        sound: "mild_alert", // Use existing mild_alert.mp3
       };
     default:
       return {
         title: "📊 Anxiety Alert",
         body: `Heart rate: ${alertData.heartRate} BPM`,
-        color: "#4CAF50",
+        color: "#4CAF50", // Default green
+        sound: "mild_alert", // Default to mild_alert.mp3
       };
   }
 }
@@ -509,3 +597,26 @@ async function getUserBaseline(
   console.log(`⚠️ No baseline found for user ${userId}, using default 70 BPM`);
   return { baselineHR: 70 };
 }
+
+/**
+ * Clear rate limits for testing purposes
+ */
+export const clearAnxietyRateLimits = functions.https.onRequest(
+  async (req, res) => {
+    try {
+      rateLimit.clear();
+      console.log("🧹 Cleared all anxiety notification rate limits");
+      res.status(200).json({
+        success: true,
+        message: "Rate limits cleared successfully",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("❌ Error clearing rate limits:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);

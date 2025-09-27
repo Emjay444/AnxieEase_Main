@@ -115,7 +115,7 @@ exports.copyDeviceCurrentToUserSession = functions.database
         try {
             let ts = currentData.timestamp || Date.now();
             // Convert string timestamp to numeric if needed
-            if (typeof ts === 'string') {
+            if (typeof ts === "string") {
                 // Convert "2025-09-26 21:40:23" format to milliseconds
                 ts = new Date(ts).getTime();
                 console.log(`🔄 Converted string timestamp to numeric: ${ts}`);

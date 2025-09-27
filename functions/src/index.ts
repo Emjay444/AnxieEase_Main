@@ -30,7 +30,10 @@ export {
 export { autoCreateDeviceHistory } from "./autoHistoryCreator";
 
 // Import real-time sustained anxiety detection
-export { realTimeSustainedAnxietyDetection } from "./realTimeSustainedAnxietyDetection";
+export { 
+  realTimeSustainedAnxietyDetection,
+  clearAnxietyRateLimits 
+} from "./realTimeSustainedAnxietyDetection";
 
 // Import auto-cleanup functions
 export { autoCleanup, manualCleanup, getCleanupStats } from "./autoCleanup";

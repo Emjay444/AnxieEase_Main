@@ -17,7 +17,7 @@ async function simulateCriticalAnxiety() {
   console.log("🚨 SIMULATING CRITICAL ANXIETY EMERGENCY (140+ BPM)");
   console.log("═".repeat(60));
   console.log("⏱️  Duration: 45 seconds");
-  console.log("💓 Target HR: 140-160 BPM (extreme elevation)");
+  console.log("💓 Target HR: 135-150 BPM (84-105% above baseline of 73.2)");
   console.log("🌡️  Temperature: Elevated (37.5-38.5°C)");
   console.log("💧 GSR: Very High (25-35 µS)");
   console.log("📉 SpO2: Slightly decreased (90-95%)");
@@ -35,8 +35,9 @@ async function simulateCriticalAnxiety() {
   let updateCount = 0;
 
   const sendUpdate = async () => {
-    // Generate random HR between 140-160 BPM (critical level)
-    const heartRate = Math.floor(Math.random() * (160 - 140 + 1)) + 140;
+    // Generate heart rate for CRITICAL anxiety - must be 80%+ above baseline of 73.2 BPM
+    // Critical threshold: 131.8 BPM minimum, so use 135-150 BPM range for critical detection
+    const heartRate = Math.floor(Math.random() * (150 - 135 + 1)) + 135;
     // Elevated temperature during severe anxiety/panic
     const temperature = (Math.random() * (38.5 - 37.5) + 37.5).toFixed(1);
     // Very high GSR during severe stress

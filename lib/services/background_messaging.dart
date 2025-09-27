@@ -20,34 +20,30 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // Initialize Supabase for background operations (no Flutter dependency)
     debugPrint('🔧 Initializing Supabase for background operations...');
 
-    debugPrint('🔔 Background FCM received: ${message.notification?.title}');
+    debugPrint('🔔 Background FCM received data-only message');
     debugPrint('📊 Background FCM data: ${message.data}');
 
-    // For anxiety alerts OR any notification with severity data, create a custom notification
+    // Process ALL anxiety alerts (now data-only) and any other notifications with severity data
     if (message.data['type'] == 'anxiety_alert' ||
         message.data['type'] == 'direct_test_device' ||
-        message.notification?.title?.contains('Anxiety') == true ||
         message.data.containsKey('severity') ||
         message.data['override_notification'] == 'true') {
-      debugPrint('🚨 Creating custom notification with severity-based sound');
+      debugPrint('🚨 Processing data-only anxiety alert - creating local notification');
 
       String severity = message.data['severity'] ?? 'mild';
       String soundResource = _getSeveritySound(severity);
       String channelKey = _getSeverityChannel(severity);
 
-      // Get title and body from data payload (preferred) or notification payload
-      String title =
-          message.data['title'] ?? message.notification?.title ?? '🚨 Alert';
-      String body = message.data['body'] ??
-          message.notification?.body ??
-          'Please check your levels';
+      // Get title and body from data payload (data-only approach)
+      String title = message.data['title'] ?? message.data['message'] ?? '🚨 Anxiety Alert';
+      String body = message.data['message'] ?? message.data['body'] ?? 'Please check your levels';
 
       debugPrint('🔊 Using sound for ${severity}: ${soundResource}');
       debugPrint('📺 Using channel for ${severity}: ${channelKey}');
       debugPrint('📋 Title: ${title}');
       debugPrint('📝 Body: ${body}');
 
-      // Create custom notification that will override any FCM default notification
+      // Create local notification from data-only FCM message
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -66,18 +62,18 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             'severity': severity,
             'action': 'open_notifications',
             'related_screen': 'notifications',
-            'source': 'fcm_bg',
+            'source': 'fcm_bg_data_only',
             if (message.data['heartRate'] != null)
               'heartRate': message.data['heartRate'].toString(),
             if (message.data['baseline'] != null)
               'baseline': message.data['baseline'].toString(),
-            if (message.data['percentageAbove'] != null)
-              'percentageAbove': message.data['percentageAbove'].toString(),
+            if (message.data['duration'] != null)
+              'duration': message.data['duration'].toString(),
           },
         ),
       );
 
-      debugPrint('✅ Custom notification created successfully');
+      debugPrint('✅ Local notification created from data-only FCM message');
 
       // IMPORTANT: Store the notification locally for app to sync later
       await _storeNotificationLocally(message);
@@ -97,16 +93,26 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
   try {
     final prefs = await SharedPreferences.getInstance();
 
-    // Extract information from FCM data
+    // Extract comprehensive information from FCM data payload
     final severity = message.data['severity'] ?? 'unknown';
     final heartRate = message.data['heartRate'] ?? 'N/A';
     final baseline = message.data['baseline'];
+    final duration = message.data['duration'];
+    final reason = message.data['reason'];
+    final userId = message.data['userId'];
+    final sessionId = message.data['sessionId'];
+    final deviceId = message.data['deviceId'];
+    final timestamp = message.data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch.toString();
 
-    String title =
-        message.data['title'] ?? message.notification?.title ?? 'Anxiety Alert';
-    String body = message.data['body'] ??
-        message.notification?.body ??
-        'Anxiety detected. Please check your status.';
+    // Get title and body from data payload (preferred) or notification payload
+    String title = message.data['title'] ?? 
+                   message.data['message'] ?? 
+                   message.notification?.title ?? 
+                   'Anxiety Alert';
+    String body = message.data['body'] ?? 
+                  message.data['message'] ?? 
+                  message.notification?.body ?? 
+                  'Anxiety detected. Please check your status.';
 
     // Create more descriptive notification based on severity
     if (severity != 'unknown') {
@@ -125,23 +131,38 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
           break;
       }
 
-      if (baseline != null) {
-        final percentageAbove = message.data['percentageAbove'];
-        if (percentageAbove != null) {
-          body =
-              'Heart rate: ${heartRate} BPM (${percentageAbove}% above your baseline of ${baseline} BPM)';
-        } else {
-          body = 'Heart rate: ${heartRate} BPM (baseline: ${baseline} BPM)';
-        }
+      // Enhanced body with more context
+      if (baseline != null && duration != null) {
+        body = 'Heart rate: ${heartRate} BPM for ${duration}s (baseline: ${baseline} BPM). ${reason ?? "Please take a moment to breathe."}';
+      } else if (baseline != null) {
+        body = 'Heart rate: ${heartRate} BPM (baseline: ${baseline} BPM). ${reason ?? "Please take a moment to breathe."}';
       } else {
-        body =
-            'Heart rate: ${heartRate} BPM - ${severity} anxiety level detected';
+        body = 'Heart rate: ${heartRate} BPM - ${severity} anxiety level detected. ${reason ?? "Please check your status."}';
       }
     }
 
-    // Create notification data as simple pipe-separated string
-    final notificationString =
-        '${title}|${body}|${severity}|${DateTime.now().toIso8601String()}';
+    // Create comprehensive notification data as JSON string for better structure
+    final notificationData = {
+      'title': title,
+      'body': body,
+      'severity': severity,
+      'heartRate': heartRate,
+      'baseline': baseline,
+      'duration': duration,
+      'reason': reason,
+      'userId': userId,
+      'sessionId': sessionId,
+      'deviceId': deviceId,
+      'timestamp': timestamp,
+      'receivedAt': DateTime.now().toIso8601String(),
+      'type': message.data['type'] ?? 'anxiety_alert',
+      'source': 'background_fcm'
+    };
+
+    // Convert to JSON string for storage
+    final notificationString = notificationData.entries
+        .map((e) => '${e.key}=${e.value ?? "null"}')
+        .join('&');
 
     // Get existing pending notifications
     final existingNotifications =
@@ -154,8 +175,20 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
     await prefs.setStringList('pending_notifications', existingNotifications);
 
     debugPrint('💾 [BACKGROUND] Stored notification locally: $title');
+    debugPrint('📝 [BACKGROUND] Full data: $notificationString');
     debugPrint(
         '📍 [BACKGROUND] Total pending: ${existingNotifications.length}');
+    
+    // Debug: Print all pending notifications
+    debugPrint('📋 [BACKGROUND] All pending notifications:');
+    for (int i = 0; i < existingNotifications.length; i++) {
+      debugPrint('   [$i]: ${existingNotifications[i]}');
+    }
+    
+    // Also store debug info with timestamp for later checking
+    final debugKey = 'last_background_notification_${DateTime.now().millisecondsSinceEpoch}';
+    await prefs.setString(debugKey, 'STORED: $title at ${DateTime.now().toIso8601String()}');
+    debugPrint('🔍 [BACKGROUND] Debug marker stored: $debugKey');
   } catch (e) {
     debugPrint('❌ [BACKGROUND] Error storing notification locally: $e');
     // Don't crash the background handler if storage fails

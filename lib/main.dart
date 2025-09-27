@@ -1716,6 +1716,10 @@ Future<void> _syncPendingNotifications() async {
     final timestamp = DateTime.now().toIso8601String();
     debugPrint('🔄 _syncPendingNotifications called at $timestamp');
 
+    // Debug: Check for background notification markers
+    debugPrint('🔍 Checking for background notification markers...');
+    await _debugCheckBackgroundMarkers();
+
     final prefs = await SharedPreferences.getInstance();
 
     debugPrint('🔄 Syncing pending notifications from local storage...');
@@ -1728,11 +1732,7 @@ Future<void> _syncPendingNotifications() async {
         '📋 Total pending notifications found: ${pendingNotifications.length}');
     if (pendingNotifications.isEmpty) {
       debugPrint('📋 No pending notifications to sync');
-
-      // Even if no pending notifications, trigger UI refresh to show any new ones
-      debugPrint(
-          '🔄 Triggering UI refresh even with no pending notifications...');
-      _triggerNotificationRefresh();
+      // Don't trigger UI refresh if no notifications - reduces aggressive refreshing
       return;
     }
 
@@ -1746,10 +1746,8 @@ Future<void> _syncPendingNotifications() async {
     SupabaseService? supabaseService;
     try {
       supabaseService = SupabaseService();
-      // Test if Supabase is actually ready
-      final testNotifications = await supabaseService.getNotifications();
-      debugPrint(
-          '✅ Supabase service is ready for syncing (found ${testNotifications.length} existing notifications)');
+      // Simple connectivity test - just instantiate the service
+      debugPrint('✅ Supabase service is ready for syncing');
     } catch (e) {
       debugPrint('⚠️ Supabase not ready yet, will retry later: $e');
       // Schedule a retry in a few seconds
@@ -1766,34 +1764,73 @@ Future<void> _syncPendingNotifications() async {
     // Process each pending notification
     for (final notificationString in pendingNotifications) {
       try {
-        // Parse the notification data (pipe-separated format)
-        final parts = notificationString.split('|');
-        if (parts.length >= 4) {
-          final title = parts[0];
-          final message = parts[1];
-          final severity = parts.length > 2 ? parts[2] : 'unknown';
-          final timestamp =
-              parts.length > 3 ? parts[3] : DateTime.now().toIso8601String();
+        debugPrint('🔍 Processing notification: $notificationString');
+        
+        // Parse the notification data - try new format first (key=value), then fallback to old format (pipe-separated)
+        Map<String, String> notificationData = {};
+        
+        if (notificationString.contains('=') && notificationString.contains('&')) {
+          // New enhanced format: key=value&key2=value2
+          final pairs = notificationString.split('&');
+          for (final pair in pairs) {
+            final keyValue = pair.split('=');
+            if (keyValue.length == 2) {
+              notificationData[keyValue[0]] = keyValue[1] == 'null' ? '' : keyValue[1];
+            }
+          }
+        } else {
+          // Old pipe-separated format: title|message|severity|timestamp
+          final parts = notificationString.split('|');
+          if (parts.length >= 4) {
+            notificationData = {
+              'title': parts[0],
+              'body': parts[1],
+              'severity': parts.length > 2 ? parts[2] : 'unknown',
+              'timestamp': parts.length > 3 ? parts[3] : DateTime.now().toIso8601String(),
+              'type': 'anxiety_alert',
+            };
+          }
+        }
 
-          debugPrint('💾 Syncing notification:');
+        if (notificationData.isNotEmpty) {
+          final title = notificationData['title'] ?? 'Anxiety Alert';
+          final message = notificationData['body'] ?? notificationData['message'] ?? 'Please check your status.';
+          final severity = notificationData['severity'] ?? 'unknown';
+          final timestamp = notificationData['timestamp'] ?? DateTime.now().toIso8601String();
+          final heartRate = notificationData['heartRate'] ?? '';
+          final baseline = notificationData['baseline'] ?? '';
+          final duration = notificationData['duration'] ?? '';
+          final reason = notificationData['reason'] ?? '';
+
+          debugPrint('💾 Syncing enhanced notification:');
           debugPrint('   Title: $title');
           debugPrint('   Message: $message');
           debugPrint('   Severity: $severity');
+          debugPrint('   Heart Rate: $heartRate');
+          debugPrint('   Baseline: $baseline');
+          debugPrint('   Duration: $duration');
+          debugPrint('   Reason: $reason');
           debugPrint('   Timestamp: $timestamp');
 
-          // Store in Supabase
+          // Store in Supabase with enhanced information in the message
+          final enhancedMessage = message + 
+              (heartRate.isNotEmpty ? " | HR: ${heartRate} BPM" : "") +
+              (baseline.isNotEmpty ? " (Baseline: ${baseline} BPM)" : "") +
+              (duration.isNotEmpty ? " for ${duration}s" : "") +
+              (reason.isNotEmpty ? " | ${reason}" : "");
+
           await supabaseService.createNotification(
             title: title,
-            message: message,
+            message: enhancedMessage,
             type: 'alert',
             relatedScreen: 'notifications',
-            relatedId: 'bg_${DateTime.now().millisecondsSinceEpoch}',
+            relatedId: 'bg_${severity}_${DateTime.now().millisecondsSinceEpoch}',
           );
 
           syncedCount++;
-          debugPrint('✅ Successfully synced: $title');
+          debugPrint('✅ Successfully synced enhanced notification: $title');
         } else {
-          debugPrint('⚠️ Malformed notification format: $notificationString');
+          debugPrint('⚠️ Could not parse notification format: $notificationString');
           // Keep malformed notifications for retry
           remainingNotifications.add(notificationString);
         }
@@ -1820,10 +1857,11 @@ Future<void> _syncPendingNotifications() async {
       }
     }
 
-    // Trigger notification refresh in UI
-    debugPrint('🔔 Triggering UI refresh after sync...');
-    _triggerNotificationRefresh();
-    debugPrint('🔔 UI refresh triggered successfully');
+    // Trigger notification refresh in UI only once after successful sync
+    if (syncedCount > 0) {
+      debugPrint('🔔 Triggering UI refresh after syncing ${syncedCount} notifications...');
+      _triggerNotificationRefresh();
+    }
   } catch (e) {
     debugPrint('❌ Error syncing pending notifications: $e');
     debugPrint('❌ Stack trace: ${StackTrace.current}');
@@ -1832,5 +1870,26 @@ Future<void> _syncPendingNotifications() async {
       debugPrint('🔄 Retrying sync after error...');
       await _syncPendingNotifications();
     });
+  }
+}
+
+/// Debug helper to check background notification markers
+Future<void> _debugCheckBackgroundMarkers() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    final backgroundKeys = allKeys.where((key) => key.startsWith('last_background_notification_')).toList();
+    
+    debugPrint('🔍 Found ${backgroundKeys.length} background notification markers');
+    for (final key in backgroundKeys) {
+      final value = prefs.getString(key);
+      debugPrint('   📍 $key: $value');
+    }
+    
+    if (backgroundKeys.isEmpty) {
+      debugPrint('⚠️ No background notification markers found - background handler may not be working');
+    }
+  } catch (e) {
+    debugPrint('❌ Error checking background markers: $e');
   }
 }

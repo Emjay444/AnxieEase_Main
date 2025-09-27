@@ -17,7 +17,7 @@ async function simulateModerateAnxiety() {
   console.log("🟠 SIMULATING MODERATE ANXIETY CONDITIONS (95-105 BPM)");
   console.log("═".repeat(62));
   console.log("⏱️  Duration: 60 seconds (realistic device intervals)");
-  console.log("💓 Target HR: 95-105 BPM (30-43% above baseline of 73.2)");
+  console.log("💓 Target HR: 96-108 BPM (31-48% above baseline of 73.2)");
   console.log("🌡️  Temperature: Slightly elevated (37.0-37.6°C)");
   console.log("📈 SpO2: Normal to slightly low (95-98%)");
   console.log("🎯 Expected: Should trigger MODERATE anxiety alerts");
@@ -33,8 +33,9 @@ async function simulateModerateAnxiety() {
   let updateCount = 0;
 
   const sendUpdate = async () => {
-    // Generate HIGH heart rate for MODERATE anxiety (95-105 BPM) - 30-43% above baseline of 73.2
-    const heartRate = Math.floor(Math.random() * (105 - 95 + 1)) + 95;
+    // Generate heart rate for MODERATE anxiety - must be 30%+ above baseline of 73.2 BPM
+    // Moderate threshold: 95.2 BPM minimum, so use 96-108 BPM range for consistent moderate detection
+    const heartRate = Math.floor(Math.random() * (108 - 96 + 1)) + 96;
     // Slightly elevated temperature
     const temperature = (Math.random() * (37.6 - 37.0) + 37.0).toFixed(1);
     // Normal to slightly decreased oxygen saturation
