@@ -1654,6 +1654,54 @@ class SupabaseService {
         .eq('user_id', user.id);
   }
 
+  Future<void> markNotificationAsAnswered(String id,
+      {String? response, String? severity}) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Store the answer in the message field with a special format
+    // We'll append the answer info to the existing message
+    try {
+      // First get the current notification
+      final notification = await client
+          .from('notifications')
+          .select('message')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
+
+      String currentMessage = notification['message'] ?? '';
+
+      // Add answered status to the message if not already present
+      if (!currentMessage.contains('[ANSWERED]')) {
+        String answerInfo = '[ANSWERED]';
+        if (response != null) {
+          answerInfo += ' Response: $response';
+        }
+        if (severity != null) {
+          answerInfo += ' Severity: $severity';
+        }
+
+        String updatedMessage = '$currentMessage $answerInfo';
+
+        await client
+            .from('notifications')
+            .update({
+              'message': updatedMessage,
+              'read': true, // Also mark as read when answered
+            })
+            .eq('id', id)
+            .eq('user_id', user.id);
+
+        debugPrint(
+            '✅ Marked notification $id as answered with response: $response');
+      }
+    } catch (e) {
+      debugPrint('❌ Error marking notification as answered: $e');
+      rethrow;
+    }
+  }
+
   Future<void> markAllNotificationsAsRead() async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');

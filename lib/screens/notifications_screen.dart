@@ -24,6 +24,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
   String? _selectedFilter;
+  String _answerFilter = 'all'; // 'all', 'answered', 'unanswered'
   final _dateFormatter = DateFormat('MMM d, y, h:mm a');
   int _unreadCount = 0;
   int _lastRefreshCounter = 0;
@@ -98,7 +99,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           final String severity = (args['severity'] ?? '').toString();
           final String alertType = (args['alertType'] ?? '').toString();
           final Map<String, dynamic> detectionData =
-              (args['detectionData'] ?? {}) as Map<String, dynamic>;
+              Map<String, dynamic>.from(args['detectionData'] ?? {});
 
           // Build a synthetic notification map for dialogs
           final synthetic = <String, dynamic>{
@@ -176,6 +177,46 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final notifications = await _supabaseService.getNotifications(
         type: _selectedFilter,
       );
+
+      // Apply answer filter
+      if (_answerFilter != 'all') {
+        notifications.removeWhere((notification) {
+          final isAnswered = _isNotificationAnswered(notification);
+          final isAlert = (notification['type'] ?? '') == 'alert';
+
+          // Only apply answer filter to alert notifications
+          if (!isAlert) return false;
+
+          if (_answerFilter == 'answered') {
+            return !isAnswered; // Remove unanswered
+          } else if (_answerFilter == 'unanswered') {
+            return isAnswered; // Remove answered
+          }
+          return false;
+        });
+      }
+
+      // Sort notifications: unanswered alerts first, then by creation date
+      notifications.sort((a, b) {
+        final aIsAnswered = _isNotificationAnswered(a);
+        final bIsAnswered = _isNotificationAnswered(b);
+        final aIsAlert = (a['type'] ?? '') == 'alert';
+        final bIsAlert = (b['type'] ?? '') == 'alert';
+
+        // Priority: unanswered alerts > answered alerts > other notifications
+        if (aIsAlert && !aIsAnswered && (!bIsAlert || bIsAnswered)) {
+          return -1; // a comes first
+        }
+        if (bIsAlert && !bIsAnswered && (!aIsAlert || aIsAnswered)) {
+          return 1; // b comes first
+        }
+
+        // If both are same type (both unanswered alerts, both answered alerts, or both non-alerts)
+        // Sort by creation date (newest first)
+        final aDate = DateTime.parse(a['created_at']);
+        final bDate = DateTime.parse(b['created_at']);
+        return bDate.compareTo(aDate);
+      });
 
       // Calculate unread count
       final unreadCount = notifications.where((n) => !n['read']).length;
@@ -278,6 +319,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _showAnxietyConfirmationDialog(
       Map<String, dynamic> notification) async {
+    // Check if notification is already answered
+    if (_isNotificationAnswered(notification)) {
+      _showAlreadyAnsweredDialog(notification);
+      return;
+    }
+
     // Extract detection data from notification message or create mock data
     final message = notification['message'] ?? '';
     final title = notification['title'] ?? '';
@@ -334,15 +381,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (result != null && mounted) {
       final confirmed = result['confirmed'] as bool? ?? false;
       final severity = result['severity'] as String?;
+      final notificationId = notification['id'];
+
+      // Mark notification as answered in the database
+      if (notificationId != null) {
+        try {
+          final supabaseService = SupabaseService();
+          await supabaseService.markNotificationAsAnswered(
+            notificationId,
+            response: confirmed ? 'yes' : 'no',
+            severity: severity,
+          );
+
+          // Refresh notifications to show updated status
+          _loadNotifications();
+        } catch (e) {
+          debugPrint('Error marking notification as answered: $e');
+        }
+      }
 
       if (confirmed) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Thank you for confirming. ${severity != null ? "We've noted the severity as $severity." : ""}'),
-            backgroundColor: Colors.blue,
-          ),
-        );
+        // Show help modal with emergency contact and clinic finder
+        await _showHelpModal(severity);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -353,6 +413,497 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       }
     }
+  }
+
+  // Show help modal with emergency contact and clinic finder
+  Future<void> _showHelpModal(String? severity) async {
+    // Get user's emergency contact
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    final emergencyContact = user?.emergencyContact;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.red.withOpacity(0.05),
+                  Colors.white,
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.favorite,
+                        color: Colors.red[700],
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'We\'re Here to Help',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red[700],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Thank you for confirming. Here are some resources that can help:',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.red[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Scrollable content section
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+
+                        // Emergency Contact Section
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: Colors.red.withOpacity(0.2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.phone_in_talk,
+                                      color: Colors.red[700], size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Emergency Contacts',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.red[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // User's Personal Emergency Contact (if available)
+                              if (emergencyContact != null &&
+                                  emergencyContact.trim().isNotEmpty) ...[
+                                _buildContactChip(
+                                  label: 'Your Emergency Contact',
+                                  number: emergencyContact.trim(),
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              // NCMH Crisis Hotlines
+                              Text(
+                                'NCMH (National Center for Mental Health) Crisis Hotline',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.red[700],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _buildContactChip(
+                                label: 'Main Hotline',
+                                number: '1553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Alternative',
+                                number: '180018881553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Smart/TNT',
+                                number: '09190571553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Globe/TM',
+                                number: '09178998727',
+                                color: Colors.red,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Action Buttons
+                        Column(
+                          children: [
+                            // Breathing Exercise Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.pushNamed(context, '/breathing');
+                                },
+                                icon:
+                                    const Icon(Icons.air, color: Colors.white),
+                                label: const Text('Breathing Exercise'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Grounding Technique Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.pushNamed(context, '/grounding');
+                                },
+                                icon: const Icon(Icons.self_improvement,
+                                    color: Colors.white),
+                                label: const Text('Grounding Technique'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Find Nearest Clinic Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const SearchScreen(),
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.local_hospital,
+                                    color: Colors.red[700]),
+                                label: const Text('Find Nearest Clinic'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red[700],
+                                  side: BorderSide(color: Colors.red[700]!),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Not Now Button
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: Text(
+                                'Not Now',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Show dialog for already answered notifications
+  void _showAlreadyAnsweredDialog(Map<String, dynamic> notification) {
+    final answerDetails = _getAnswerDetails(notification);
+    final response = answerDetails['response'];
+    final severity = answerDetails['severity'];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: Colors.green[600],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text('Already Answered'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You have already responded to this anxiety detection notification.',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              if (response != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: response == 'yes'
+                        ? Colors.orange.withOpacity(0.1)
+                        : Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: response == 'yes'
+                          ? Colors.orange.withOpacity(0.3)
+                          : Colors.green.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            response == 'yes'
+                                ? Icons.warning
+                                : Icons.sentiment_satisfied,
+                            color: response == 'yes'
+                                ? Colors.orange[700]
+                                : Colors.green[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Your Response:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                Text(
+                                  response == 'yes'
+                                      ? 'Yes, I was experiencing anxiety'
+                                      : 'No, this was not accurate',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: response == 'yes'
+                                        ? Colors.orange[700]
+                                        : Colors.green[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (severity != null && response == 'yes') ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Severity Level: ${severity.toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (response == 'yes') ...[
+                const Text(
+                  'If you need help now, you can still access our resources:',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showHelpModal(severity);
+                        },
+                        icon: const Icon(Icons.favorite, size: 16),
+                        label: const Text('Get Help',
+                            style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red[600],
+                          side: BorderSide(color: Colors.red[600]!),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Helper method to build contact chip
+  Widget _buildContactChip({
+    required String label,
+    required String number,
+    required MaterialColor color,
+  }) {
+    return GestureDetector(
+      onTap: () => _callNumber(number),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: color[700],
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.phone, color: color[700], size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  number,
+                  style: TextStyle(
+                    color: color[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Check if notification is already answered
+  bool _isNotificationAnswered(Map<String, dynamic> notification) {
+    final message = notification['message'] ?? '';
+    return message.contains('[ANSWERED]');
+  }
+
+  // Extract answer details from notification message
+  Map<String, String?> _getAnswerDetails(Map<String, dynamic> notification) {
+    final message = notification['message'] ?? '';
+    if (!message.contains('[ANSWERED]')) {
+      return {'response': null, 'severity': null};
+    }
+
+    String? response;
+    String? severity;
+
+    // Extract response
+    final responseMatch = RegExp(r'Response: (\w+)').firstMatch(message);
+    if (responseMatch != null) {
+      response = responseMatch.group(1);
+    }
+
+    // Extract severity
+    final severityMatch = RegExp(r'Severity: (\w+)').firstMatch(message);
+    if (severityMatch != null) {
+      severity = severityMatch.group(1);
+    }
+
+    return {'response': response, 'severity': severity};
   }
 
   String _getDisplayTime(String createdAt) {
@@ -988,6 +1539,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final bool isRead = notification['read'] ?? false;
     final String title = notification['title'] ?? '';
     final String type = notification['type'] ?? '';
+    final bool isAnswered = _isNotificationAnswered(notification);
 
     // Check if this is a reminder notification that should not have a popup modal
     bool isReminder = type == 'reminder' ||
@@ -1050,12 +1602,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isRead ? Colors.white : Colors.teal.withOpacity(0.04),
+            color: isAnswered
+                ? Colors.grey.withOpacity(0.1)
+                : (isRead ? Colors.white : Colors.teal.withOpacity(0.04)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isRead
-                  ? Colors.grey.withOpacity(0.15)
-                  : accent.withOpacity(0.5),
+              color: isAnswered
+                  ? Colors.grey.withOpacity(0.3)
+                  : (isRead
+                      ? Colors.grey.withOpacity(0.15)
+                      : accent.withOpacity(0.5)),
               width: 1,
             ),
             boxShadow: [
@@ -1074,13 +1630,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.1),
+                  color: isAnswered
+                      ? Colors.grey.withOpacity(0.2)
+                      : accent.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Center(child: _getNotificationIcon(type, accent)),
+                    Center(
+                        child: _getNotificationIcon(
+                            type, isAnswered ? Colors.grey : accent)),
                     if (!isRead)
                       Positioned(
                         right: -2,
@@ -1114,12 +1674,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               fontSize: 15,
                               fontWeight:
                                   isRead ? FontWeight.w600 : FontWeight.bold,
-                              color: const Color(0xFF1E2432),
+                              color: isAnswered
+                                  ? Colors.grey[600]
+                                  : const Color(0xFF1E2432),
                               height: 1.25,
                             ),
                           ),
                         ),
-                        if (!isReminder)
+                        if (isAnswered)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'ANSWERED',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        if (!isReminder && !isAnswered)
                           Icon(
                             Icons.arrow_forward_ios,
                             size: 12,
@@ -1132,7 +1711,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       notification['message'],
                       style: TextStyle(
                         fontSize: 13.5,
-                        color: Colors.grey[700],
+                        color: isAnswered ? Colors.grey[500] : Colors.grey[700],
                         height: 1.4,
                       ),
                     ),
@@ -1220,47 +1799,144 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _buildFilterChips() {
-    final filters = ['all', 'alert', 'reminder', 'log'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: filters.map((f) {
-          final selected = (_selectedFilter ?? 'all') == f;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(
-                f == 'all'
-                    ? 'All'
-                    : f[0].toUpperCase() +
-                        f.substring(1) +
-                        (f == 'log' ? 's' : ''),
+    return Column(
+      children: [
+        // Type filters
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                'Type: ',
                 style: TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: selected ? Colors.white : Colors.grey[700],
+                  color: Colors.grey[600],
                 ),
               ),
-              selected: selected,
-              onSelected: (_) {
-                setState(() => _selectedFilter = f == 'all' ? null : f);
-                _loadNotifications();
-                HapticFeedback.selectionClick();
-              },
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              backgroundColor: Colors.grey[200],
-              selectedColor: Colors.teal[600],
-              elevation: selected ? 2 : 0,
-              pressElevation: 0,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
+              const SizedBox(width: 8),
+              ...['all', 'alert', 'reminder', 'log'].map((f) {
+                final selected = (_selectedFilter ?? 'all') == f;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(
+                      f == 'all'
+                          ? 'All'
+                          : f[0].toUpperCase() +
+                              f.substring(1) +
+                              (f == 'log' ? 's' : ''),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: selected ? Colors.white : Colors.grey[700],
+                      ),
+                    ),
+                    selected: selected,
+                    onSelected: (_) {
+                      setState(() => _selectedFilter = f == 'all' ? null : f);
+                      _loadNotifications();
+                      HapticFeedback.selectionClick();
+                    },
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    backgroundColor: Colors.grey[200],
+                    selectedColor: Colors.teal[600],
+                    elevation: selected ? 2 : 0,
+                    pressElevation: 0,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Answer filters (only show if alerts are being displayed)
+        if (_selectedFilter == null || _selectedFilter == 'alert')
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  'Status: ',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ...['all', 'unanswered', 'answered'].map((f) {
+                  final selected = _answerFilter == f;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (f == 'unanswered')
+                            Icon(
+                              Icons.help_outline,
+                              size: 14,
+                              color:
+                                  selected ? Colors.white : Colors.orange[700],
+                            ),
+                          if (f == 'answered')
+                            Icon(
+                              Icons.check_circle_outline,
+                              size: 14,
+                              color:
+                                  selected ? Colors.white : Colors.green[700],
+                            ),
+                          if (f == 'unanswered' || f == 'answered')
+                            const SizedBox(width: 4),
+                          Text(
+                            f == 'all'
+                                ? 'All'
+                                : f[0].toUpperCase() + f.substring(1),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: selected ? Colors.white : Colors.grey[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() => _answerFilter = f);
+                        _loadNotifications();
+                        HapticFeedback.selectionClick();
+                      },
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      backgroundColor: f == 'unanswered'
+                          ? Colors.orange.withOpacity(0.1)
+                          : f == 'answered'
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.grey[200],
+                      selectedColor: f == 'unanswered'
+                          ? Colors.orange[600]
+                          : f == 'answered'
+                              ? Colors.green[600]
+                              : Colors.teal[600],
+                      elevation: selected ? 2 : 0,
+                      pressElevation: 0,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  );
+                }).toList(),
+              ],
             ),
-          );
-        }).toList(),
-      ),
+          ),
+      ],
     );
   }
 
@@ -1402,16 +2078,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          if (_selectedFilter != null)
+          if (_selectedFilter != null || _answerFilter != 'all')
             ElevatedButton.icon(
               onPressed: () {
                 setState(() {
                   _selectedFilter = null;
+                  _answerFilter = 'all';
                 });
                 _loadNotifications();
               },
               icon: const Icon(Icons.filter_alt_off),
-              label: const Text('Reset Filter'),
+              label: const Text('Reset Filters'),
             ),
         ],
       ),

@@ -1458,6 +1458,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         time: timeAgo,
                         type: type,
                         icon: icon,
+                        notification:
+                            notification, // Pass full notification data
                       );
                     },
                   ),
@@ -1499,6 +1501,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String time,
     required String type,
     required IconData icon,
+    Map<String, dynamic>? notification, // Add notification parameter
   }) {
     Color getTypeColor() {
       switch (type) {
@@ -1658,12 +1661,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Wrap in GestureDetector only if it's not a reminder
     if (!isReminder) {
       return GestureDetector(
-        onTap: () => _showNotificationDetails(title, message, time, type, icon),
+        onTap: () => _navigateToNotificationDetails(notification),
         child: notificationCard,
       );
     } else {
       return notificationCard;
     }
+  }
+
+  // Navigate to notifications screen and open specific notification
+  void _navigateToNotificationDetails(
+      Map<String, dynamic>? notification) async {
+    if (notification == null) return;
+
+    // Safely convert notification data to ensure proper types
+    final Map<String, dynamic> safeNotification =
+        Map<String, dynamic>.from(notification);
+
+    // Navigate to notifications screen with the specific notification data
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const NotificationsScreen(),
+        settings: RouteSettings(
+          arguments: {
+            'show': 'notification',
+            'title': safeNotification['title']?.toString() ?? '',
+            'message': safeNotification['message']?.toString() ?? '',
+            'type': safeNotification['type']?.toString() ?? 'alert',
+            'severity': _extractSeverityFromTitle(
+                safeNotification['title']?.toString() ?? ''),
+            'createdAt': safeNotification['created_at']?.toString() ??
+                DateTime.now().toIso8601String(),
+            'notificationId': safeNotification['id']?.toString(),
+            'notification':
+                safeNotification, // Pass safely converted notification
+          },
+        ),
+      ),
+    );
+  }
+
+  // Helper function to extract severity from notification title
+  String _extractSeverityFromTitle(String title) {
+    final titleLower = title.toLowerCase();
+    if (titleLower.contains('critical') || title.contains('🚨'))
+      return 'critical';
+    if (titleLower.contains('severe') || title.contains('🔴')) return 'severe';
+    if (titleLower.contains('moderate') || title.contains('🟠'))
+      return 'moderate';
+    if (titleLower.contains('mild') || title.contains('🟢')) return 'mild';
+    return 'mild'; // default
   }
 
   void _showNotificationDetails(

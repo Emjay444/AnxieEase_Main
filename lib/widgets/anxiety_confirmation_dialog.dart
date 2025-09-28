@@ -199,9 +199,9 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
         });
 
         // Navigate to appropriate help screen based on response
-        if (_selectedResponse == 'yes') {
-          _showHelpOptions();
-        } else {
+        // Note: Help modal is now handled by the parent (notifications_screen.dart)
+        // so we don't show it here to avoid duplicate modals
+        if (_selectedResponse == 'no') {
           _showThankYouMessage();
         }
       }
@@ -220,42 +220,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     }
   }
 
-  void _showHelpOptions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.favorite, color: Colors.red, size: 24),
-            SizedBox(width: 8),
-            Text('We\'re Here to Help'),
-          ],
-        ),
-        content: const Text(
-            'Thank you for confirming. Would you like to try some techniques to help manage your anxiety?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.pushNamed(context, '/breathing');
-            },
-            child: const Text('Breathing Exercise'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.pushNamed(context, '/grounding');
-            },
-            child: const Text('Grounding Technique'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Not Now'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed _showHelpOptions() - now handled by parent notifications_screen.dart
 
   void _showThankYouMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -461,11 +426,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                       ),
                     ],
                     const SizedBox(height: 10),
-                    Text(
-                      'Your response helps us improve detection accuracy and provide better support.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      textAlign: TextAlign.center,
-                    ),
+                    // Removed: "Your response helps us improve..." text
                   ],
                 ),
               ),
