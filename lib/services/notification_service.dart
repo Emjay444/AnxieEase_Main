@@ -97,7 +97,7 @@ class NotificationService extends ChangeNotifier {
   String _getChannelKeyForSeverity(String severity) {
     switch (severity.toLowerCase()) {
       case 'mild':
-        return 'mild_anxiety_alerts_v3'; // Use ultra-aggressive test channel with popup settings
+  return 'mild_anxiety_alerts_v4'; // Updated to new channel
       case 'moderate':
         return 'moderate_anxiety_alerts';
       case 'severe':
@@ -105,7 +105,7 @@ class NotificationService extends ChangeNotifier {
       case 'critical':
         return 'critical_anxiety_alerts';
       case 'elevated':
-        return 'mild_anxiety_alerts_v3'; // Use ultra-aggressive test channel for elevated
+  return 'mild_anxiety_alerts_v4'; // Updated to new channel
       default:
         return 'anxiety_alerts'; // Fallback to general channel
     }
@@ -260,7 +260,7 @@ class NotificationService extends ChangeNotifier {
         // Severity-specific channels with custom sounds
         // TESTING: Ultra-aggressive mild anxiety channel for popup testing
         NotificationChannel(
-          channelKey: 'mild_anxiety_alerts_v3',
+          channelKey: 'mild_anxiety_alerts_v4',
           channelName: 'Mild Anxiety Emergency Test',
           channelDescription:
               'TESTING: Ultra-priority mild anxiety with forced popup',
@@ -272,8 +272,9 @@ class NotificationService extends ChangeNotifier {
           soundSource: 'resource://raw/mild_alert', // Custom sound for mild
           defaultPrivacy: NotificationPrivacy.Public, // Show on all screens
           icon: 'resource://drawable/launcher_icon',
-          criticalAlerts: true, // Enable critical alerts
-          onlyAlertOnce: false, // Always alert, don't suppress
+          // Avoid critical alerts to prevent OEMs from looping sounds
+          criticalAlerts: false,
+          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
         ),
 
         // TESTING: New mild anxiety channel with maximum popup settings
@@ -312,7 +313,7 @@ class NotificationService extends ChangeNotifier {
         ),
 
         NotificationChannel(
-          channelKey: 'moderate_anxiety_alerts',
+          channelKey: 'moderate_anxiety_alerts_v2',
           channelName: 'Moderate Anxiety Alerts',
           channelDescription: 'Medium priority alerts for moderate anxiety',
           defaultColor: const Color(0xFFFF9800), // Orange
@@ -326,7 +327,7 @@ class NotificationService extends ChangeNotifier {
         ),
 
         NotificationChannel(
-          channelKey: 'severe_anxiety_alerts',
+          channelKey: 'severe_anxiety_alerts_v2',
           channelName: 'Severe Anxiety Alerts',
           channelDescription:
               'High priority alerts for severe anxiety detection',
@@ -341,19 +342,18 @@ class NotificationService extends ChangeNotifier {
         ),
 
         NotificationChannel(
-          channelKey: 'critical_anxiety_alerts',
+          channelKey: 'critical_anxiety_alerts_v2',
           channelName: 'Critical Emergency Alerts',
           channelDescription: 'Emergency alerts requiring immediate attention',
           defaultColor: const Color(0xFFD32F2F), // Dark Red
-          importance: NotificationImportance
-              .Max, // Keep Max for critical, but remove criticalAlerts
+      importance: NotificationImportance.Max,
           ledColor: const Color(0xFFD32F2F),
           enableVibration: true,
           playSound: true,
           soundSource:
               'resource://raw/critical_alert', // Custom sound for critical
           icon: 'resource://drawable/launcher_icon',
-          // Removed criticalAlerts: true to prevent looping
+          // Keep non-critical; rely on Max importance
         ),
 
         // General alerts channel (fallback)

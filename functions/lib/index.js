@@ -1,10 +1,22 @@
 "use strict";
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.detectAnxietyMultiParameter = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
 admin.initializeApp();
+// Optional: Supabase server-side persistence for test notifications
+// Configure via environment variables (Firebase Functions config or runtime env)
+const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+// Lazy import to avoid hard dependency when not configured
+let fetchImpl = null;
+try {
+    // Node 18+ has global fetch; fallback not needed normally
+    fetchImpl = global.fetch || require("node-fetch");
+}
+catch (_c) { }
 // Import and export data cleanup functions
 var dataCleanup_1 = require("./dataCleanup");
 Object.defineProperty(exports, "cleanupHealthData", { enumerable: true, get: function () { return dataCleanup_1.cleanupHealthData; } });
@@ -69,6 +81,7 @@ exports.onNativeAlertCreate = functions.database
             return null;
         }
         const { title, body } = getNotificationContent(severity, heartRate);
+        // DATA-ONLY: Include title/body in data; no notification key
         const message = {
             data: {
                 type: "anxiety_alert",
@@ -76,19 +89,21 @@ exports.onNativeAlertCreate = functions.database
                 heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
                 timestamp: ts.toString(),
                 notificationId: `${severity}_${ts}`,
-            },
-            notification: {
                 title,
-                body,
+                message: body,
             },
             android: {
-                priority: severity === "severe" ? "high" : "normal",
-                notification: {
-                    channelId: "anxiety_alerts",
-                    priority: severity === "severe" ? "max" : "default",
-                    defaultSound: true,
-                    defaultVibrateTimings: true,
-                    tag: `anxiety_${severity}_${ts}`,
+                priority: "high",
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                    },
                 },
             },
             topic: "anxiety_alerts",
@@ -152,23 +167,28 @@ exports.sendTestNotificationV2 = functions.https.onCall(async (data, context) =>
     try {
         const { severity = "mild", heartRate = 75 } = data;
         const notificationData = getNotificationContent(severity, heartRate);
+        // DATA-ONLY test message so background handler processes it
         const message = {
             data: {
-                type: "test_alert",
+                type: "anxiety_alert",
                 severity: severity,
                 heartRate: heartRate.toString(),
                 timestamp: Date.now().toString(),
-            },
-            notification: {
                 title: `[TEST] ${notificationData.title}`,
-                body: notificationData.body,
+                message: notificationData.body,
             },
             android: {
                 priority: "high",
-                notification: {
-                    channelId: "anxiety_alerts",
-                    priority: "max",
-                    defaultSound: true,
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                    },
                 },
             },
             topic: "anxiety_alerts",
@@ -197,37 +217,55 @@ exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
         const { severity = "mild", heartRate = 75 } = req.method === "POST" ? req.body : req.query;
         console.log(`📧 Testing notification: ${severity} alert with HR: ${heartRate}`);
         const notificationData = getNotificationContent(severity, heartRate);
+        // DATA-ONLY HTTP test message
         const message = {
             data: {
-                type: "test_alert",
+                type: "anxiety_alert",
                 severity: severity,
                 heartRate: heartRate.toString(),
                 timestamp: Date.now().toString(),
-            },
-            notification: {
                 title: `[TEST] ${notificationData.title}`,
-                body: notificationData.body,
+                message: notificationData.body,
             },
             android: {
                 priority: "high",
-                notification: {
-                    channelId: "anxiety_alerts",
-                    priority: "max",
-                    defaultSound: true,
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                    },
                 },
             },
             topic: "anxiety_alerts",
         };
         const response = await admin.messaging().send(message);
         console.log("✅ Test FCM notification sent successfully:", response);
+        // Additionally, persist test alert to Supabase if configured
+        try {
+            if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
+                await persistTestAlertToSupabase(severity, heartRate, notificationData);
+                console.log("✅ Test alert also saved to Supabase");
+            }
+            else {
+                console.log("ℹ️ Supabase env not configured; skipping test alert storage");
+            }
+        }
+        catch (e) {
+            console.error("❌ Failed to persist test alert to Supabase:", e);
+        }
         res.status(200).json({
             success: true,
             messageId: response,
             severity,
             heartRate,
             notification: {
-                title: message.notification.title,
-                body: message.notification.body,
+                title: notificationData.title,
+                body: notificationData.body,
             },
             message: "Test notification sent successfully! Check your device.",
         });
@@ -241,6 +279,37 @@ exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
         });
     }
 });
+/**
+ * Persist test alert to Supabase (similar to realTimeSustainedAnxietyDetection)
+ */
+async function persistTestAlertToSupabase(severity, heartRate, notificationContent) {
+    const url = `${SUPABASE_URL}/rest/v1/notifications`;
+    const payload = {
+        // Keep payload aligned with app-side SupabaseService.createNotification schema
+        user_id: "5afad7d4-3dcd-4353-badb-4f155303419a",
+        title: `[TEST] ${notificationContent.title}`,
+        message: notificationContent.body,
+        type: "alert",
+        related_screen: "notifications",
+        created_at: new Date().toISOString(),
+    };
+    const res = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            Prefer: "return=representation",
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Supabase test insert failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    console.log("🗃️ Supabase test insert success:", json);
+}
 // Wellness message categories with varied content for different times of day
 const WELLNESS_MESSAGES = {
     morning: [

@@ -5,7 +5,8 @@ const serviceAccount = require("./service-account-key.json");
 if (admin.apps.length === 0) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
+    databaseURL:
+      "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
   });
 }
 
@@ -25,10 +26,10 @@ async function diagnosticTest() {
 
   for (let i = 1; i <= 4; i++) {
     console.log(`📤 Sending update ${i}/4: HR=${heartRate} BPM`);
-    
+
     const data = {
       accelX: "0.0",
-      accelY: "0.0", 
+      accelY: "0.0",
       accelZ: "9.8",
       ambientTemp: "30.0",
       battPerc: 95,
@@ -47,17 +48,19 @@ async function diagnosticTest() {
 
     try {
       await deviceRef.set(data);
-      console.log(`✅ Update ${i} sent successfully at ${new Date().toLocaleTimeString()}`);
-      
+      console.log(
+        `✅ Update ${i} sent successfully at ${new Date().toLocaleTimeString()}`
+      );
+
       if (i < 4) {
         console.log("⏳ Waiting 10 seconds for next update...");
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 10000));
       }
     } catch (error) {
       console.error(`❌ Error sending update ${i}:`, error);
     }
   }
-  
+
   console.log("");
   console.log("🎯 DIAGNOSTIC COMPLETE!");
   console.log("═══════════════════════");
@@ -69,10 +72,14 @@ async function diagnosticTest() {
   console.log("");
   console.log("📊 Expected behavior:");
   console.log(`• Heart Rate: ${heartRate} BPM`);
-  console.log(`• Percentage above baseline: ${((heartRate - 73.2) / 73.2 * 100).toFixed(1)}%`);
+  console.log(
+    `• Percentage above baseline: ${(((heartRate - 73.2) / 73.2) * 100).toFixed(
+      1
+    )}%`
+  );
   console.log("• Should classify as: MODERATE");
   console.log("• Should trigger: 🟠 Moderate Anxiety Alert");
-  
+
   process.exit(0);
 }
 

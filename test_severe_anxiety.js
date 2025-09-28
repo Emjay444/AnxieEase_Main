@@ -51,7 +51,7 @@ async function simulateSevereAnxiety() {
       gsr: parseFloat(gsr),
       batteryLevel: Math.max(95 - updateCount * 2, 15),
       signalStrength: "good",
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
       worn: 1,
       accelX: (Math.random() * 1.0 - 0.5).toFixed(2), // More movement
       accelY: (Math.random() * 1.0 - 0.5).toFixed(2),
@@ -68,11 +68,11 @@ async function simulateSevereAnxiety() {
         "tremor",
         "hyperventilation",
         "elevated_temp",
-        "excessive_sweating"
+        "excessive_sweating",
       ],
       sessionId: "session_1758850736983",
       userId: "5afad7d4-3dcd-4353-badb-4f155303419a",
-      deviceId: "AnxieEase001"
+      deviceId: "AnxieEase001",
     };
 
     updateCount++;
@@ -94,7 +94,9 @@ async function simulateSevereAnxiety() {
       console.log(
         `🔥 ${timeElapsed}s: HR=${heartRate} BPM, SpO2=${spo2}%, Temp=${temperature}°C, GSR=${gsr}µS (${updateCount}/${totalUpdates}) [Realistic 10s intervals]`
       );
-      console.log(`   ${indicator}: Heart rate severely elevated (${heartRate} BPM vs 73.2 baseline)`);
+      console.log(
+        `   ${indicator}: Heart rate severely elevated (${heartRate} BPM vs 73.2 baseline)`
+      );
 
       if (updateCount < totalUpdates) {
         setTimeout(sendUpdate, interval * 1000);
@@ -104,10 +106,14 @@ async function simulateSevereAnxiety() {
         console.log("═".repeat(50));
         console.log("🔔 Check your app for SEVERE anxiety alerts");
         console.log("📱 Expected: Red alert with urgent notification sound");
-        console.log("🆘 Expected: Emergency coping strategies and contact options");
+        console.log(
+          "🆘 Expected: Emergency coping strategies and contact options"
+        );
         console.log("💡 Expected: Immediate intervention recommendations");
         console.log("");
-        console.log("📋 SEVERE INDICATORS SIMULATED (60 seconds, realistic 10s intervals):");
+        console.log(
+          "📋 SEVERE INDICATORS SIMULATED (60 seconds, realistic 10s intervals):"
+        );
         console.log("   • Heart Rate: 120-140 BPM (130 BPM avg)");
         console.log("   • Temperature: 37.3-38.0°C (elevated range)");
         console.log("   • GSR: 18-25 µS (high stress)");

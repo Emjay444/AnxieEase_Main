@@ -5,7 +5,8 @@ const serviceAccount = require("./service-account-key.json");
 if (admin.apps.length === 0) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
+    databaseURL:
+      "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app",
   });
 }
 
@@ -21,16 +22,16 @@ async function testModerateAnxiety() {
 
   const deviceRef = db.ref("/devices/AnxieEase001/current");
   const heartRate = 100; // 37% above baseline = MODERATE
-  
+
   console.log("🚀 Sending moderate anxiety data...");
   console.log("");
 
   for (let i = 1; i <= 4; i++) {
     console.log(`📤 Sending update ${i}/4 with HR: ${heartRate} BPM`);
-    
+
     const data = {
       accelX: "0.0",
-      accelY: "0.0", 
+      accelY: "0.0",
       accelZ: "9.8",
       ambientTemp: "30.0",
       battPerc: 95,
@@ -50,16 +51,16 @@ async function testModerateAnxiety() {
     try {
       await deviceRef.set(data);
       console.log(`✅ Update ${i} sent successfully`);
-      
+
       if (i < 4) {
         console.log("⏳ Waiting 10 seconds for next update...");
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 10000));
       }
     } catch (error) {
       console.error(`❌ Error sending update ${i}:`, error);
     }
   }
-  
+
   console.log("");
   console.log("🎯 MODERATE TEST COMPLETE!");
   console.log("═══════════════════════════");
@@ -67,7 +68,7 @@ async function testModerateAnxiety() {
   console.log("🔊 Expected: Moderate alert sound");
   console.log("📱 Check your notification panel");
   console.log("");
-  
+
   process.exit(0);
 }
 

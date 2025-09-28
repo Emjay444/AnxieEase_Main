@@ -1,9 +1,21 @@
 "use strict";
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const db = admin.database();
+// Optional: Supabase server-side persistence for alerts
+// Configure via environment variables (Firebase Functions config or runtime env)
+const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+// Lazy import to avoid hard dependency when not configured
+let fetchImpl = null;
+try {
+    // Node 18+ has global fetch; fallback not needed normally
+    fetchImpl = global.fetch || require("node-fetch");
+}
+catch (_c) { }
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
 const rateLimit = new Map(); // userId -> lastNotificationTime
@@ -219,7 +231,7 @@ function getSeverityLevel(heartRate, baseline) {
     // Critical: 80%+ above baseline (emergency level)
     if (percentageAbove >= 80)
         return "critical";
-    // Severe: 50-79% above baseline  
+    // Severe: 50-79% above baseline
     if (percentageAbove >= 50)
         return "severe";
     // Moderate: 30-49% above baseline
@@ -314,14 +326,58 @@ async function sendUserAnxietyAlert(alertData) {
         };
         const response = await admin.messaging().send(message);
         console.log(`✅ Notification sent successfully to user ${alertData.userId}:`, response);
-        // Store alert in user's personal history
+        // Store alert in user's personal history (Firebase RTDB)
         await storeUserAnxietyAlert(alertData);
+        // Additionally, persist to Supabase (single source for app UI) if configured
+        try {
+            if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
+                await persistAlertToSupabase(alertData);
+            }
+            else {
+                console.log("ℹ️ Supabase env not configured; skipping server-side Supabase insert");
+            }
+        }
+        catch (e) {
+            console.error("❌ Failed to persist alert to Supabase:", e);
+        }
         return response;
     }
     catch (error) {
         console.error(`❌ Error sending anxiety notification to user ${alertData.userId}:`, error);
         return null;
     }
+}
+/**
+ * Persist alert to Supabase as the system source of truth
+ */
+async function persistAlertToSupabase(alertData) {
+    const url = `${SUPABASE_URL}/rest/v1/notifications`;
+    const content = getUserNotificationContent(alertData);
+    const payload = {
+        // Keep payload aligned with app-side SupabaseService.createNotification schema
+        user_id: alertData.userId || null,
+        title: content.title,
+        message: content.body,
+        type: "alert",
+        related_screen: "notifications",
+        created_at: new Date().toISOString(),
+    };
+    const res = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            Prefer: "return=representation",
+        },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Supabase insert failed: ${res.status} ${text}`);
+    }
+    const json = await res.json();
+    console.log("🗃️ Supabase insert success:", json);
 }
 /**
  * Get user's FCM token for notifications

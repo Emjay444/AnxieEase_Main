@@ -3,6 +3,19 @@ import * as admin from "firebase-admin";
 
 const db = admin.database();
 
+// Optional: Supabase server-side persistence for alerts
+// Configure via environment variables (Firebase Functions config or runtime env)
+const SUPABASE_URL = process.env.SUPABASE_URL || functions.config().supabase?.url;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || functions.config().supabase?.service_role_key;
+
+// Lazy import to avoid hard dependency when not configured
+let fetchImpl: any = null;
+try {
+  // Node 18+ has global fetch; fallback not needed normally
+  fetchImpl = (global as any).fetch || require("node-fetch");
+} catch {}
+
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
 const rateLimit = new Map<string, number>(); // userId -> lastNotificationTime
@@ -103,17 +116,23 @@ export const realTimeSustainedAnxietyDetection = functions.database
         const timeSinceLastNotification = now - lastNotification;
 
         if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
-          const remainingMinutes = Math.ceil((RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / (60 * 1000));
+          const remainingMinutes = Math.ceil(
+            (RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / (60 * 1000)
+          );
           console.log(
-            `⏱️ Rate limit: User ${userId} was notified ${Math.floor(timeSinceLastNotification / 1000)}s ago. ` +
-            `Skipping notification (${remainingMinutes}min remaining in cooldown)`
+            `⏱️ Rate limit: User ${userId} was notified ${Math.floor(
+              timeSinceLastNotification / 1000
+            )}s ago. ` +
+              `Skipping notification (${remainingMinutes}min remaining in cooldown)`
           );
           return null;
         }
 
         // Update rate limit timestamp
         rateLimit.set(userId, now);
-        console.log(`✅ Rate limit passed for user ${userId}, sending notification`);
+        console.log(
+          `✅ Rate limit passed for user ${userId}, sending notification`
+        );
 
         // STEP 5: Send FCM notification to SPECIFIC USER
         return await sendUserAnxietyAlert({
@@ -330,7 +349,7 @@ function getSeverityLevel(heartRate: number, baseline: number): string {
 
   // Critical: 80%+ above baseline (emergency level)
   if (percentageAbove >= 80) return "critical";
-  // Severe: 50-79% above baseline  
+  // Severe: 50-79% above baseline
   if (percentageAbove >= 50) return "severe";
   // Moderate: 30-49% above baseline
   if (percentageAbove >= 30) return "moderate";
@@ -344,13 +363,13 @@ function getSeverityLevel(heartRate: number, baseline: number): string {
 function getChannelIdForSeverity(severity: string): string {
   switch (severity.toLowerCase()) {
     case "mild":
-      return "mild_anxiety_alerts_v3"; // Use the ultra-aggressive test channel
+      return "mild_anxiety_alerts_v4"; // Bumped to align with client channel recreation
     case "moderate":
-      return "moderate_anxiety_alerts";
+      return "moderate_anxiety_alerts_v2";
     case "severe":
-      return "severe_anxiety_alerts";
+      return "severe_anxiety_alerts_v2";
     case "critical":
-      return "critical_anxiety_alerts";
+      return "critical_anxiety_alerts_v2";
     default:
       return "anxiease_channel"; // Fallback to general channel
   }
@@ -440,8 +459,21 @@ async function sendUserAnxietyAlert(alertData: any) {
       response
     );
 
-    // Store alert in user's personal history
+    // Store alert in user's personal history (Firebase RTDB)
     await storeUserAnxietyAlert(alertData);
+
+    // Additionally, persist to Supabase (single source for app UI) if configured
+    try {
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
+        await persistAlertToSupabase(alertData);
+      } else {
+        console.log(
+          "ℹ️ Supabase env not configured; skipping server-side Supabase insert"
+        );
+      }
+    } catch (e) {
+      console.error("❌ Failed to persist alert to Supabase:", e);
+    }
 
     return response;
   } catch (error) {
@@ -451,6 +483,42 @@ async function sendUserAnxietyAlert(alertData: any) {
     );
     return null;
   }
+}
+
+/**
+ * Persist alert to Supabase as the system source of truth
+ */
+async function persistAlertToSupabase(alertData: any) {
+  const url = `${SUPABASE_URL}/rest/v1/notifications`;
+  const content = getUserNotificationContent(alertData);
+  const payload = {
+    // Keep payload aligned with app-side SupabaseService.createNotification schema
+    user_id: alertData.userId || null,
+    title: content.title,
+    message: content.body,
+    type: "alert", // match enum used by app (alert|reminder)
+    related_screen: "notifications",
+    created_at: new Date().toISOString(),
+  } as any;
+
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase insert failed: ${res.status} ${text}`);
+  }
+
+  const json = await res.json();
+  console.log("🗃️ Supabase insert success:", json);
 }
 
 /**
