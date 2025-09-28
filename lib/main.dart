@@ -66,7 +66,7 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
     final requiresConfirmation = payload['requiresConfirmation'] == 'true';
     final severity = (payload['severity'] ?? '').toString().toLowerCase();
     final navigator = rootNavigatorKey.currentState;
-    
+
     if (navigator != null) {
       if (requiresConfirmation) {
         // Show confirmation dialog directly - it will save to Supabase automatically

@@ -6,9 +6,11 @@ admin.initializeApp();
 
 // Optional: Supabase server-side persistence for test notifications
 // Configure via environment variables (Firebase Functions config or runtime env)
-const SUPABASE_URL = process.env.SUPABASE_URL || functions.config().supabase?.url;
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || functions.config().supabase?.url;
 const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || functions.config().supabase?.service_role_key;
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  functions.config().supabase?.service_role_key;
 
 // Lazy import to avoid hard dependency when not configured
 let fetchImpl: any = null;
@@ -298,10 +300,16 @@ export const testNotificationHTTP = functions.https.onRequest(
       // Additionally, persist test alert to Supabase if configured
       try {
         if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
-          await persistTestAlertToSupabase(severity as string, heartRate, notificationData);
+          await persistTestAlertToSupabase(
+            severity as string,
+            heartRate,
+            notificationData
+          );
           console.log("✅ Test alert also saved to Supabase");
         } else {
-          console.log("ℹ️ Supabase env not configured; skipping test alert storage");
+          console.log(
+            "ℹ️ Supabase env not configured; skipping test alert storage"
+          );
         }
       } catch (e) {
         console.error("❌ Failed to persist test alert to Supabase:", e);
@@ -332,7 +340,11 @@ export const testNotificationHTTP = functions.https.onRequest(
 /**
  * Persist test alert to Supabase (similar to realTimeSustainedAnxietyDetection)
  */
-async function persistTestAlertToSupabase(severity: string, heartRate: number, notificationContent: any) {
+async function persistTestAlertToSupabase(
+  severity: string,
+  heartRate: number,
+  notificationContent: any
+) {
   const url = `${SUPABASE_URL}/rest/v1/notifications`;
   const payload = {
     // Keep payload aligned with app-side SupabaseService.createNotification schema

@@ -98,17 +98,18 @@ export const syncDeviceAssignment = functions.https.onRequest(
           webhookTrigger: true,
           originalPayload: payload.type || "unknown",
         },
-        previousAssignment: currentAssignment && currentAssignment.assignedUser
-          ? {
-              assignedUser: currentAssignment.assignedUser,
-              activeSessionId: currentAssignment.activeSessionId || null,
-              assignedBy: currentAssignment.assignedBy || "unknown",
-              assignedAt: currentAssignment.assignedAt || null,
-              status: currentAssignment.status || "unknown",
-              deviceId: currentAssignment.deviceId || deviceId,
-              // Intentionally exclude previousAssignment to prevent infinite nesting
-            }
-          : null,
+        previousAssignment:
+          currentAssignment && currentAssignment.assignedUser
+            ? {
+                assignedUser: currentAssignment.assignedUser,
+                activeSessionId: currentAssignment.activeSessionId || null,
+                assignedBy: currentAssignment.assignedBy || "unknown",
+                assignedAt: currentAssignment.assignedAt || null,
+                status: currentAssignment.status || "unknown",
+                deviceId: currentAssignment.deviceId || deviceId,
+                // Intentionally exclude previousAssignment to prevent infinite nesting
+              }
+            : null,
       };
 
       await currentAssignmentRef.set(newAssignment);

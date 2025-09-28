@@ -86,7 +86,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (args is Map) {
         final show = (args['show'] ?? args['open'])?.toString();
         final showConfirmationDialog = args['showConfirmationDialog'] == true;
-        
+
         if (show == 'notification' || showConfirmationDialog) {
           _handledInitialRouteArgs = true; // guard
           final String title = (args['title'] ?? '').toString();
@@ -97,7 +97,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   .toString();
           final String severity = (args['severity'] ?? '').toString();
           final String alertType = (args['alertType'] ?? '').toString();
-          final Map<String, dynamic> detectionData = 
+          final Map<String, dynamic> detectionData =
               (args['detectionData'] ?? {}) as Map<String, dynamic>;
 
           // Build a synthetic notification map for dialogs
@@ -117,9 +117,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           // Defer UI until after current frame
           WidgetsBinding.instance.addPostFrameCallback((_) async {
             if (!mounted) return;
-            
+
             // If this is a confirmation dialog request or anxiety alert, show confirmation dialog
-            if (showConfirmationDialog || 
+            if (showConfirmationDialog ||
                 title.toLowerCase().contains('anxiety') ||
                 title.toLowerCase().contains('gentle check-in') ||
                 title.toLowerCase().contains('are you okay') ||
@@ -158,11 +158,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Derive a severity color from the notification title markers/keywords
   Color _severityColorFromTitle(String title) {
     final t = title.toLowerCase();
-    if (t.contains('�') || t.contains('�🔴') || t.contains('critical')) return Colors.red;      // Critical = Red
-    if (t.contains('🟠') || t.contains('severe')) return Colors.orange;                        // Severe = Orange  
-    if (t.contains('�') || t.contains('moderate')) return Colors.yellow;                      // Moderate = Yellow
-    if (t.contains('🟢') || t.contains('mild')) return Colors.green;                          // Mild = Green
-    return Colors.green; // default for generic alerts (changed from red to green)
+    if (t.contains('�') || t.contains('�🔴') || t.contains('critical'))
+      return Colors.red; // Critical = Red
+    if (t.contains('🟠') || t.contains('severe'))
+      return Colors.orange; // Severe = Orange
+    if (t.contains('�') || t.contains('moderate'))
+      return Colors.yellow; // Moderate = Yellow
+    if (t.contains('🟢') || t.contains('mild'))
+      return Colors.green; // Mild = Green
+    return Colors
+        .green; // default for generic alerts (changed from red to green)
   }
 
   Future<void> _loadNotifications() async {
@@ -213,20 +218,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // Check if this is an anxiety detection notification requiring user confirmation
     final title = notification['title'] ?? '';
     final message = notification['message'] ?? '';
-    
+
     // Check for confirmation requirements - either from FCM data or title patterns
-    final shouldShowConfirmation = 
+    final shouldShowConfirmation =
         // Check for caring message patterns
         title.toLowerCase().contains('gentle check-in') ||
-        title.toLowerCase().contains('are you okay') ||
-        title.toLowerCase().contains('just checking in') ||
-        message.toLowerCase().contains('are you experiencing any anxiety') ||
-        message.toLowerCase().contains('how are you feeling') ||
-        // Legacy patterns
-        title.contains('Anxiety Detection - Confirmation Needed') ||
-        title.contains('Anxiety Alert') ||
-        title.contains('anxiety detected');
-    
+            title.toLowerCase().contains('are you okay') ||
+            title.toLowerCase().contains('just checking in') ||
+            message
+                .toLowerCase()
+                .contains('are you experiencing any anxiety') ||
+            message.toLowerCase().contains('how are you feeling') ||
+            // Legacy patterns
+            title.contains('Anxiety Detection - Confirmation Needed') ||
+            title.contains('Anxiety Alert') ||
+            title.contains('anxiety detected');
+
     if (shouldShowConfirmation) {
       // Show anxiety confirmation dialog
       await _showAnxietyConfirmationDialog(notification);
@@ -245,24 +252,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Helper method to determine severity from title and detection data
   String _determineSeverity(String title, Map<String, dynamic> detectionData) {
     // First try to extract from titles (more reliable for test notifications)
-    final combinedTitle = '${detectionData['title']?.toString() ?? ''} $title'.toLowerCase();
-    
+    final combinedTitle =
+        '${detectionData['title']?.toString() ?? ''} $title'.toLowerCase();
+
     if (combinedTitle.contains('critical')) {
       return 'critical';
     } else if (combinedTitle.contains('severe')) {
       return 'severe';
-    } else if (combinedTitle.contains('moderate') || combinedTitle.contains('checking in')) {
+    } else if (combinedTitle.contains('moderate') ||
+        combinedTitle.contains('checking in')) {
       return 'moderate';
-    } else if (combinedTitle.contains('mild') || combinedTitle.contains('gentle')) {
+    } else if (combinedTitle.contains('mild') ||
+        combinedTitle.contains('gentle')) {
       return 'mild';
     }
-    
+
     // Then try the database field as backup
     final dbSeverity = detectionData['severity']?.toString().toLowerCase();
     if (dbSeverity != null && dbSeverity != 'null' && dbSeverity.isNotEmpty) {
       return dbSeverity;
     }
-    
+
     return 'mild'; // default
   }
 
@@ -281,15 +291,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     // Create detection data from notification - use passed data if available
-    final detectionData = notification['detection_data'] as Map<String, dynamic>? ?? {
-      'timestamp': notification['created_at'],
-      'notification_id': notification['id'],
-      'title': title,
-      'message': message,
-      'type': notification['type'] ?? 'anxiety_detection',
-      'severity': notification['severity'] ?? 'mild',
-      'alert_type': notification['alert_type'] ?? 'check_in',
-    };
+    final detectionData =
+        notification['detection_data'] as Map<String, dynamic>? ??
+            {
+              'timestamp': notification['created_at'],
+              'notification_id': notification['id'],
+              'title': title,
+              'message': message,
+              'type': notification['type'] ?? 'anxiety_detection',
+              'severity': notification['severity'] ?? 'mild',
+              'alert_type': notification['alert_type'] ?? 'check_in',
+            };
 
     // Check if this is a critical alert - show detailed view directly
     final severity = _determineSeverity(title, detectionData);
@@ -969,7 +981,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Build a modern notification card
   Widget _buildNotificationItem(Map<String, dynamic> notification) {
     // Parse the UTC timestamp and convert to local time
-    final DateTime createdAt = DateTime.parse(notification['created_at']).toLocal();
+    final DateTime createdAt =
+        DateTime.parse(notification['created_at']).toLocal();
     final String timeAgo = timeago.format(createdAt);
     final String formattedDate = _dateFormatter.format(createdAt);
     final bool isRead = notification['read'] ?? false;

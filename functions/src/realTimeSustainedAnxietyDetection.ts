@@ -439,7 +439,8 @@ async function sendUserAnxietyAlert(alertData: any) {
         channelId: getChannelIdForSeverity(alertData.severity),
         sound: getSoundForSeverity(alertData.severity),
         // New fields for confirmation system
-        requiresConfirmation: notificationContent.requiresConfirmation.toString(),
+        requiresConfirmation:
+          notificationContent.requiresConfirmation.toString(),
         alertType: notificationContent.alertType,
         // For critical alerts, automatically count as anxiety attack
         autoConfirm: (alertData.severity === "critical").toString(),
@@ -578,11 +579,16 @@ function getUserNotificationContent(alertData: any) {
   // Calculate confidence based on severity level (higher severity = higher confidence)
   const getConfidenceLevel = (severity: string) => {
     switch (severity) {
-      case "critical": return "95% Confidence";
-      case "severe": return "85% Confidence"; 
-      case "moderate": return "70% Confidence";
-      case "mild": return "60% Confidence";
-      default: return "50% Confidence";
+      case "critical":
+        return "95% Confidence";
+      case "severe":
+        return "85% Confidence";
+      case "moderate":
+        return "70% Confidence";
+      case "mild":
+        return "60% Confidence";
+      default:
+        return "50% Confidence";
     }
   };
 
@@ -596,7 +602,7 @@ function getUserNotificationContent(alertData: any) {
         color: "#FF0000", // RED for critical
         sound: "critical_alert",
         requiresConfirmation: false, // Critical = definitive anxiety, no confirmation needed
-        alertType: "definitive_anxiety"
+        alertType: "definitive_anxiety",
       };
     case "severe":
       return {
@@ -605,7 +611,7 @@ function getUserNotificationContent(alertData: any) {
         color: "#FFA500", // ORANGE for severe
         sound: "severe_alert",
         requiresConfirmation: true,
-        alertType: "check_in_severe"
+        alertType: "check_in_severe",
       };
     case "moderate":
       return {
@@ -614,7 +620,7 @@ function getUserNotificationContent(alertData: any) {
         color: "#FFFF00", // YELLOW for moderate
         sound: "moderate_alert",
         requiresConfirmation: true,
-        alertType: "check_in_moderate"
+        alertType: "check_in_moderate",
       };
     case "mild":
       return {
@@ -623,7 +629,7 @@ function getUserNotificationContent(alertData: any) {
         color: "#4CAF50", // GREEN for mild (not orange!)
         sound: "mild_alert",
         requiresConfirmation: true,
-        alertType: "check_in_mild"
+        alertType: "check_in_mild",
       };
     default:
       return {
@@ -632,7 +638,7 @@ function getUserNotificationContent(alertData: any) {
         color: "#4CAF50",
         sound: "mild_alert",
         requiresConfirmation: true,
-        alertType: "check_in_mild"
+        alertType: "check_in_mild",
       };
   }
 }

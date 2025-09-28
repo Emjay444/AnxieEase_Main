@@ -53,29 +53,34 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     super.dispose();
   }
 
-
   // NEW: Determine severity from detection data (fallback to mild)
   String _getSeverity() {
     // First try to extract from titles (most reliable for test notifications)
-    final title1 = (widget.detectionData['title']?.toString() ?? '').toLowerCase();
+    final title1 =
+        (widget.detectionData['title']?.toString() ?? '').toLowerCase();
     final title2 = widget.title.toLowerCase();
     final combinedTitle = '$title1 $title2';
-    
+
     // Also check message for severity prefix [severity]
-    final message = (widget.detectionData['message']?.toString() ?? widget.message).toLowerCase();
-    
+    final message =
+        (widget.detectionData['message']?.toString() ?? widget.message)
+            .toLowerCase();
+
     String? titleSeverity;
     // Check titles first
     if (combinedTitle.contains('critical')) {
       titleSeverity = 'critical';
-    } else if (combinedTitle.contains('severe') || combinedTitle.contains('are you okay')) {
+    } else if (combinedTitle.contains('severe') ||
+        combinedTitle.contains('are you okay')) {
       titleSeverity = 'severe';
-    } else if (combinedTitle.contains('moderate') || combinedTitle.contains('checking in')) {
+    } else if (combinedTitle.contains('moderate') ||
+        combinedTitle.contains('checking in')) {
       titleSeverity = 'moderate';
-    } else if (combinedTitle.contains('mild') || combinedTitle.contains('gentle')) {
+    } else if (combinedTitle.contains('mild') ||
+        combinedTitle.contains('gentle')) {
       titleSeverity = 'mild';
     }
-    
+
     // If not found in title, check message for [severity] prefix
     if (titleSeverity == null) {
       if (message.contains('[critical]')) {
@@ -88,19 +93,21 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
         titleSeverity = 'mild';
       }
     }
-    
+
     // Then try the database field as backup (though it won't work without the column)
-    String? dbSeverity = widget.detectionData['severity']?.toString().toLowerCase();
+    String? dbSeverity =
+        widget.detectionData['severity']?.toString().toLowerCase();
     if (dbSeverity == 'null' || dbSeverity?.isEmpty == true) {
       dbSeverity = null;
     }
-    
+
     // Prefer title detection if found, otherwise use database
     final finalSeverity = titleSeverity ?? dbSeverity ?? 'mild';
-    
+
     // Debug print to see what we're working with
-    debugPrint('🔍 Severity detection: DB=$dbSeverity | Title="$combinedTitle" | Message="$message" | Final=$finalSeverity');
-    
+    debugPrint(
+        '🔍 Severity detection: DB=$dbSeverity | Title="$combinedTitle" | Message="$message" | Final=$finalSeverity');
+
     switch (finalSeverity) {
       case 'critical':
       case 'severe':
@@ -263,13 +270,13 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
 
   @override
   Widget build(BuildContext context) {
-     final modalBackgroundColor = _getModalBackgroundColor();
-     // NEW: Severity + accent color for UI elements
-     final severity = _getSeverity();
-     final accentColor = _colorForSeverity(severity);
-     final cleanTitle = _getCleanTitle();
-     final confidenceIcon = _getConfidenceIcon();
-     final confidencePercent = (widget.confidenceLevel * 100).toStringAsFixed(0);
+    final modalBackgroundColor = _getModalBackgroundColor();
+    // NEW: Severity + accent color for UI elements
+    final severity = _getSeverity();
+    final accentColor = _colorForSeverity(severity);
+    final cleanTitle = _getCleanTitle();
+    final confidenceIcon = _getConfidenceIcon();
+    final confidencePercent = (widget.confidenceLevel * 100).toStringAsFixed(0);
 
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -336,8 +343,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                     ),
                     const SizedBox(height: 8),
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: accentColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),

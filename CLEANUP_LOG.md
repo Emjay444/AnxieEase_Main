@@ -1,20 +1,23 @@
 # 🧹 PROJECT CLEANUP LOG
+
 **Date:** 2025-09-28  
 **Purpose:** Remove testing and debug files to clean up the project
 
 ## Files Being Deleted
 
 ### Node.js Testing Scripts (50+ files)
-- test_*.js (all test files)
-- debug_*.js (all debug files) 
-- check_*.js (all check files)
-- analyze_*.js (all analysis files)
-- fix_*.js (all fix files)
-- setup_*.js (all setup files)
-- verify_*.js (all verification files)
-- investigate_*.js (all investigation files)
+
+- test\_\*.js (all test files)
+- debug\_\*.js (all debug files)
+- check\_\*.js (all check files)
+- analyze\_\*.js (all analysis files)
+- fix\_\*.js (all fix files)
+- setup\_\*.js (all setup files)
+- verify\_\*.js (all verification files)
+- investigate\_\*.js (all investigation files)
 
 ### SQL Testing Files
+
 - add_avatar_url_to_user_profiles.sql
 - add_severity_level.js
 - anxiety_records_optimization.sql
@@ -30,6 +33,7 @@
 - update_profile_name.sql
 
 ### Batch/PowerShell Scripts
+
 - flutter_debug_background.bat
 - monitor_background_logs.bat
 - cleanup_project.ps1
@@ -40,6 +44,7 @@
 - test_unified_system.ps1
 
 ### Analysis & Documentation (Outdated)
+
 - Various analysis markdown files
 - Old testing guides
 - Redundant documentation files
@@ -47,6 +52,7 @@
 ## Files Being Kept
 
 ### Core Production
+
 - functions/ (Firebase Functions)
 - lib/ (Flutter app)
 - android/, ios/, web/ (Platform code)
@@ -55,6 +61,7 @@
 - service-account-key.json
 
 ### Important Documentation
+
 - README.md
 - Key setup guides
 - Current documentation
