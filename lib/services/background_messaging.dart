@@ -36,9 +36,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       debugPrint(
           '🚨 Processing data-only anxiety alert - creating local notification');
 
-  String severity = message.data['severity'] ?? 'mild';
-  String soundResource = _getSeveritySound(severity);
-  String channelKey = _getSeverityChannel(severity);
+      String severity = message.data['severity'] ?? 'mild';
+      String soundResource = _getSeveritySound(severity);
+      String channelKey = _getSeverityChannel(severity);
 
       // Get title and body from data payload (data-only approach)
       String title = message.data['title'] ??
@@ -309,7 +309,8 @@ Future<void> _ensureBackgroundNotificationChannelsInitialized() async {
           soundSource: 'resource://raw/mild_alert',
           // Avoid critical alerts to prevent OEM alarm behaviors
           criticalAlerts: false,
-          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce:
+              true, // Prevent sound looping - play only once per notification
         ),
         NotificationChannel(
           channelKey: 'moderate_anxiety_alerts_v2',
@@ -319,7 +320,8 @@ Future<void> _ensureBackgroundNotificationChannelsInitialized() async {
           enableVibration: true,
           playSound: true,
           soundSource: 'resource://raw/moderate_alert',
-          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce:
+              true, // Prevent sound looping - play only once per notification
         ),
         NotificationChannel(
           channelKey: 'severe_anxiety_alerts_v2',
@@ -329,7 +331,8 @@ Future<void> _ensureBackgroundNotificationChannelsInitialized() async {
           enableVibration: true,
           playSound: true,
           soundSource: 'resource://raw/severe_alert',
-          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce:
+              true, // Prevent sound looping - play only once per notification
         ),
         NotificationChannel(
           channelKey: 'critical_anxiety_alerts_v2',
@@ -341,7 +344,8 @@ Future<void> _ensureBackgroundNotificationChannelsInitialized() async {
           soundSource: 'resource://raw/critical_alert',
           // Keep non-critical to avoid special alarm treatment; rely on importance Max
           criticalAlerts: false,
-          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce:
+              true, // Prevent sound looping - play only once per notification
         ),
       ],
     );

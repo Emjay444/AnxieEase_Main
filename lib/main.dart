@@ -62,42 +62,61 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
       debugPrint('⚠️ Failed to sync pending notifications on tap: $e');
     }
 
-    // Navigate to appropriate screen based on severity (default to notifications)
+    // Check if this notification requires user confirmation
+    final requiresConfirmation = payload['requiresConfirmation'] == 'true';
     final severity = (payload['severity'] ?? '').toString().toLowerCase();
     final navigator = rootNavigatorKey.currentState;
+    
     if (navigator != null) {
-      switch (severity) {
-        case 'moderate':
-          navigator.pushNamed('/breathing');
-          break;
-        case 'severe':
-          navigator.pushNamed('/grounding');
-          break;
-        case 'critical':
-          navigator.pushNamed(
-            '/notifications',
-            arguments: {
-              'show': 'notification',
-              'title': receivedAction.title ?? 'Anxiety Alert',
-              'message': receivedAction.body ?? 'Please check your status.',
-              'type': 'alert',
-              'severity': severity,
-              'createdAt': DateTime.now().toIso8601String(),
-            },
-          );
-          break;
-        default:
-          navigator.pushNamed(
-            '/notifications',
-            arguments: {
-              'show': 'notification',
-              'title': receivedAction.title ?? 'Anxiety Alert',
-              'message': receivedAction.body ?? 'Please check your status.',
-              'type': 'alert',
-              'severity': severity,
-              'createdAt': DateTime.now().toIso8601String(),
-            },
-          );
+      if (requiresConfirmation) {
+        // Show confirmation dialog directly - it will save to Supabase automatically
+        navigator.pushNamed(
+          '/notifications',
+          arguments: {
+            'showConfirmationDialog': true,
+            'title': receivedAction.title ?? 'Check-In',
+            'message': receivedAction.body ?? 'How are you feeling?',
+            'severity': severity,
+            'alertType': payload['alertType'] ?? 'check_in',
+            'detectionData': payload,
+            'createdAt': DateTime.now().toIso8601String(),
+          },
+        );
+      } else {
+        // Handle non-confirmation notifications (critical alerts)
+        switch (severity) {
+          case 'moderate':
+            navigator.pushNamed('/breathing');
+            break;
+          case 'severe':
+            navigator.pushNamed('/grounding');
+            break;
+          case 'critical':
+            navigator.pushNamed(
+              '/notifications',
+              arguments: {
+                'show': 'notification',
+                'title': receivedAction.title ?? 'Anxiety Alert',
+                'message': receivedAction.body ?? 'Please check your status.',
+                'type': 'alert',
+                'severity': severity,
+                'createdAt': DateTime.now().toIso8601String(),
+              },
+            );
+            break;
+          default:
+            navigator.pushNamed(
+              '/notifications',
+              arguments: {
+                'show': 'notification',
+                'title': receivedAction.title ?? 'Anxiety Alert',
+                'message': receivedAction.body ?? 'Please check your status.',
+                'type': 'alert',
+                'severity': severity,
+                'createdAt': DateTime.now().toIso8601String(),
+              },
+            );
+        }
       }
     }
     return;

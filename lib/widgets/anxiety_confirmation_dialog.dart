@@ -53,10 +53,91 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     super.dispose();
   }
 
-  Color _getConfidenceColor() {
-    if (widget.confidenceLevel >= 0.8) return Colors.red;
-    if (widget.confidenceLevel >= 0.6) return Colors.orange;
-    return Colors.blue;
+
+  // NEW: Determine severity from detection data (fallback to mild)
+  String _getSeverity() {
+    // First try to extract from titles (most reliable for test notifications)
+    final title1 = (widget.detectionData['title']?.toString() ?? '').toLowerCase();
+    final title2 = widget.title.toLowerCase();
+    final combinedTitle = '$title1 $title2';
+    
+    // Also check message for severity prefix [severity]
+    final message = (widget.detectionData['message']?.toString() ?? widget.message).toLowerCase();
+    
+    String? titleSeverity;
+    // Check titles first
+    if (combinedTitle.contains('critical')) {
+      titleSeverity = 'critical';
+    } else if (combinedTitle.contains('severe') || combinedTitle.contains('are you okay')) {
+      titleSeverity = 'severe';
+    } else if (combinedTitle.contains('moderate') || combinedTitle.contains('checking in')) {
+      titleSeverity = 'moderate';
+    } else if (combinedTitle.contains('mild') || combinedTitle.contains('gentle')) {
+      titleSeverity = 'mild';
+    }
+    
+    // If not found in title, check message for [severity] prefix
+    if (titleSeverity == null) {
+      if (message.contains('[critical]')) {
+        titleSeverity = 'critical';
+      } else if (message.contains('[severe]')) {
+        titleSeverity = 'severe';
+      } else if (message.contains('[moderate]')) {
+        titleSeverity = 'moderate';
+      } else if (message.contains('[mild]')) {
+        titleSeverity = 'mild';
+      }
+    }
+    
+    // Then try the database field as backup (though it won't work without the column)
+    String? dbSeverity = widget.detectionData['severity']?.toString().toLowerCase();
+    if (dbSeverity == 'null' || dbSeverity?.isEmpty == true) {
+      dbSeverity = null;
+    }
+    
+    // Prefer title detection if found, otherwise use database
+    final finalSeverity = titleSeverity ?? dbSeverity ?? 'mild';
+    
+    // Debug print to see what we're working with
+    debugPrint('🔍 Severity detection: DB=$dbSeverity | Title="$combinedTitle" | Message="$message" | Final=$finalSeverity');
+    
+    switch (finalSeverity) {
+      case 'critical':
+      case 'severe':
+      case 'moderate':
+      case 'mild':
+        return finalSeverity;
+      default:
+        return 'mild';
+    }
+  }
+
+  // NEW: Map severity to accent/background color (modal scheme)
+  // mild=green, moderate=yellow, severe=orange, critical=red
+  Color _colorForSeverity(String severity) {
+    switch (severity) {
+      case 'critical':
+        return Colors.red;
+      case 'severe':
+        return Colors.orange;
+      case 'moderate':
+        return Colors.yellow;
+      case 'mild':
+      default:
+        return Colors.green;
+    }
+  }
+
+  // REPLACED: Background color based on severity (not confidence)
+  Color _getModalBackgroundColor() {
+    return _colorForSeverity(_getSeverity());
+  }
+
+  // UPDATED: Build a simple severity-based title
+  String _getCleanTitle() {
+    final severity = _getSeverity();
+    // Just show the severity level - simple and clear
+    return severity.toUpperCase();
   }
 
   IconData _getConfidenceIcon() {
@@ -182,9 +263,13 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
 
   @override
   Widget build(BuildContext context) {
-    final confidenceColor = _getConfidenceColor();
-    final confidenceIcon = _getConfidenceIcon();
-    final confidencePercent = (widget.confidenceLevel * 100).toStringAsFixed(0);
+     final modalBackgroundColor = _getModalBackgroundColor();
+     // NEW: Severity + accent color for UI elements
+     final severity = _getSeverity();
+     final accentColor = _colorForSeverity(severity);
+     final cleanTitle = _getCleanTitle();
+     final confidenceIcon = _getConfidenceIcon();
+     final confidencePercent = (widget.confidenceLevel * 100).toStringAsFixed(0);
 
     return ScaleTransition(
       scale: _scaleAnimation,
@@ -199,7 +284,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                confidenceColor.withOpacity(0.1),
+                modalBackgroundColor.withOpacity(0.1),
                 Colors.white,
               ],
             ),
@@ -222,8 +307,9 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      confidenceColor.withOpacity(0.12),
-                      confidenceColor.withOpacity(0.08),
+                      // use severity accent, not confidence
+                      accentColor.withOpacity(0.12),
+                      accentColor.withOpacity(0.08),
                     ],
                   ),
                   borderRadius: const BorderRadius.only(
@@ -235,33 +321,33 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                   children: [
                     Icon(
                       confidenceIcon,
-                      color: confidenceColor,
+                      color: Colors.black54, // Subtle black icon
                       size: 48,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      widget.title,
-                      style: TextStyle(
+                      cleanTitle,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: confidenceColor,
+                        color: Colors.black, // Always black text
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: confidenceColor.withOpacity(0.2),
+                        color: accentColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '$confidencePercent% Confidence',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: confidenceColor,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -272,8 +358,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                       child: LinearProgressIndicator(
                         value: widget.confidenceLevel.clamp(0.0, 1.0),
                         minHeight: 6,
-                        color: confidenceColor,
-                        backgroundColor: confidenceColor.withOpacity(0.12),
+                        color: accentColor,
+                        backgroundColor: accentColor.withOpacity(0.12),
                       ),
                     ),
                   ],
@@ -287,7 +373,10 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                   children: [
                     Text(
                       widget.message,
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.black,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -298,6 +387,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
+                        color: Colors.black,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -334,6 +424,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
+                          color: Colors.black,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -342,8 +433,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                         spacing: 8,
                         children: [
                           _buildSeverityChip('Mild', Colors.green),
-                          _buildSeverityChip('Moderate', Colors.orange),
-                          _buildSeverityChip('Severe', Colors.red),
+                          _buildSeverityChip('Moderate', Colors.yellow),
+                          _buildSeverityChip('Severe', Colors.orange),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -402,7 +493,8 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
                             ? _submitResponse
                             : null,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: confidenceColor,
+                          // use severity accent for call-to-action
+                          backgroundColor: accentColor,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),

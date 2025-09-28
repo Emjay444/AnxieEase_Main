@@ -98,14 +98,14 @@ export const syncDeviceAssignment = functions.https.onRequest(
           webhookTrigger: true,
           originalPayload: payload.type || "unknown",
         },
-        previousAssignment: currentAssignment
+        previousAssignment: currentAssignment && currentAssignment.assignedUser
           ? {
               assignedUser: currentAssignment.assignedUser,
-              activeSessionId: currentAssignment.activeSessionId,
-              assignedBy: currentAssignment.assignedBy,
-              assignedAt: currentAssignment.assignedAt,
-              status: currentAssignment.status,
-              deviceId: currentAssignment.deviceId,
+              activeSessionId: currentAssignment.activeSessionId || null,
+              assignedBy: currentAssignment.assignedBy || "unknown",
+              assignedAt: currentAssignment.assignedAt || null,
+              status: currentAssignment.status || "unknown",
+              deviceId: currentAssignment.deviceId || deviceId,
               // Intentionally exclude previousAssignment to prevent infinite nesting
             }
           : null,

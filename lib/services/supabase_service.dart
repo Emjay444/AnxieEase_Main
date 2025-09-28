@@ -1672,6 +1672,7 @@ class SupabaseService {
     required String type,
     String? relatedScreen,
     String? relatedId,
+    String? severity, // Add severity parameter
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
@@ -1725,6 +1726,12 @@ class SupabaseService {
       'read': false,
       'created_at': nowIso,
     };
+
+    // Add severity if provided
+    if (severity != null && severity.isNotEmpty) {
+      // Store severity in the message field with a prefix for now since the DB doesn't have a severity column
+      row['message'] = '[$severity] ${row['message']}';
+    }
 
     if (relatedId != null) {
       if (_isValidUuid(relatedId)) {

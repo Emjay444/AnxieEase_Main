@@ -5,9 +5,11 @@ const db = admin.database();
 
 // Optional: Supabase server-side persistence for alerts
 // Configure via environment variables (Firebase Functions config or runtime env)
-const SUPABASE_URL = process.env.SUPABASE_URL || functions.config().supabase?.url;
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || functions.config().supabase?.url;
 const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || functions.config().supabase?.service_role_key;
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  functions.config().supabase?.service_role_key;
 
 // Lazy import to avoid hard dependency when not configured
 let fetchImpl: any = null;
@@ -17,7 +19,7 @@ try {
 } catch {}
 
 // Rate limiting configuration
-const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+const RATE_LIMIT_WINDOW_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
 const rateLimit = new Map<string, number>(); // userId -> lastNotificationTime
 
 /**
@@ -111,6 +113,7 @@ export const realTimeSustainedAnxietyDetection = functions.database
         );
 
         // Rate limiting check - prevent duplicate notifications
+        // Check BEFORE processing to avoid multiple simultaneous triggers
         const now = Date.now();
         const lastNotification = rateLimit.get(userId) || 0;
         const timeSinceLastNotification = now - lastNotification;
@@ -128,7 +131,7 @@ export const realTimeSustainedAnxietyDetection = functions.database
           return null;
         }
 
-        // Update rate limit timestamp
+        // IMMEDIATELY set rate limit to prevent race conditions
         rateLimit.set(userId, now);
         console.log(
           `✅ Rate limit passed for user ${userId}, sending notification`
@@ -435,6 +438,11 @@ async function sendUserAnxietyAlert(alertData: any) {
         color: notificationContent.color,
         channelId: getChannelIdForSeverity(alertData.severity),
         sound: getSoundForSeverity(alertData.severity),
+        // New fields for confirmation system
+        requiresConfirmation: notificationContent.requiresConfirmation.toString(),
+        alertType: notificationContent.alertType,
+        // For critical alerts, automatically count as anxiety attack
+        autoConfirm: (alertData.severity === "critical").toString(),
       },
       android: {
         priority: "high" as const,
@@ -567,41 +575,64 @@ function getUserNotificationContent(alertData: any) {
     ((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100
   )}%`;
 
+  // Calculate confidence based on severity level (higher severity = higher confidence)
+  const getConfidenceLevel = (severity: string) => {
+    switch (severity) {
+      case "critical": return "95% Confidence";
+      case "severe": return "85% Confidence"; 
+      case "moderate": return "70% Confidence";
+      case "mild": return "60% Confidence";
+      default: return "50% Confidence";
+    }
+  };
+
+  const confidence = getConfidenceLevel(alertData.severity);
+
   switch (alertData.severity) {
     case "critical":
       return {
-        title: "🚨 CRITICAL Anxiety Alert",
-        body: `EMERGENCY: Heart rate ${alertData.heartRate} BPM (${percentageText} above baseline) sustained for ${alertData.duration}s. Seek immediate help if needed.`,
+        title: `🚨 Critical Alert - ${confidence}`,
+        body: `URGENT: Your heart rate has been critically elevated at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. This indicates a severe anxiety episode. Please seek immediate support if needed.`,
         color: "#FF0000", // RED for critical
-        sound: "critical_alert", // Use existing critical_alert.mp3
+        sound: "critical_alert",
+        requiresConfirmation: false, // Critical = definitive anxiety, no confirmation needed
+        alertType: "definitive_anxiety"
       };
     case "severe":
       return {
-        title: "� Severe Anxiety Detected",
-        body: `Your heart rate was sustained at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Consider deep breathing exercises.`,
-        color: "#FF8C00", // ORANGE for severe
-        sound: "severe_alert", // Use existing severe_alert.mp3
+        title: `� Severe Alert - ${confidence}`,
+        body: `Hi there! I noticed your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Are you experiencing any anxiety or stress right now?`,
+        color: "#FFA500", // ORANGE for severe
+        sound: "severe_alert",
+        requiresConfirmation: true,
+        alertType: "check_in_severe"
       };
     case "moderate":
       return {
-        title: "🟡 Moderate Anxiety Detected",
-        body: `Your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Take a moment to relax.`,
+        title: `🟡 Moderate Alert - ${confidence}`,
+        body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. How are you feeling? Is everything alright?`,
         color: "#FFFF00", // YELLOW for moderate
-        sound: "moderate_alert", // Use existing moderate_alert.mp3
+        sound: "moderate_alert",
+        requiresConfirmation: true,
+        alertType: "check_in_moderate"
       };
     case "mild":
       return {
-        title: "� Mild Anxiety Detected",
-        body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Check in with yourself.`,
-        color: "#00FF00", // GREEN for mild
-        sound: "mild_alert", // Use existing mild_alert.mp3
+        title: `🟢 Mild Alert - ${confidence}`,
+        body: `I noticed a slight increase in your heart rate to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Are you experiencing any anxiety or is this just normal activity?`,
+        color: "#4CAF50", // GREEN for mild (not orange!)
+        sound: "mild_alert",
+        requiresConfirmation: true,
+        alertType: "check_in_mild"
       };
     default:
       return {
-        title: "📊 Anxiety Alert",
+        title: `📊 Heart Rate Check - 50% Confidence`,
         body: `Heart rate: ${alertData.heartRate} BPM`,
-        color: "#4CAF50", // Default green
-        sound: "mild_alert", // Default to mild_alert.mp3
+        color: "#4CAF50",
+        sound: "mild_alert",
+        requiresConfirmation: true,
+        alertType: "check_in_mild"
       };
   }
 }

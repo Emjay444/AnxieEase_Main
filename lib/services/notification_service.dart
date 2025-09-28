@@ -97,7 +97,7 @@ class NotificationService extends ChangeNotifier {
   String _getChannelKeyForSeverity(String severity) {
     switch (severity.toLowerCase()) {
       case 'mild':
-  return 'mild_anxiety_alerts_v4'; // Updated to new channel
+        return 'mild_anxiety_alerts_v4'; // Updated to new channel
       case 'moderate':
         return 'moderate_anxiety_alerts';
       case 'severe':
@@ -105,7 +105,7 @@ class NotificationService extends ChangeNotifier {
       case 'critical':
         return 'critical_anxiety_alerts';
       case 'elevated':
-  return 'mild_anxiety_alerts_v4'; // Updated to new channel
+        return 'mild_anxiety_alerts_v4'; // Updated to new channel
       default:
         return 'anxiety_alerts'; // Fallback to general channel
     }
@@ -274,7 +274,8 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
           // Avoid critical alerts to prevent OEMs from looping sounds
           criticalAlerts: false,
-          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce:
+              true, // Prevent sound looping - play only once per notification
         ),
 
         // TESTING: New mild anxiety channel with maximum popup settings
@@ -346,7 +347,7 @@ class NotificationService extends ChangeNotifier {
           channelName: 'Critical Emergency Alerts',
           channelDescription: 'Emergency alerts requiring immediate attention',
           defaultColor: const Color(0xFFD32F2F), // Dark Red
-      importance: NotificationImportance.Max,
+          importance: NotificationImportance.Max,
           ledColor: const Color(0xFFD32F2F),
           enableVibration: true,
           playSound: true,
@@ -715,6 +716,7 @@ class NotificationService extends ChangeNotifier {
         title: title,
         message: message,
         type: dbType,
+        severity: severity, // Pass severity to Supabase
         relatedScreen: severity == 'severe' ? 'breathing_screen' : 'metrics',
       );
       debugPrint('💾 Saved severity notification to Supabase: $title');

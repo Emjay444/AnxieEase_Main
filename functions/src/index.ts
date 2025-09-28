@@ -138,17 +138,17 @@ function getNotificationContent(severity: string, heartRate?: number) {
   switch (severity) {
     case "mild":
       return {
-        title: "🟢 Mild Alert",
+        title: "🟢 Mild Alert - 60% Confidence",
         body: `Slight elevation in readings.${hrText}`,
       };
     case "moderate":
       return {
-        title: "🟠 Moderate Alert",
+        title: "🟠 Moderate Alert - 70% Confidence",
         body: `Noticeable symptoms detected.${hrText}`,
       };
     case "severe":
       return {
-        title: "🔴 Severe Alert",
+        title: "🔴 Severe Alert - 85% Confidence",
         body: `URGENT: High risk detected!${hrText}`,
       };
     default:
