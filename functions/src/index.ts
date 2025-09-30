@@ -475,7 +475,7 @@ let sentWellnessMessages: {
 // Scheduled wellness reminders - runs multiple times daily
 export const sendWellnessReminders = functions.pubsub
   .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
-  .timeZone("America/New_York") // Adjust timezone as needed
+  .timeZone("Asia/Manila") // Philippine time zone
   .onRun(async (context) => {
     try {
       const currentHour = new Date().getHours();

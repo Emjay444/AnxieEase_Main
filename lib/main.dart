@@ -1017,7 +1017,7 @@ Future<void> _configureFCM() async {
     // Handle token refresh (tokens can change automatically)
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       debugPrint('🔄 FCM token refreshed: $newToken');
-      await _storeTokenAtDeviceLevel(newToken);
+      await _storeTokenAtAssignmentLevel(newToken);
     });
 
     // Subscribe to topics only once per installation
@@ -1201,6 +1201,25 @@ Future<void> _configureFCM() async {
               '🧾 Stored tapped anxiety alert from OS notification: $stored');
         } catch (e) {
           debugPrint('⚠️ Could not store tapped anxiety alert: $e');
+        }
+      }
+
+      // Handle wellness reminders tapped from background notifications
+      final isWellnessReminder = messageType == 'wellness_reminder' ||
+          messageType == 'reminder' ||
+          (message.notification?.title?.toLowerCase().contains('wellness') ??
+              false) ||
+          (message.notification?.title?.toLowerCase().contains('breathing') ??
+              false) ||
+          (message.notification?.title?.toLowerCase().contains('🫁') ?? false);
+
+      if (isWellnessReminder) {
+        try {
+          await _storeWellnessReminderNotification(
+              message.notification, message.data);
+          debugPrint('🧾 Stored tapped wellness reminder from OS notification');
+        } catch (e) {
+          debugPrint('⚠️ Could not store tapped wellness reminder: $e');
         }
       }
 
@@ -1675,7 +1694,7 @@ Future<void> _refreshAndStoreToken() async {
 
     if (token != null) {
       debugPrint('🔑 Fresh FCM registration token: $token');
-      await _storeTokenAtDeviceLevel(token);
+      await _storeTokenAtAssignmentLevel(token);
     } else {
       debugPrint('⚠️ FCM token is null after refresh');
     }
@@ -1684,16 +1703,46 @@ Future<void> _refreshAndStoreToken() async {
   }
 }
 
-// Store FCM token at device level for Cloud Functions
-Future<void> _storeTokenAtDeviceLevel(String token) async {
+// Store FCM token at assignment level for Cloud Functions
+Future<void> _storeTokenAtAssignmentLevel(String token) async {
   try {
     const deviceId = 'AnxieEase001'; // Your device ID
-    await FirebaseDatabase.instance
-        .ref('/devices/$deviceId/fcmToken')
-        .set(token);
-    debugPrint('✅ FCM token stored at device level: $deviceId');
+
+    // Get current assignment to update it with the token
+    final assignmentRef =
+        FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
+    final assignmentSnapshot = await assignmentRef.once();
+    final assignmentData = assignmentSnapshot.snapshot.value as Map?;
+
+    if (assignmentData != null) {
+      // Update existing assignment with the FCM token
+      await assignmentRef.update({
+        'fcmToken': token,
+        'tokenAssignedAt': DateTime.now().toIso8601String(),
+      });
+      debugPrint('✅ FCM token stored in assignment node: $deviceId');
+    } else {
+      // Create assignment if it doesn't exist
+      await assignmentRef.set({
+        'fcmToken': token,
+        'tokenAssignedAt': DateTime.now().toIso8601String(),
+        'status': 'inactive',
+        'assignedAt': DateTime.now().toIso8601String(),
+      });
+      debugPrint('✅ Created assignment with FCM token: $deviceId');
+    }
+
+    // Clean up old device-level token (legacy location)
+    try {
+      await FirebaseDatabase.instance
+          .ref('/devices/$deviceId/fcmToken')
+          .remove();
+      debugPrint('🧹 Cleaned up old device-level FCM token');
+    } catch (e) {
+      debugPrint('⚠️ Could not remove old device-level token: $e');
+    }
   } catch (e) {
-    debugPrint('❌ Failed to store device FCM token: $e');
+    debugPrint('❌ Failed to store assignment FCM token: $e');
   }
 }
 
@@ -1924,5 +1973,28 @@ Future<void> _debugCheckBackgroundMarkers() async {
     }
   } catch (e) {
     debugPrint('❌ Error checking background markers: $e');
+  }
+}
+
+/// Clear old background notification markers (for cleanup)
+Future<void> _clearOldBackgroundMarkers() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    final backgroundKeys = allKeys
+        .where((key) => key.startsWith('last_background_notification_'))
+        .toList();
+
+    debugPrint(
+        '🧹 Clearing ${backgroundKeys.length} old background notification markers');
+
+    for (final key in backgroundKeys) {
+      await prefs.remove(key);
+      debugPrint('   ✅ Cleared: $key');
+    }
+
+    debugPrint('✅ All old background markers cleared');
+  } catch (e) {
+    debugPrint('❌ Error clearing background markers: $e');
   }
 }

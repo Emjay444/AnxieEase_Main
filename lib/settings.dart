@@ -9,9 +9,7 @@ import 'providers/auth_provider.dart';
 import 'utils/settings_helper.dart';
 import 'auth.dart'; // Import for AuthScreen
 import 'services/notification_service.dart';
-import 'screens/developer_test_screen.dart';
 import 'screens/baseline_recording_screen.dart';
-import 'widgets/notification_sound_tester.dart';
 // Import for logout navigation
 
 class SettingsScreen extends StatefulWidget {
@@ -445,30 +443,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _buildAnxietyReminderTile(),
                         // Add breathing exercise reminder settings
                         _buildBreathingReminderTile(),
-                        // Add notification sound testing
-                        _buildSettingsTile(
-                          icon: Icons.notifications_active,
-                          title: 'Test Notification Sounds',
-                          subtitle:
-                              'Test custom sounds for different anxiety levels',
-                          onTap: () {
-                            _showNotificationTestOptions(context);
-                          },
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.developer_mode,
-                          title: 'Developer Test',
-                          subtitle: 'Test anxiety detection system',
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const DeveloperTestScreen(),
-                              ),
-                            );
-                          },
-                        ),
                         _buildSettingsTile(
                           icon: Icons.psychology,
                           title: 'About AnxieEase',
@@ -809,157 +783,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-  }
-
-  /// Show notification sound test options
-  void _showNotificationTestOptions(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          '🔔 Test Notification Sounds',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Test different severity notification sounds to hear how they will sound during anxiety detection:',
-                style: TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 20),
-              _buildQuickTestButton('🟢 Mild Alert', 'mild', Colors.green),
-              const SizedBox(height: 8),
-              _buildQuickTestButton(
-                  '🟠 Moderate Alert', 'moderate', Colors.orange),
-              const SizedBox(height: 8),
-              _buildQuickTestButton('🔴 Severe Alert', 'severe', Colors.red),
-              const SizedBox(height: 8),
-              _buildQuickTestButton(
-                  '🚨 Critical Alert', 'critical', Colors.red[900]!),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () => _testAllNotificationSounds(context),
-                icon: const Icon(Icons.play_arrow, size: 18),
-                label: const Text('Test All Sounds (2s apart)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3AA772),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 40),
-                ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const NotificationSoundTester(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.science, size: 18),
-                label: const Text('Open Full Test Screen'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 40),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build quick test button for individual severity
-  Widget _buildQuickTestButton(String title, String severity, Color color) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => _testIndividualNotificationSound(severity),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(title,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-      ),
-    );
-  }
-
-  /// Test individual severity sound
-  Future<void> _testIndividualNotificationSound(String severity) async {
-    try {
-      await _notificationService.initialize();
-      await _notificationService.testSeverityNotification(
-        severity,
-        DateTime.now().millisecond,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '🔔 $severity notification sent! Check your notification panel.'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    }
-  }
-
-  /// Test all severity sounds with delays
-  Future<void> _testAllNotificationSounds(BuildContext context) async {
-    try {
-      Navigator.of(context).pop(); // Close dialog first
-
-      await _notificationService.initialize();
-      await _notificationService.testAllSeverityNotifications();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                '🎵 All severity notifications sent! Check your notification panel.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error testing notifications: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    }
   }
 }
 

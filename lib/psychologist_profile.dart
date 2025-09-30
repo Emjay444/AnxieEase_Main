@@ -54,36 +54,52 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
+    // Set loading state but don't block UI completely
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      // First attempt to auto-archive old appointments
-      try {
-        final archivedCount =
-            await _supabaseService.autoArchiveOldAppointments();
-        if (archivedCount > 0) {
-          Logger.info('Auto-archived $archivedCount old appointments');
-        }
-      } catch (e) {
-        // Don't fail if auto-archiving fails
-        Logger.error('Error auto-archiving appointments', e);
-      }
+      // Load essential data first (psychologist info) - this is what users care about most
+      await _loadPsychologistData();
 
-      // Load psychologist data
+      // Load appointments in background after showing the main content
+      _loadAppointmentsInBackground();
+    } catch (e) {
+      Logger.error('Error in _loadData', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading data: ${e.toString()}')),
+        );
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadPsychologistData() async {
+    try {
+      // Load psychologist data (main priority)
       final psychologistData = await _supabaseService.getAssignedPsychologist();
+
       if (psychologistData != null) {
-        try {
+        if (mounted) {
           setState(() {
             _psychologist = PsychologistModel.fromJson(psychologistData);
           });
+        }
 
-          // Try to get latest profile picture URL if available
-          if (_psychologist != null) {
+        // Try to get latest profile picture URL if available (non-blocking)
+        if (_psychologist != null && mounted) {
+          try {
             final latestPictureUrl = await _supabaseService
                 .getPsychologistProfilePictureUrl(_psychologist!.id);
-            if (latestPictureUrl != null && latestPictureUrl.isNotEmpty) {
+            if (latestPictureUrl != null &&
+                latestPictureUrl.isNotEmpty &&
+                mounted) {
               setState(() {
                 _psychologist = PsychologistModel(
                   id: _psychologist!.id,
@@ -96,26 +112,44 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                 );
               });
             }
-          }
-        } catch (e) {
-          Logger.error('Error parsing psychologist data', e);
-          // Show error but don't crash
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Error loading psychologist details. Please try again later.'),
-                backgroundColor: Colors.red,
-              ),
-            );
+          } catch (e) {
+            Logger.error('Error loading profile picture', e);
+            // Don't show error for profile picture - it's not critical
           }
         }
       } else {
         // Handle case where no psychologist is found
-        setState(() {
-          _psychologist = null;
-        });
-        // Do not show snackbar or auto-navigate
+        if (mounted) {
+          setState(() {
+            _psychologist = null;
+          });
+        }
+      }
+    } catch (e) {
+      Logger.error('Error loading psychologist data', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Error loading psychologist details. Please try again later.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadAppointmentsInBackground() async {
+    try {
+      // Auto-archive old appointments first (maintenance task)
+      try {
+        final archivedCount =
+            await _supabaseService.autoArchiveOldAppointments();
+        if (archivedCount > 0) {
+          Logger.info('Auto-archived $archivedCount old appointments');
+        }
+      } catch (e) {
+        Logger.error('Error auto-archiving appointments', e);
       }
 
       // Load appointment history
@@ -132,27 +166,25 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           data['status'] = 'accepted';
 
           // Also try to update in the database
-          await _supabaseService.refreshAppointmentStatus(data['id']);
+          try {
+            await _supabaseService.refreshAppointmentStatus(data['id']);
+          } catch (e) {
+            Logger.error('Error updating appointment status', e);
+          }
         }
 
         // Add to the appointments list
         appointments.add(AppointmentModel.fromJson(data));
       }
 
-      setState(() {
-        _appointments = appointments;
-      });
-    } catch (e) {
-      Logger.error('Error loading psychologist data', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: ${e.toString()}')),
-        );
+        setState(() {
+          _appointments = appointments;
+        });
       }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+    } catch (e) {
+      Logger.error('Error loading appointments', e);
+      // Don't show error for appointments - they can load later via refresh
     }
   }
 
@@ -363,13 +395,12 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Your Psychologist',
-            style: TextStyle(color: Colors.white)),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         centerTitle: false,
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF3AA772),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: const [],
@@ -383,13 +414,18 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               label: const Text('Request'),
               onPressed: _openAppointmentRequestSheet,
             ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF3AA772)))
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              color: const Color(0xFF3AA772),
-              child: SingleChildScrollView(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {
+            _isLoading = true;
+          });
+          await _loadData();
+        },
+        color: const Color(0xFF3AA772),
+        child: _isLoading && _psychologist == null
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF3AA772)))
+            : SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -399,8 +435,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
                     // Divider
                     Container(
-                      height: 8,
-                      color: Colors.grey[100],
+                      height: 1,
+                      color: Colors.grey[300],
                     ),
 
                     // If no psychologist, show message and button
@@ -497,7 +533,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                   ],
                 ),
               ),
-            ),
+      ),
     );
   }
 
@@ -561,9 +597,9 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               bottomRight: Radius.circular(16),
             ),
           ),
-          padding: EdgeInsets.fromLTRB(
+          padding: const EdgeInsets.fromLTRB(
             16,
-            MediaQuery.of(context).padding.top + 56,
+            20,
             16,
             20,
           ),

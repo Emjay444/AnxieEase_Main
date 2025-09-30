@@ -5,6 +5,36 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 const db = admin.database();
+// FCM token retrieval function
+async function getUserFCMToken(userId, deviceId) {
+    // First try assignment-level token (primary location for shared devices)
+    if (deviceId) {
+        const assignmentTokenRef = db.ref(`/devices/${deviceId}/assignment/fcmToken`);
+        const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
+        if (assignmentTokenSnapshot.exists()) {
+            console.log(`✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`);
+            return assignmentTokenSnapshot.val();
+        }
+    }
+    // Fallback to device-level token (legacy location)
+    if (deviceId) {
+        const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
+        const deviceTokenSnapshot = await deviceTokenRef.once("value");
+        if (deviceTokenSnapshot.exists()) {
+            console.log(`✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`);
+            return deviceTokenSnapshot.val();
+        }
+    }
+    // Final fallback to user profile token
+    const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
+    const tokenSnapshot = await userTokenRef.once("value");
+    if (tokenSnapshot.exists()) {
+        console.log(`✅ Found FCM token at user level: /users/${userId}/fcmToken`);
+        return tokenSnapshot.val();
+    }
+    console.log(`⚠️ No FCM token found in Firebase for user ${userId}${deviceId ? ` or device ${deviceId}` : ""}`);
+    return null;
+}
 /**
  * Enhanced anxiety detection with personalized thresholds
  * Triggers when heart rate data is updated in Firebase RTDB
@@ -164,8 +194,15 @@ async function sendPersonalizedNotification(data) {
     // Calculate percentage above baseline
     const percentageAbove = (((heartRate - baseline) / baseline) * 100).toFixed(0);
     const bpmAbove = (heartRate - baseline).toFixed(0);
+    // Get user's FCM token (check assignment-level first, then fallbacks)
+    const fcmToken = await getUserFCMToken(userId, deviceId);
+    if (!fcmToken) {
+        console.log(`⚠️ No FCM token found for user ${userId} in personalized detection`);
+        return null;
+    }
     const notificationContent = getPersonalizedNotificationContent(severity, heartRate, baseline, percentageAbove, bpmAbove);
     const message = {
+        token: fcmToken,
         data: {
             type: "anxiety_alert_personalized",
             severity: severity,
@@ -200,7 +237,6 @@ async function sendPersonalizedNotification(data) {
                 },
             },
         },
-        topic: `user_${userId}`,
     };
     try {
         await admin.messaging().send(message);

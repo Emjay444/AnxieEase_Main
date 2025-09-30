@@ -9,7 +9,8 @@ admin.initializeApp();
 // Optional: Supabase server-side persistence for test notifications
 // Configure via environment variables (Firebase Functions config or runtime env)
 const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
 // Lazy import to avoid hard dependency when not configured
 let fetchImpl = null;
 try {
@@ -403,7 +404,7 @@ let sentWellnessMessages = {
 // Scheduled wellness reminders - runs multiple times daily
 exports.sendWellnessReminders = functions.pubsub
     .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
-    .timeZone("America/New_York") // Adjust timezone as needed
+    .timeZone("Asia/Manila") // Philippine time zone
     .onRun(async (context) => {
     try {
         const currentHour = new Date().getHours();

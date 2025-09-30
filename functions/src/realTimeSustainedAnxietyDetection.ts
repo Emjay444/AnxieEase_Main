@@ -538,7 +538,22 @@ async function getUserFCMToken(
   userId: string,
   deviceId?: string
 ): Promise<string | null> {
-  // First try device-level token (where Flutter app stores it)
+  // First try assignment-level token (primary location for shared devices)
+  if (deviceId) {
+    const assignmentTokenRef = db.ref(
+      `/devices/${deviceId}/assignment/fcmToken`
+    );
+    const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
+
+    if (assignmentTokenSnapshot.exists()) {
+      console.log(
+        `✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
+      );
+      return assignmentTokenSnapshot.val();
+    }
+  }
+
+  // Fallback to device-level token (legacy location)
   if (deviceId) {
     const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
     const deviceTokenSnapshot = await deviceTokenRef.once("value");
@@ -551,7 +566,7 @@ async function getUserFCMToken(
     }
   }
 
-  // Fallback to user profile token
+  // Final fallback to user profile token
   const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
   const tokenSnapshot = await userTokenRef.once("value");
 

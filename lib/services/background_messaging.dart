@@ -32,24 +32,41 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (message.data['type'] == 'anxiety_alert' ||
         message.data['type'] == 'direct_test_device' ||
         message.data.containsKey('severity') ||
-        message.data['override_notification'] == 'true') {
+        message.data['override_notification'] == 'true' ||
+        message.data['type'] == 'wellness_reminder' ||
+        message.data['type'] == 'reminder') {
       debugPrint(
           '🚨 Processing data-only anxiety alert - creating local notification');
+
+      // Check if this is a wellness reminder
+      final isWellnessReminder = message.data['type'] == 'wellness_reminder' ||
+          message.data['type'] == 'reminder';
 
       String severity = message.data['severity'] ?? 'mild';
       String soundResource = _getSeveritySound(severity);
       String channelKey = _getSeverityChannel(severity);
 
+      // Override for wellness reminders
+      if (isWellnessReminder) {
+        soundResource = 'resource://raw/mild_alert'; // Gentle sound
+        channelKey = 'wellness_reminders'; // Wellness channel
+        debugPrint('🍃 Processing wellness reminder in background');
+      }
+
       // Get title and body from data payload (data-only approach)
       String title = message.data['title'] ??
           message.data['message'] ??
-          '🚨 Anxiety Alert';
+          (isWellnessReminder ? 'Wellness Reminder' : '🚨 Anxiety Alert');
       String body = message.data['message'] ??
           message.data['body'] ??
-          'Please check your levels';
+          (isWellnessReminder
+              ? 'Take a moment to check how you\'re feeling.'
+              : 'Please check your levels');
 
-      debugPrint('🔊 Using sound for ${severity}: ${soundResource}');
-      debugPrint('📺 Using channel for ${severity}: ${channelKey}');
+      debugPrint(
+          '🔊 Using sound for ${isWellnessReminder ? 'wellness' : severity}: ${soundResource}');
+      debugPrint(
+          '📺 Using channel for ${isWellnessReminder ? 'wellness' : severity}: ${channelKey}');
       debugPrint('📋 Title: ${title}');
       debugPrint('📝 Body: ${body}');
 
@@ -66,25 +83,34 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         await AwesomeNotifications().createNotification(
           content: NotificationContent(
             id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            channelKey: channelKey, // Use severity-specific channel
+            channelKey:
+                channelKey, // Use appropriate channel (wellness or severity-specific)
             // Ensure a valid small icon is set (required on Android O+)
             icon: 'resource://drawable/ic_notification',
             title: title,
             body: body,
             notificationLayout: NotificationLayout.Default,
-            // Use a non-alarm category to avoid OEMs looping custom sounds
-            category: NotificationCategory.Status,
+            // Use appropriate category
+            category: isWellnessReminder
+                ? NotificationCategory.Reminder
+                : NotificationCategory.Status,
             criticalAlert: false,
-            wakeUpScreen: true,
-            customSound: soundResource, // Use severity-specific sound
+            wakeUpScreen: isWellnessReminder
+                ? false
+                : true, // Don't wake screen for wellness reminders
+            customSound: soundResource,
             autoDismissible: true,
             // Include payload so the app can route taps properly when launching from terminated/background state
             payload: {
               'type': message.data['type'] ?? 'anxiety_alert',
               'severity': severity,
-              'action': 'open_notifications',
-              'related_screen': 'notifications',
+              'action':
+                  isWellnessReminder ? 'open_wellness' : 'open_notifications',
+              'related_screen':
+                  isWellnessReminder ? 'breathing_screen' : 'notifications',
               'source': 'fcm_bg_data_only',
+              'category': message.data['category'] ?? 'general',
+              'messageType': message.data['messageType'] ?? '',
               if (message.data['heartRate'] != null)
                 'heartRate': message.data['heartRate'].toString(),
               if (message.data['baseline'] != null)

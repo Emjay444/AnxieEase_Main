@@ -7,6 +7,56 @@ import {
 
 const db = admin.database();
 
+// FCM token retrieval function
+async function getUserFCMToken(
+  userId: string,
+  deviceId?: string
+): Promise<string | null> {
+  // First try assignment-level token (primary location for shared devices)
+  if (deviceId) {
+    const assignmentTokenRef = db.ref(
+      `/devices/${deviceId}/assignment/fcmToken`
+    );
+    const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
+
+    if (assignmentTokenSnapshot.exists()) {
+      console.log(
+        `✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
+      );
+      return assignmentTokenSnapshot.val();
+    }
+  }
+
+  // Fallback to device-level token (legacy location)
+  if (deviceId) {
+    const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
+    const deviceTokenSnapshot = await deviceTokenRef.once("value");
+
+    if (deviceTokenSnapshot.exists()) {
+      console.log(
+        `✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`
+      );
+      return deviceTokenSnapshot.val();
+    }
+  }
+
+  // Final fallback to user profile token
+  const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
+  const tokenSnapshot = await userTokenRef.once("value");
+
+  if (tokenSnapshot.exists()) {
+    console.log(`✅ Found FCM token at user level: /users/${userId}/fcmToken`);
+    return tokenSnapshot.val();
+  }
+
+  console.log(
+    `⚠️ No FCM token found in Firebase for user ${userId}${
+      deviceId ? ` or device ${deviceId}` : ""
+    }`
+  );
+  return null;
+}
+
 /**
  * Enhanced anxiety detection with personalized thresholds
  * Triggers when heart rate data is updated in Firebase RTDB
@@ -196,6 +246,15 @@ async function sendPersonalizedNotification(data: any) {
   );
   const bpmAbove = (heartRate - baseline).toFixed(0);
 
+  // Get user's FCM token (check assignment-level first, then fallbacks)
+  const fcmToken = await getUserFCMToken(userId, deviceId);
+  if (!fcmToken) {
+    console.log(
+      `⚠️ No FCM token found for user ${userId} in personalized detection`
+    );
+    return null;
+  }
+
   const notificationContent = getPersonalizedNotificationContent(
     severity,
     heartRate,
@@ -204,7 +263,8 @@ async function sendPersonalizedNotification(data: any) {
     bpmAbove
   );
 
-  const message: admin.messaging.TopicMessage = {
+  const message = {
+    token: fcmToken, // Use direct token instead of topic
     data: {
       type: "anxiety_alert_personalized",
       severity: severity,
@@ -240,7 +300,6 @@ async function sendPersonalizedNotification(data: any) {
         },
       },
     },
-    topic: `user_${userId}`,
   };
 
   try {
@@ -315,12 +374,12 @@ function getPersonalizedNotificationContent(
 function getAndroidChannelId(severity: string) {
   const channelMap = {
     mild: "mild_anxiety_alerts",
-    moderate: "moderate_anxiety_alerts", 
+    moderate: "moderate_anxiety_alerts",
     severe: "severe_anxiety_alerts",
     critical: "critical_anxiety_alerts",
     elevated: "mild_anxiety_alerts",
   };
-  
+
   return (channelMap as Record<string, string>)[severity] || "anxiety_alerts";
 }
 
@@ -331,11 +390,11 @@ function getCustomSoundName(severity: string) {
   const soundMap = {
     mild: "mild_alert",
     moderate: "moderate_alert",
-    severe: "severe_alert", 
+    severe: "severe_alert",
     critical: "critical_alert",
     elevated: "mild_alert",
   };
-  
+
   return (soundMap as Record<string, string>)[severity] || "default";
 }
 
