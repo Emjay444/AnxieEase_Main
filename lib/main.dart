@@ -1044,7 +1044,8 @@ Future<void> _configureFCM() async {
 
         // Check if this is a wellness reminder or breathing exercise reminder
         final messageType = data['type'] ?? '';
-        if ((messageType == 'reminder' || messageType == 'breathing_reminder') &&
+        if ((messageType == 'reminder' ||
+                messageType == 'breathing_reminder') &&
             (notification?.title?.contains('Breathing Exercise') == true ||
                 notification?.title?.contains('🫁') == true ||
                 notification?.title?.contains('Breathe') == true ||

@@ -544,7 +544,7 @@ export const sendWellnessReminders = functions.pubsub
         hour12: false,
       });
       const currentHour = parseInt(philippineTime.split(", ")[1].split(":")[0]);
-      
+
       let timeCategory: keyof typeof WELLNESS_MESSAGES;
 
       // Determine time category based on Philippine time - updated for 5 daily reminders
@@ -556,7 +556,9 @@ export const sendWellnessReminders = functions.pubsub
         timeCategory = "evening";
       }
 
-      console.log(`🕐 Philippine time hour: ${currentHour}, category: ${timeCategory}`);
+      console.log(
+        `🕐 Philippine time hour: ${currentHour}, category: ${timeCategory}`
+      );
 
       // Get a non-repeating message
       const message = getRandomWellnessMessage(timeCategory);
@@ -668,7 +670,7 @@ export const sendDailyBreathingReminder = functions.pubsub
           body: "Take 5 minutes for deep breathing. Inhale slowly, hold, then exhale completely. Your mind will thank you.",
         },
         {
-          title: "🌬️ Breathe & Reset", 
+          title: "🌬️ Breathe & Reset",
           body: "Try the 4-7-8 technique: Inhale for 4, hold for 7, exhale for 8. Perfect for releasing tension.",
         },
         {
@@ -686,7 +688,8 @@ export const sendDailyBreathingReminder = functions.pubsub
       ];
 
       // Get a random breathing message
-      const message = breathingMessages[Math.floor(Math.random() * breathingMessages.length)];
+      const message =
+        breathingMessages[Math.floor(Math.random() * breathingMessages.length)];
 
       // Send FCM notification
       const fcmMessage = {

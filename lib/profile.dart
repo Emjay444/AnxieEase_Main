@@ -433,7 +433,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                       backgroundImage: _getAvatarImage(),
                                       child: _getAvatarImage() == null
                                           ? Text(
-                                              _firstNameController.text.isNotEmpty
+                                              _firstNameController
+                                                      .text.isNotEmpty
                                                   ? _firstNameController.text[0]
                                                       .toUpperCase()
                                                   : '?',

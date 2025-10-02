@@ -161,7 +161,8 @@ class _LoginScreenState extends State<LoginScreen> {
     await _performLoginWithRetry(authProvider);
   }
 
-  Future<void> _performLoginWithRetry(AuthProvider authProvider, {int attempt = 1, int maxAttempts = 3}) async {
+  Future<void> _performLoginWithRetry(AuthProvider authProvider,
+      {int attempt = 1, int maxAttempts = 3}) async {
     const retryableErrors = [
       'network',
       'timeout',
@@ -273,17 +274,20 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       String errorMessage = e.toString().toLowerCase();
-      bool shouldRetry = retryableErrors.any((error) => errorMessage.contains(error));
+      bool shouldRetry =
+          retryableErrors.any((error) => errorMessage.contains(error));
 
       // If it's a retryable error and we haven't exceeded max attempts, retry automatically
       if (shouldRetry && attempt < maxAttempts) {
         debugPrint('🔄 Login attempt $attempt failed with retryable error: $e');
-        debugPrint('⏳ Auto-retrying in ${attempt} seconds... (Attempt ${attempt + 1}/$maxAttempts)');
-        
+        debugPrint(
+            '⏳ Auto-retrying in ${attempt} seconds... (Attempt ${attempt + 1}/$maxAttempts)');
+
         // Show a brief message about auto-retry
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection issue detected. Auto-retrying... (${attempt + 1}/$maxAttempts)'),
+            content: Text(
+                'Connection issue detected. Auto-retrying... (${attempt + 1}/$maxAttempts)'),
             duration: Duration(seconds: attempt),
             backgroundColor: Colors.orange,
           ),
@@ -291,9 +295,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         // Wait with exponential backoff
         await Future.delayed(Duration(seconds: attempt));
-        
+
         if (mounted) {
-          await _performLoginWithRetry(authProvider, attempt: attempt + 1, maxAttempts: maxAttempts);
+          await _performLoginWithRetry(authProvider,
+              attempt: attempt + 1, maxAttempts: maxAttempts);
         }
         return;
       }
@@ -327,11 +332,14 @@ class _LoginScreenState extends State<LoginScreen> {
         displayErrorMessage =
             'Please verify your email before logging in. Check your inbox for the verification link.';
       } else if (e.toString().contains('rate limit')) {
-        displayErrorMessage = 'Too many login attempts. Please try again later.';
+        displayErrorMessage =
+            'Too many login attempts. Please try again later.';
       } else if (shouldRetry && attempt >= maxAttempts) {
-        displayErrorMessage = 'Connection failed after $maxAttempts attempts. Please check your internet and try again.';
+        displayErrorMessage =
+            'Connection failed after $maxAttempts attempts. Please check your internet and try again.';
       } else if (errorMessage.contains('network')) {
-        displayErrorMessage = 'Network error. Please check your internet connection.';
+        displayErrorMessage =
+            'Network error. Please check your internet connection.';
       } else {
         // For any other error, still show "Invalid email or password" for security reasons
         // when credentials are likely the issue
@@ -691,8 +699,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-              : const Text(
-                'Sign In',
+                            : const Text(
+                                'Sign In',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
