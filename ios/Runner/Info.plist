@@ -70,5 +70,7 @@
 		<false/>
 		<key>NSUserNotificationsUsageDescription</key>
 		<string>AnxieEase needs to send you notifications about your anxiety levels and breathing exercises.</string>
+		<key>NSPhoneCallUsageDescription</key>
+		<string>AnxieEase needs to make emergency calls during anxiety attacks when you request help.</string>
 	</dict>
 </plist>

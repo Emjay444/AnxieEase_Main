@@ -1153,3 +1153,141 @@ function getBatteryNotificationContent(
       };
   }
 }
+
+/**
+ * Send wellness reminder to all users (uses user-level FCM tokens)
+ * This function sends general wellness notifications to all users regardless of device assignment
+ */
+export const sendWellnessReminder = functions.https.onCall(
+  async (data, context) => {
+    try {
+      const { title, body, type = "wellness_reminder" } = data;
+
+      if (!title || !body) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Title and body are required"
+        );
+      }
+
+      console.log(`📢 Sending wellness reminder to all users: ${title}`);
+
+      // Get all users from Firebase Database
+      const usersSnapshot = await admin.database().ref("/users").once("value");
+      const users = usersSnapshot.val();
+
+      if (!users) {
+        console.log("⚠️ No users found for wellness reminder");
+        return { success: true, message: "No users to send to", sentCount: 0 };
+      }
+
+      const userIds = Object.keys(users);
+      console.log(`👥 Found ${userIds.length} users for wellness reminder`);
+
+      let sentCount = 0;
+      const sendPromises = [];
+
+      for (const userId of userIds) {
+        const sendPromise = sendWellnessReminderToUser(userId, title, body, type);
+        sendPromises.push(sendPromise);
+      }
+
+      // Wait for all notifications to be sent
+      const results = await Promise.allSettled(sendPromises);
+      
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value) {
+          sentCount++;
+        } else {
+          console.log(`⚠️ Failed to send wellness reminder to user ${userIds[index]}`);
+        }
+      });
+
+      console.log(`✅ Wellness reminder sent to ${sentCount}/${userIds.length} users`);
+
+      return {
+        success: true,
+        message: `Wellness reminder sent successfully`,
+        sentCount,
+        totalUsers: userIds.length,
+      };
+    } catch (error) {
+      console.error("❌ Error sending wellness reminder:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to send wellness reminder"
+      );
+    }
+  }
+);
+
+/**
+ * Helper function to send wellness reminder to a specific user
+ */
+async function sendWellnessReminderToUser(
+  userId: string,
+  title: string,
+  body: string,
+  type: string
+): Promise<boolean> {
+  try {
+    // Import the getUserFCMToken function from the anxiety detection module
+    const { getUserFCMToken } = await import("./realTimeSustainedAnxietyDetection");
+    
+    // Get user-level FCM token for wellness notifications
+    const fcmToken = await getUserFCMToken(userId, undefined, "wellness_reminder");
+
+    if (!fcmToken) {
+      console.log(`⚠️ No wellness FCM token found for user ${userId}`);
+      return false;
+    }
+
+    const message = {
+      token: fcmToken,
+      data: {
+        type: type,
+        userId: userId,
+        title: title,
+        body: body,
+        timestamp: Date.now().toString(),
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+      notification: {
+        title: title,
+        body: body,
+      },
+      android: {
+        priority: "normal" as const,
+        notification: {
+          icon: "ic_notification",
+          color: "#2D9254", // AnxieEase green color
+          channelId: "wellness_reminders",
+          priority: "default" as const,
+          defaultSound: true,
+        },
+      },
+      apns: {
+        headers: {
+          "apns-priority": "5", // Normal priority for wellness reminders
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: title,
+              body: body,
+            },
+            sound: "default",
+            badge: 1,
+          },
+        },
+      },
+    };
+
+    const response = await admin.messaging().send(message);
+    console.log(`✅ Wellness reminder sent to user ${userId}:`, response);
+    return true;
+  } catch (error) {
+    console.error(`❌ Error sending wellness reminder to user ${userId}:`, error);
+    return false;
+  }
+}

@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'services/notification_service.dart';
-import 'widgets/notification_permission_dialog.dart';
 import 'main.dart'; // Access servicesInitializedCompleter
 import 'dart:async';
 
@@ -12,7 +10,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final NotificationService _notificationService = NotificationService();
   bool _permissionsChecked = false;
   bool _isLoading = true;
 
@@ -39,95 +36,23 @@ class _SplashScreenState extends State<SplashScreen> {
 
     debugPrint('✅ SplashScreen - Services initialized!');
 
-    // Once services are initialized, check permissions
+    // Once services are initialized, show the splash screen briefly
     setState(() {
       _isLoading = false;
     });
 
-    // Wait a bit to show the splash screen
-    await Future.delayed(const Duration(seconds: 1));
+    // Wait a bit longer to show the splash screen since no permission dialogs
+    await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
 
-    debugPrint('🔄 SplashScreen - Checking notification permissions...');
-
-    // Check if we've already asked for notification permissions
-    final permissionStatus =
-        await _notificationService.getSavedPermissionStatus();
-
-    debugPrint('🔄 SplashScreen - Permission status: $permissionStatus');
+    debugPrint('🔄 SplashScreen - Permissions already handled in main.dart...');
 
     setState(() {
       _permissionsChecked = true;
     });
 
-    if (permissionStatus == null) {
-      // First time launch - show notification permission dialog
-      debugPrint(
-          '🔄 SplashScreen - First time launch, showing permission dialog');
-      _showNotificationPermissionDialog();
-    } else if (permissionStatus == false) {
-      // Permission was previously denied - check if it's still denied
-      debugPrint(
-          '🔄 SplashScreen - Permission was denied, checking current status');
-      final currentStatus =
-          await _notificationService.checkNotificationPermissions();
-      if (!currentStatus) {
-        // Still denied - show settings redirect dialog
-        debugPrint('🔄 SplashScreen - Still denied, showing settings dialog');
-        _showNotificationSettingsRedirectDialog();
-      } else {
-        // Permission is now granted - proceed to auth screen
-        debugPrint(
-            '✅ SplashScreen - Permission now granted, navigating to auth');
-        _navigateToAuthScreen();
-      }
-    } else {
-      // Permission was previously granted - proceed to auth screen
-      debugPrint(
-          '✅ SplashScreen - Permission already granted, navigating to auth');
-      _navigateToAuthScreen();
-    }
-  }
-
-  void _showNotificationPermissionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => NotificationPermissionDialog(
-        onAllow: () async {
-          Navigator.of(context).pop();
-          final granted =
-              await _notificationService.requestNotificationPermissions();
-          if (granted) {
-            // Test notification disabled - Cloud Functions handle all notifications
-            // await _notificationService.showTestNotification();
-          }
-          _navigateToAuthScreen();
-        },
-        onDeny: () {
-          Navigator.of(context).pop();
-          _navigateToAuthScreen();
-        },
-      ),
-    );
-  }
-
-  void _showNotificationSettingsRedirectDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => NotificationSettingsRedirectDialog(
-        onOpenSettings: () async {
-          Navigator.of(context).pop();
-          await _notificationService.openNotificationSettings();
-          _navigateToAuthScreen();
-        },
-        onCancel: () {
-          Navigator.of(context).pop();
-          _navigateToAuthScreen();
-        },
-      ),
-    );
+    // Navigate to auth screen (permissions are handled in main.dart before this)
+    _navigateToAuthScreen();
   }
 
   void _navigateToAuthScreen() {

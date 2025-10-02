@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'services/iot_sensor_service.dart';
 import 'services/device_service.dart';
+import 'services/admin_device_management_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/supabase_service.dart';
 
@@ -219,7 +220,17 @@ class _WatchScreenState extends State<WatchScreen>
   /// Check if device is properly setup
   Future<void> _checkDeviceSetup() async {
     try {
-      // Check if user has any linked devices in Supabase
+      // First check if admin has assigned a device to this user
+      final adminDeviceService = AdminDeviceManagementService();
+      final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
+
+      if (assignmentStatus.canUseDevice) {
+        _isDeviceSetup = true;
+        debugPrint('Device setup check: Admin assigned device available');
+        return;
+      }
+
+      // Fallback: Check if user has any linked devices in Supabase
       final user =
           Provider.of<AuthProvider>(context, listen: false).currentUser;
       if (user != null) {
@@ -239,10 +250,9 @@ class _WatchScreenState extends State<WatchScreen>
         debugPrint('Device setup check: No user authenticated');
       }
     } catch (e) {
-      // Fallback to IoT service check if database query fails
-      _isDeviceSetup = _iotSensorService.deviceId.isNotEmpty &&
-          _iotSensorService.deviceId != 'Unknown';
-      debugPrint('Device setup check fallback: $_isDeviceSetup (error: $e)');
+      // No device available
+      _isDeviceSetup = false;
+      debugPrint('Device setup check: No assigned device (error: $e)');
     }
   }
 
@@ -490,18 +500,18 @@ class _WatchScreenState extends State<WatchScreen>
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: Colors.orange.shade50,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.watch,
+                Icons.assignment_outlined,
                 size: 80,
-                color: Colors.blue.shade600,
+                color: Colors.orange.shade600,
               ),
             ),
             const SizedBox(height: 32),
             const Text(
-              'Device Setup Required',
+              'No Device Assigned',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -511,7 +521,7 @@ class _WatchScreenState extends State<WatchScreen>
             ),
             const SizedBox(height: 16),
             const Text(
-              'Connect your wearable device to start tracking your health metrics in real-time.',
+              'You need to have a wearable device assigned by an administrator before you can start monitoring your health metrics.',
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.black54,
@@ -519,117 +529,8 @@ class _WatchScreenState extends State<WatchScreen>
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Setup Steps:',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSetupStep(1, 'Turn on your wearable device'),
-                  _buildSetupStep(2, 'Enable Bluetooth on your phone'),
-                  _buildSetupStep(3, 'Tap "Setup Device" to connect'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to device setup or pairing screen
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Device setup not implemented yet'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade600,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Setup Device',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isDeviceSetup = true; // Temporary skip for testing
-                });
-              },
-              child: Text(
-                'Skip for now',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 16,
-                ),
-              ),
-            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSetupStep(int number, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Colors.blue.shade600,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

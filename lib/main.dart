@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 import 'auth.dart';
 import 'auth_wrapper.dart';
 import 'providers/theme_provider.dart';
@@ -11,6 +13,7 @@ import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/iot_sensor_service.dart';
+import 'services/admin_device_management_service.dart';
 import 'reset_password.dart';
 import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
@@ -293,9 +296,22 @@ Future<void> _initializeRemainingServices(
     // Add frame break before permission requests
     await Future.delayed(Duration.zero);
 
-    // Request notification permissions
-    final isAllowed = await notificationService.checkNotificationPermissions();
-    if (!isAllowed) {
+    // Request both notification and phone permissions simultaneously
+    final isNotificationAllowed =
+        await notificationService.checkNotificationPermissions();
+    if (!isNotificationAllowed) {
+      // Request both permissions together - the system will show the dialogs
+      final Map<Permission, PermissionStatus> permissionStatuses = await [
+        Permission.phone,
+        Permission.notification,
+      ].request();
+
+      debugPrint(
+          '📞 Phone permission: ${permissionStatuses[Permission.phone]}');
+      debugPrint(
+          '🔔 Notification permission: ${permissionStatuses[Permission.notification]}');
+
+      // Also request AwesomeNotifications permission
       await notificationService.requestNotificationPermissions();
     }
 
@@ -1697,33 +1713,45 @@ Future<void> _refreshAndStoreToken() async {
   }
 }
 
-// Store FCM token at assignment level for Cloud Functions
+// Store FCM token at both user and assignment levels for different notification types
 Future<void> _storeTokenAtAssignmentLevel(String token) async {
   try {
     const deviceId = 'AnxieEase001'; // Your device ID
 
-    // Get current assignment to update it with the token
-    final assignmentRef =
-        FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
-    final assignmentSnapshot = await assignmentRef.once();
-    final assignmentData = assignmentSnapshot.snapshot.value as Map?;
+    // 1. ALWAYS store user-level FCM token for wellness notifications
+    await _storeUserLevelFCMToken(token);
 
-    if (assignmentData != null) {
-      // Update existing assignment with the FCM token
-      await assignmentRef.update({
-        'fcmToken': token,
-        'tokenAssignedAt': DateTime.now().toIso8601String(),
-      });
-      debugPrint('✅ FCM token stored in assignment node: $deviceId');
+    // 2. Store assignment-level FCM token ONLY if user has device assigned
+    final adminDeviceService = AdminDeviceManagementService();
+    final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
+
+    if (assignmentStatus.canUseDevice) {
+      // User has device assigned - store at assignment level for anxiety alerts
+      final assignmentRef =
+          FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
+      final assignmentSnapshot = await assignmentRef.once();
+      final assignmentData = assignmentSnapshot.snapshot.value as Map?;
+
+      if (assignmentData != null) {
+        // Update existing assignment with the FCM token
+        await assignmentRef.update({
+          'fcmToken': token,
+          'tokenAssignedAt': DateTime.now().toIso8601String(),
+        });
+        debugPrint('✅ FCM token stored in assignment node: $deviceId');
+      } else {
+        // Create assignment if it doesn't exist
+        await assignmentRef.set({
+          'fcmToken': token,
+          'tokenAssignedAt': DateTime.now().toIso8601String(),
+          'status': 'inactive',
+          'assignedAt': DateTime.now().toIso8601String(),
+        });
+        debugPrint('✅ Created assignment with FCM token: $deviceId');
+      }
     } else {
-      // Create assignment if it doesn't exist
-      await assignmentRef.set({
-        'fcmToken': token,
-        'tokenAssignedAt': DateTime.now().toIso8601String(),
-        'status': 'inactive',
-        'assignedAt': DateTime.now().toIso8601String(),
-      });
-      debugPrint('✅ Created assignment with FCM token: $deviceId');
+      debugPrint(
+          'ℹ️ User has no device assigned - skipping assignment FCM token');
     }
 
     // Clean up old device-level token (legacy location)
@@ -1736,7 +1764,36 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
       debugPrint('⚠️ Could not remove old device-level token: $e');
     }
   } catch (e) {
-    debugPrint('❌ Failed to store assignment FCM token: $e');
+    debugPrint('❌ Failed to store FCM tokens: $e');
+  }
+}
+
+// Store user-level FCM token for wellness notifications and general app notifications
+Future<void> _storeUserLevelFCMToken(String token) async {
+  try {
+    final supabaseService = SupabaseService();
+    final user = supabaseService.client.auth.currentUser;
+    if (user == null) {
+      debugPrint('⚠️ No authenticated user for FCM token storage');
+      return;
+    }
+
+    // Store at user level for wellness reminders and general notifications
+    final userFCMRef =
+        FirebaseDatabase.instance.ref('/users/${user.id}/fcmToken');
+    await userFCMRef.set({
+      'token': token,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'deviceInfo': {
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'appVersion': '1.0.0', // You can get this from package_info
+      }
+    });
+
+    debugPrint(
+        '✅ User-level FCM token stored for wellness notifications: ${user.id}');
+  } catch (e) {
+    debugPrint('❌ Failed to store user-level FCM token: $e');
   }
 }
 

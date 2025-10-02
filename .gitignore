@@ -89,8 +89,8 @@ lib/config/supabase_config.dart
 # Firebase service account keys (sensitive)
 service-account-key.json
 **/service-account-key.json
-functions/*firebase-adminsdk*.json
-functions/*adminsdk*.json
+**/anxieease-sensors-firebase-adminsdk-key.json
+functions/anxieease-sensors-firebase-adminsdk-key.json
 
 # Node.js
 node_modules

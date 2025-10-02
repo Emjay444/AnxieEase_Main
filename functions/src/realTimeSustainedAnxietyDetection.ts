@@ -405,14 +405,15 @@ async function sendUserAnxietyAlert(alertData: any) {
   );
 
   try {
-    // Get user's FCM token from Firebase
+    // Get user's FCM token specifically for anxiety alerts (assignment-level)
     const fcmToken = await getUserFCMToken(
       alertData.userId,
-      alertData.deviceId
+      alertData.deviceId,
+      "anxiety_alert"
     );
 
     if (!fcmToken) {
-      console.log(`⚠️ No FCM token found for user ${alertData.userId}`);
+      console.log(`⚠️ No anxiety alert FCM token found for user ${alertData.userId} - user may not have device assigned`);
       return null;
     }
 
@@ -531,15 +532,18 @@ async function persistAlertToSupabase(alertData: any) {
 }
 
 /**
- * Get user's FCM token for notifications
- * Checks both device-level and user-level token storage
+ * Get user's FCM token for notifications with context-aware retrieval
+ * For anxiety alerts: Use assignment-level token (device-assigned users only)
+ * For wellness notifications: Use user-level token (all users)
  */
-async function getUserFCMToken(
+export async function getUserFCMToken(
   userId: string,
-  deviceId?: string
+  deviceId?: string,
+  notificationType: string = "anxiety_alert"
 ): Promise<string | null> {
-  // First try assignment-level token (primary location for shared devices)
-  if (deviceId) {
+  
+  // For ANXIETY ALERTS: Only get token from assignment level (device-assigned users)
+  if (notificationType === "anxiety_alert" && deviceId) {
     const assignmentTokenRef = db.ref(
       `/devices/${deviceId}/assignment/fcmToken`
     );
@@ -547,38 +551,69 @@ async function getUserFCMToken(
 
     if (assignmentTokenSnapshot.exists()) {
       console.log(
-        `✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
+        `✅ Found anxiety alert FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
       );
       return assignmentTokenSnapshot.val();
     }
+
+    console.log(
+      `⚠️ No assignment-level FCM token found for anxiety alert to user ${userId}, device ${deviceId}`
+    );
+    return null;
   }
 
-  // Fallback to device-level token (legacy location)
+  // For WELLNESS NOTIFICATIONS: Get token from user level (all users)
+  if (notificationType === "wellness_reminder" || notificationType === "general") {
+    const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
+    const tokenSnapshot = await userTokenRef.once("value");
+
+    if (tokenSnapshot.exists()) {
+      const tokenData = tokenSnapshot.val();
+      // Handle both new structure {token: "...", updatedAt: "..."} and legacy string format
+      const token = typeof tokenData === 'string' ? tokenData : tokenData?.token;
+      
+      if (token) {
+        console.log(`✅ Found wellness FCM token at user level: /users/${userId}/fcmToken`);
+        return token;
+      }
+    }
+
+    console.log(`⚠️ No user-level FCM token found for wellness notification to user ${userId}`);
+    return null;
+  }
+
+  // FALLBACK: Try legacy locations for backward compatibility
   if (deviceId) {
+    // Legacy device-level token
     const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
     const deviceTokenSnapshot = await deviceTokenRef.once("value");
 
     if (deviceTokenSnapshot.exists()) {
       console.log(
-        `✅ Found FCM token at device level: /devices/${deviceId}/fcmToken`
+        `✅ Found FCM token at legacy device level: /devices/${deviceId}/fcmToken`
       );
       return deviceTokenSnapshot.val();
     }
   }
 
-  // Final fallback to user profile token
+  // Legacy user profile token (string format)
   const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
   const tokenSnapshot = await userTokenRef.once("value");
 
   if (tokenSnapshot.exists()) {
-    console.log(`✅ Found FCM token at user level: /users/${userId}/fcmToken`);
-    return tokenSnapshot.val();
+    const tokenData = tokenSnapshot.val();
+    const token = typeof tokenData === 'string' ? tokenData : tokenData?.token;
+    
+    if (token) {
+      console.log(`✅ Found FCM token at user level (fallback): /users/${userId}/fcmToken`);
+      return token;
+    }
   }
 
   console.log(
     `⚠️ No FCM token found in Firebase for user ${userId}${
       deviceId ? ` or device ${deviceId}` : ""
-    }`
+    } for notification type: ${notificationType}`
   );
   return null;
 }
