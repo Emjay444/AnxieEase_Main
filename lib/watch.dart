@@ -417,7 +417,7 @@ class _WatchScreenState extends State<WatchScreen>
             // Low battery warning banner
             if ((batteryPercentage ?? 0) <= 10 && (batteryPercentage ?? 0) > 0)
               _buildLowBatteryWarning(),
-            
+
             // Device status card
             _buildDeviceStatusCard(),
             const SizedBox(height: 24),
@@ -767,12 +767,12 @@ class _WatchScreenState extends State<WatchScreen>
     final isLowBattery = battery <= 10;
     final isCriticalBattery = battery <= 5;
     final isOffline = !isConnected || battery <= 0;
-    
+
     // Choose appropriate icon and color
     IconData batteryIcon;
     Color iconColor;
     Color textColor;
-    
+
     if (isOffline) {
       batteryIcon = Icons.battery_unknown;
       iconColor = Colors.grey;
@@ -858,7 +858,7 @@ class _WatchScreenState extends State<WatchScreen>
   Widget _buildLowBatteryWarning() {
     final battery = batteryPercentage ?? 0;
     final isCritical = battery <= 5;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -892,9 +892,9 @@ class _WatchScreenState extends State<WatchScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isCritical 
-                    ? 'Device battery at ${battery.toStringAsFixed(0)}%. Please charge immediately!'
-                    : 'Device battery at ${battery.toStringAsFixed(0)}%. Consider charging soon.',
+                  isCritical
+                      ? 'Device battery at ${battery.toStringAsFixed(0)}%. Please charge immediately!'
+                      : 'Device battery at ${battery.toStringAsFixed(0)}%. Consider charging soon.',
                   style: TextStyle(
                     color: isCritical ? Colors.red[600] : Colors.orange[600],
                     fontSize: 14,

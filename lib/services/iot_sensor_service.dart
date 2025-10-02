@@ -264,7 +264,8 @@ class IoTSensorService extends ChangeNotifier {
           'accelZ': 0.0,
           'ambientTemp': 20 +
               _random.nextDouble() * 8, // Room temperature still detectable
-          'battPerc': _isDeviceShutdown ? 0 : _batteryLevel.clamp(1, 100).round(),
+          'battPerc':
+              _isDeviceShutdown ? 0 : _batteryLevel.clamp(1, 100).round(),
           'bodyTemp': 0.0, // No body temperature when not worn
           'gyroX': 0.0,
           'gyroY': 0.0,
@@ -334,37 +335,38 @@ class IoTSensorService extends ChangeNotifier {
         // Normal battery drain - but never below 1% unless device shuts down
         final batteryDrain = _random.nextDouble() * 0.1;
         _batteryLevel = max(1.0, _batteryLevel - batteryDrain);
-        
+
         // Check for low battery warnings
         if (_batteryLevel <= 10 && !_lowBatteryWarningShown) {
           _showLowBatteryWarning();
           _lowBatteryWarningShown = true;
         }
-        
+
         // Reset warning flag if battery goes above 15% (hysteresis)
         if (_batteryLevel > 15) {
           _lowBatteryWarningShown = false;
         }
-        
+
         // Device shuts down at exactly 1% (critical battery)
         if (_batteryLevel <= 1.0) {
           _isDeviceShutdown = true;
           _isConnected = false;
           _batteryLevel = 0.0; // Now it can show 0%
-          AppLogger.d('IoTSensorService: Device shut down due to critical battery');
-          
+          AppLogger.d(
+              'IoTSensorService: Device shut down due to critical battery');
+
           // Send device offline notification
           _sendDeviceOfflineNotification();
         }
       }
-      
+
       // Simulate charging when battery gets low (but not if shut down)
       if (_batteryLevel < 20 && !_isDeviceShutdown) {
         _batteryLevel = 100; // Simulate charging
         _lowBatteryWarningShown = false; // Reset warning
         AppLogger.d('IoTSensorService: Device charged to 100%');
       }
-      
+
       // If device was shut down but battery is recharged, turn it back on
       if (_isDeviceShutdown && _batteryLevel > 5) {
         _isDeviceShutdown = false;
@@ -540,9 +542,9 @@ class IoTSensorService extends ChangeNotifier {
   void _showLowBatteryWarning() async {
     final batteryPercent = _batteryLevel.round();
     final isCritical = batteryPercent <= 5;
-    
+
     AppLogger.w('IoTSensorService: Low battery warning - $batteryPercent%');
-    
+
     // Send notification through notification service
     try {
       final notificationService = NotificationService();
@@ -551,14 +553,17 @@ class IoTSensorService extends ChangeNotifier {
         batteryLevel: batteryPercent,
         isCritical: isCritical,
       );
-      
+
       if (success) {
-        AppLogger.d('IoTSensorService: Low battery notification sent successfully');
+        AppLogger.d(
+            'IoTSensorService: Low battery notification sent successfully');
       } else {
-        AppLogger.w('IoTSensorService: Low battery notification was blocked or failed');
+        AppLogger.w(
+            'IoTSensorService: Low battery notification was blocked or failed');
       }
     } catch (e) {
-      AppLogger.e('IoTSensorService: Error sending low battery notification: $e');
+      AppLogger.e(
+          'IoTSensorService: Error sending low battery notification: $e');
     }
   }
 
@@ -569,14 +574,17 @@ class IoTSensorService extends ChangeNotifier {
       final success = await notificationService.sendDeviceOfflineNotification(
         deviceId: _deviceId,
       );
-      
+
       if (success) {
-        AppLogger.d('IoTSensorService: Device offline notification sent successfully');
+        AppLogger.d(
+            'IoTSensorService: Device offline notification sent successfully');
       } else {
-        AppLogger.w('IoTSensorService: Device offline notification was blocked or failed');
+        AppLogger.w(
+            'IoTSensorService: Device offline notification was blocked or failed');
       }
     } catch (e) {
-      AppLogger.e('IoTSensorService: Error sending device offline notification: $e');
+      AppLogger.e(
+          'IoTSensorService: Error sending device offline notification: $e');
     }
   }
 

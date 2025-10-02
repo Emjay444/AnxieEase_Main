@@ -1103,20 +1103,21 @@ class NotificationService extends ChangeNotifier {
     required bool isCritical,
   }) async {
     if (!_isInitialized) {
-      debugPrint('❌ NotificationService not initialized, cannot send low battery notification');
+      debugPrint(
+          '❌ NotificationService not initialized, cannot send low battery notification');
       return false;
     }
 
-    final String title = isCritical 
-        ? '🔋 Critical Battery Alert!'
-        : '⚠️ Low Battery Warning';
-    
+    final String title =
+        isCritical ? '🔋 Critical Battery Alert!' : '⚠️ Low Battery Warning';
+
     final String body = isCritical
         ? 'Your wearable device battery is at $batteryLevel%. Please charge immediately to avoid data loss!'
         : 'Your wearable device battery is at $batteryLevel%. Consider charging soon.';
 
     // Use different deduplication keys for low vs critical battery
-    final String notificationType = isCritical ? 'critical_battery' : 'low_battery';
+    final String notificationType =
+        isCritical ? 'critical_battery' : 'low_battery';
 
     return await _sendNotificationWithDeduplication(
       type: notificationType,
@@ -1138,12 +1139,14 @@ class NotificationService extends ChangeNotifier {
     required String deviceId,
   }) async {
     if (!_isInitialized) {
-      debugPrint('❌ NotificationService not initialized, cannot send device offline notification');
+      debugPrint(
+          '❌ NotificationService not initialized, cannot send device offline notification');
       return false;
     }
 
     const String title = '📱 Device Disconnected';
-    const String body = 'Your wearable device has gone offline due to low battery. Charge and reconnect to resume monitoring.';
+    const String body =
+        'Your wearable device has gone offline due to low battery. Charge and reconnect to resume monitoring.';
 
     return await _sendNotificationWithDeduplication(
       type: 'device_offline',

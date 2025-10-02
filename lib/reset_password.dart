@@ -91,7 +91,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     // Comprehensive password validation
     final password = _passwordController.text;
-    
+
     if (password.length < 8) {
       setState(() {
         _errorMessage = 'Password must be at least 8 characters long';
@@ -122,7 +122,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
       setState(() {
-        _errorMessage = 'Password must contain at least one special character (!@#\$%^&*(),.?":{}|<>)';
+        _errorMessage =
+            'Password must contain at least one special character (!@#\$%^&*(),.?":{}|<>)';
       });
       return;
     }
@@ -505,9 +506,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
                       // Update Password Button
                       ElevatedButton(
-                        onPressed: _isLoading || _isSuccess || !_isPasswordValid()
-                            ? null
-                            : _updatePassword,
+                        onPressed:
+                            _isLoading || _isSuccess || !_isPasswordValid()
+                                ? null
+                                : _updatePassword,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF3AA772),
                           foregroundColor: Colors.white,

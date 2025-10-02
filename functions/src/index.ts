@@ -964,11 +964,15 @@ export const monitorDeviceBattery = functions.database
       const beforeBattery = change.before.val();
       const afterBattery = change.after.val();
 
-      console.log(`🔋 Battery changed for device ${deviceId}: ${beforeBattery}% → ${afterBattery}%`);
+      console.log(
+        `🔋 Battery changed for device ${deviceId}: ${beforeBattery}% → ${afterBattery}%`
+      );
 
       // Only trigger notifications on battery decrease (not increase/charging)
       if (afterBattery >= beforeBattery) {
-        console.log("✅ Battery increased or stayed same, no notification needed");
+        console.log(
+          "✅ Battery increased or stayed same, no notification needed"
+        );
         return null;
       }
 
@@ -985,11 +989,26 @@ export const monitorDeviceBattery = functions.database
       const shouldSendDeviceOffline = afterBattery === 0 && beforeBattery > 0;
 
       if (shouldSendDeviceOffline) {
-        await sendBatteryNotification(fcmToken, "device_offline", afterBattery, deviceId);
+        await sendBatteryNotification(
+          fcmToken,
+          "device_offline",
+          afterBattery,
+          deviceId
+        );
       } else if (shouldSendCriticalBattery) {
-        await sendBatteryNotification(fcmToken, "critical_battery", afterBattery, deviceId);
+        await sendBatteryNotification(
+          fcmToken,
+          "critical_battery",
+          afterBattery,
+          deviceId
+        );
       } else if (shouldSendLowBattery) {
-        await sendBatteryNotification(fcmToken, "low_battery", afterBattery, deviceId);
+        await sendBatteryNotification(
+          fcmToken,
+          "low_battery",
+          afterBattery,
+          deviceId
+        );
       }
 
       return null;
@@ -1002,12 +1021,14 @@ export const monitorDeviceBattery = functions.database
 // Helper function to get FCM token for a device
 async function getDeviceFCMToken(deviceId: string): Promise<string | null> {
   const db = admin.database();
-  
+
   try {
     // Try to get FCM token from device assignment
-    const assignmentTokenRef = db.ref(`/devices/${deviceId}/assignment/fcmToken`);
+    const assignmentTokenRef = db.ref(
+      `/devices/${deviceId}/assignment/fcmToken`
+    );
     const assignmentSnapshot = await assignmentTokenRef.once("value");
-    
+
     if (assignmentSnapshot.exists()) {
       console.log(`✅ Found FCM token via assignment for device ${deviceId}`);
       return assignmentSnapshot.val();
@@ -1016,7 +1037,7 @@ async function getDeviceFCMToken(deviceId: string): Promise<string | null> {
     // Fallback: try to get from device level
     const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
     const deviceSnapshot = await deviceTokenRef.once("value");
-    
+
     if (deviceSnapshot.exists()) {
       console.log(`✅ Found FCM token at device level for device ${deviceId}`);
       return deviceSnapshot.val();
@@ -1038,8 +1059,11 @@ async function sendBatteryNotification(
   deviceId: string
 ): Promise<void> {
   try {
-    const { title, body, icon } = getBatteryNotificationContent(type, batteryLevel);
-    
+    const { title, body, icon } = getBatteryNotificationContent(
+      type,
+      batteryLevel
+    );
+
     const message = {
       token: fcmToken,
       data: {
@@ -1061,7 +1085,10 @@ async function sendBatteryNotification(
         priority: "high" as const,
         notification: {
           icon: "ic_notification",
-          color: type === "critical_battery" || type === "device_offline" ? "#FF0000" : "#FF6B00",
+          color:
+            type === "critical_battery" || type === "device_offline"
+              ? "#FF0000"
+              : "#FF6B00",
           priority: "high" as const,
           defaultSound: true,
           channelId: "device_alerts_channel",
@@ -1082,9 +1109,15 @@ async function sendBatteryNotification(
     };
 
     const response = await admin.messaging().send(message);
-    console.log(`✅ Battery notification sent successfully: ${type} for device ${deviceId}`, response);
+    console.log(
+      `✅ Battery notification sent successfully: ${type} for device ${deviceId}`,
+      response
+    );
   } catch (error) {
-    console.error(`❌ Error sending battery notification: ${type} for device ${deviceId}:`, error);
+    console.error(
+      `❌ Error sending battery notification: ${type} for device ${deviceId}:`,
+      error
+    );
   }
 }
 
