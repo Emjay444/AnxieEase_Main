@@ -52,12 +52,20 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
 
   // When tapping anxiety alerts created in background, make sure they're synced to Supabase
   if ((payload['type'] == 'anxiety_alert') || (payload['source'] == 'fcm_bg')) {
-    // Wait for auth to be ready so we can store the notification reliably
-    await _waitForAuthReady(ensureAuthenticated: true);
+    // Wait for auth to be initialized but don't require authentication
+    await _waitForAuthReady(ensureAuthenticated: false);
 
-    // Try to sync any locally stored pending notifications first
+    // Try to sync any locally stored pending notifications first (only if authenticated)
     try {
-      await _syncPendingNotifications();
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) {
+        final authProvider = Provider.of<AuthProvider>(ctx, listen: false);
+        if (authProvider.isAuthenticated) {
+          await _syncPendingNotifications();
+        } else {
+          debugPrint('📱 User not authenticated, skipping notification sync');
+        }
+      }
     } catch (e) {
       debugPrint('⚠️ Failed to sync pending notifications on tap: $e');
     }
@@ -333,9 +341,9 @@ Future<void> _initializeRemainingServices(
 
     // Don't wait too long for auth - sync regardless
     Future.any([
-      _waitForAuthReady(ensureAuthenticated: true),
+      _waitForAuthReady(ensureAuthenticated: false), // Don't require authentication
       Future.delayed(const Duration(seconds: 5), () {
-        debugPrint('⚠️ Auth timeout - proceeding with sync anyway');
+        debugPrint('! Auth timeout - proceeding with sync anyway');
       })
     ]).then((_) async {
       debugPrint('✅ Normal app open: proceeding with sync...');
@@ -1629,6 +1637,7 @@ Future<void> _waitForAuthReady({
   debugPrint(
       '🔐 _waitForAuthReady starting (ensureAuthenticated=$ensureAuthenticated)');
 
+  int logCount = 0; // Prevent log spam
   while (DateTime.now().difference(start) < timeout) {
     try {
       final ctx = rootNavigatorKey.currentContext;
@@ -1637,12 +1646,22 @@ Future<void> _waitForAuthReady({
         final init = authProvider.isInitialized;
         final authed = authProvider.isAuthenticated;
 
-        debugPrint('🔐 Auth status: initialized=$init, authenticated=$authed');
+        // Only log every 20 iterations (every 2 seconds) to prevent spam
+        if (logCount % 20 == 0) {
+          debugPrint('🔐 Auth status: initialized=$init, authenticated=$authed');
+        }
+        logCount++;
 
         if (init && (!ensureAuthenticated || authed)) {
           debugPrint(
               '✅ Auth is ready! (took ${DateTime.now().difference(start).inMilliseconds}ms)');
           return; // Ready
+        }
+        
+        // If we don't need authentication and auth is initialized, exit early
+        if (init && !ensureAuthenticated) {
+          debugPrint('✅ Auth initialized (authentication not required)');
+          return;
         }
       }
     } catch (e) {

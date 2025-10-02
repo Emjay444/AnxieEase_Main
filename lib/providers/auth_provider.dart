@@ -109,81 +109,239 @@ class AuthProvider extends ChangeNotifier {
     if (user != null) {
       try {
         _setLoading(true);
-        final userProfile = await _supabaseService.getUserProfile();
-        if (userProfile != null) {
-          // Ensure required fields exist (email may not be in user_profiles)
-          final enriched = Map<String, dynamic>.from(userProfile);
-          enriched['email'] ??=
-              _supabaseService.client.auth.currentUser?.email ?? '';
-          // If first_name is missing but full_name exists, derive first_name
-          if ((enriched['first_name'] == null ||
-                  (enriched['first_name'] is String &&
-                      (enriched['first_name'] as String).trim().isEmpty)) &&
-              enriched['full_name'] is String &&
-              (enriched['full_name'] as String).trim().isNotEmpty) {
-            final parts = (enriched['full_name'] as String).trim().split(' ');
-            if (parts.isNotEmpty) enriched['first_name'] = parts.first;
-          }
-          // created_at/updated_at should exist but set sane defaults if missing
-          enriched['created_at'] ??= DateTime.now().toIso8601String();
-          enriched['updated_at'] ??= DateTime.now().toIso8601String();
-          // Ensure avatar_url is included
-          enriched['avatar_url'] ??= userProfile['avatar_url'];
-          _currentUser = UserModel.fromJson(enriched);
-          debugPrint(
-              '✅ User profile loaded after sign in: ${_currentUser?.firstName}');
+        debugPrint('🔐 Handling sign in for user: ${user.email}');
+        
+        // Add timeout to prevent indefinite loading
+        final profileData = await Future.any([
+          _loadUserProfileWithRecovery(user),
+          Future.delayed(const Duration(seconds: 10), () => throw TimeoutException('Profile loading timed out')),
+        ]);
+        
+        if (profileData != null) {
+          _currentUser = profileData;
+          debugPrint('✅ User profile loaded successfully: ${_currentUser?.firstName} ${_currentUser?.lastName}');
         } else {
-          debugPrint(
-              '❌ User profile missing after sign in - creating profile...');
-          // Try to create profile from auth metadata instead of signing out
-          final authUser = _supabaseService.client.auth.currentUser;
-          if (authUser != null) {
-            try {
-              final metadata = authUser.userMetadata ?? {};
-              debugPrint('Creating profile from auth metadata: $metadata');
-              debugPrint('Auth user email: ${authUser.email}');
-              debugPrint('Auth user ID: ${authUser.id}');
-              
-              await _supabaseService.client.from('user_profiles').upsert({
-                'id': authUser.id,
-                'email': authUser.email ?? '',
-                'first_name': metadata['first_name'] ?? '',
-                'middle_name': metadata['middle_name'] ?? '',
-                'last_name': metadata['last_name'] ?? '',
-                'role': 'patient',
-                'created_at': DateTime.now().toIso8601String(),
-                'updated_at': DateTime.now().toIso8601String(),
-                'is_email_verified': authUser.emailConfirmedAt != null,
-              });
-              
-              // Try to load profile again
-              final newProfile = await _supabaseService.getUserProfile();
-              if (newProfile != null) {
-                final enriched = Map<String, dynamic>.from(newProfile);
-                enriched['email'] ??= authUser.email ?? '';
-                enriched['created_at'] ??= DateTime.now().toIso8601String();
-                enriched['updated_at'] ??= DateTime.now().toIso8601String();
-                enriched['avatar_url'] ??= newProfile['avatar_url'];
-                _currentUser = UserModel.fromJson(enriched);
-                debugPrint('✅ Profile created and loaded: ${_currentUser?.firstName}');
+          debugPrint('❌ Failed to load user profile after all attempts');
+          // Don't sign out immediately, give user a chance to retry
+          _currentUser = null;
+        }
+      } catch (e) {
+        if (e is TimeoutException) {
+          debugPrint('⏰ Profile loading timed out after 10 seconds');
+        } else {
+          debugPrint('❌ Error loading user profile after sign in: $e');
+        }
+        // Create a minimal user object from auth data as fallback
+        final authMetadata = user.userMetadata ?? {};
+        debugPrint('🔄 Creating fallback user from auth metadata: $authMetadata');
+        
+        // Try multiple ways to get the name
+        String firstName = '';
+        String lastName = '';
+        
+        // Strategy 1: Direct from metadata
+        firstName = authMetadata['first_name']?.toString() ?? '';
+        lastName = authMetadata['last_name']?.toString() ?? '';
+        
+        // Strategy 2: If firstName is empty, try other metadata fields
+        if (firstName.isEmpty) {
+          firstName = authMetadata['given_name']?.toString() ?? '';
+        }
+        if (lastName.isEmpty) {
+          lastName = authMetadata['family_name']?.toString() ?? '';
+        }
+        
+        // Strategy 3: Try full_name and split it
+        if (firstName.isEmpty && lastName.isEmpty) {
+          final fullName = authMetadata['full_name']?.toString() ?? '';
+          if (fullName.isNotEmpty) {
+            final parts = fullName.trim().split(' ');
+            if (parts.isNotEmpty) {
+              firstName = parts.first;
+              if (parts.length > 1) {
+                lastName = parts.skip(1).join(' ');
               }
-            } catch (e) {
-              debugPrint('❌ Failed to create profile: $e');
-              // As last resort, sign out
-              await _supabaseService.signOut();
-              await _storageService.clearCredentials();
-              _currentUser = null;
             }
           }
         }
-      } catch (e) {
-        debugPrint('❌ Error loading user profile after sign in: $e');
+        
+        // Strategy 4: Extract from email as last resort
+        if (firstName.isEmpty && user.email != null && user.email!.isNotEmpty) {
+          final emailParts = user.email!.split('@');
+          if (emailParts.isNotEmpty && emailParts.first.isNotEmpty) {
+            firstName = emailParts.first.replaceAll('.', ' ').split(' ').map((word) => 
+              word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : ''
+            ).join(' ');
+          }
+        }
+        
+        _currentUser = UserModel(
+          id: user.id,
+          email: user.email ?? '',
+          firstName: firstName,
+          lastName: lastName,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        
+        debugPrint('🔄 Created fallback user: ${_currentUser?.firstName} ${_currentUser?.lastName} (${_currentUser?.email})');
+        
+        // Try to create the missing profile in the database for future use
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          try {
+            debugPrint('🔄 Attempting to create missing profile in background...');
+            await _supabaseService.client.from('user_profiles').upsert({
+              'id': user.id,
+              'email': user.email ?? '',
+              'first_name': firstName,
+              'last_name': lastName,
+              'role': 'patient',
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+              'is_email_verified': user.emailConfirmedAt != null,
+              'assigned_psychologist_id': null,
+            });
+            debugPrint('✅ Background profile creation successful');
+          } catch (e) {
+            debugPrint('❌ Background profile creation failed: $e');
+          }
+        });
+        
+        debugPrint('🔄 Created fallback user object to prevent "Guest" display');
       } finally {
         _setLoading(false);
       }
 
       // Always notify listeners after handling sign in
       notifyListeners();
+    }
+  }
+
+  // Helper method to load user profile with recovery attempts
+  Future<UserModel?> _loadUserProfileWithRecovery(User user) async {
+    try {
+      final userProfile = await _supabaseService.getUserProfile();
+      if (userProfile != null) {
+        debugPrint('✅ Found existing user profile for: ${user.email}');
+        // Ensure required fields exist (email may not be in user_profiles)
+        final enriched = Map<String, dynamic>.from(userProfile);
+        enriched['email'] ??= user.email ?? '';
+        // If first_name is missing but full_name exists, derive first_name
+        if ((enriched['first_name'] == null ||
+                (enriched['first_name'] is String &&
+                    (enriched['first_name'] as String).trim().isEmpty)) &&
+            enriched['full_name'] is String &&
+            (enriched['full_name'] as String).trim().isNotEmpty) {
+          final parts = (enriched['full_name'] as String).trim().split(' ');
+          if (parts.isNotEmpty) enriched['first_name'] = parts.first;
+        }
+        // created_at/updated_at should exist but set sane defaults if missing
+        enriched['created_at'] ??= DateTime.now().toIso8601String();
+        enriched['updated_at'] ??= DateTime.now().toIso8601String();
+        // Ensure avatar_url is included
+        enriched['avatar_url'] ??= userProfile['avatar_url'];
+        return UserModel.fromJson(enriched);
+      } else {
+        debugPrint('❌ User profile missing after sign in - attempting recovery...');
+        
+        // Try to recover from pending user data first (from failed signup)
+        if (await _tryCreateProfileFromPendingData(user)) {
+          debugPrint('✅ Profile recovered from pending data');
+          final newProfile = await _supabaseService.getUserProfile();
+          if (newProfile != null) {
+            final enriched = Map<String, dynamic>.from(newProfile);
+            enriched['email'] ??= user.email ?? '';
+            enriched['created_at'] ??= DateTime.now().toIso8601String();
+            enriched['updated_at'] ??= DateTime.now().toIso8601String();
+            enriched['avatar_url'] ??= newProfile['avatar_url'];
+            return UserModel.fromJson(enriched);
+          }
+        } else if (await _tryCreateProfileFromAuthMetadata(user)) {
+          debugPrint('✅ Profile created from auth metadata');
+          final newProfile = await _supabaseService.getUserProfile();
+          if (newProfile != null) {
+            final enriched = Map<String, dynamic>.from(newProfile);
+            enriched['email'] ??= user.email ?? '';
+            enriched['created_at'] ??= DateTime.now().toIso8601String();
+            enriched['updated_at'] ??= DateTime.now().toIso8601String();
+            enriched['avatar_url'] ??= newProfile['avatar_url'];
+            return UserModel.fromJson(enriched);
+          }
+        } else {
+          debugPrint('❌ All profile recovery attempts failed');
+          return null;
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error in _loadUserProfileWithRecovery: $e');
+      return null;
+    }
+    return null;
+  }
+
+  // Helper method to try creating profile from pending data
+  Future<bool> _tryCreateProfileFromPendingData(User user) async {
+    try {
+      debugPrint('🔄 Attempting to create profile from pending data...');
+      final success = await _supabaseService.createProfileFromPendingData(user.id);
+      
+      if (success) {
+        // Try to load the newly created profile
+        final newProfile = await _supabaseService.getUserProfile();
+        if (newProfile != null) {
+          final enriched = Map<String, dynamic>.from(newProfile);
+          enriched['email'] ??= user.email ?? '';
+          enriched['created_at'] ??= DateTime.now().toIso8601String();
+          enriched['updated_at'] ??= DateTime.now().toIso8601String();
+          enriched['avatar_url'] ??= newProfile['avatar_url'];
+          _currentUser = UserModel.fromJson(enriched);
+          debugPrint('✅ Profile created from pending data: ${_currentUser?.firstName} ${_currentUser?.lastName}');
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('❌ Failed to create profile from pending data: $e');
+      return false;
+    }
+  }
+
+  // Helper method to try creating profile from auth metadata
+  Future<bool> _tryCreateProfileFromAuthMetadata(User user) async {
+    try {
+      debugPrint('🔄 Attempting to create profile from auth metadata...');
+      final metadata = user.userMetadata ?? {};
+      debugPrint('📋 Auth metadata available: $metadata');
+      
+      await _supabaseService.client.from('user_profiles').upsert({
+        'id': user.id,
+        'email': user.email ?? '',
+        'first_name': metadata['first_name'] ?? '',
+        'middle_name': metadata['middle_name'] ?? '',
+        'last_name': metadata['last_name'] ?? '',
+        'role': 'patient',
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+        'is_email_verified': user.emailConfirmedAt != null,
+        'assigned_psychologist_id': null, // Explicitly set to null
+      });
+      
+      // Try to load the newly created profile
+      final newProfile = await _supabaseService.getUserProfile();
+      if (newProfile != null) {
+        final enriched = Map<String, dynamic>.from(newProfile);
+        enriched['email'] ??= user.email ?? '';
+        enriched['created_at'] ??= DateTime.now().toIso8601String();
+        enriched['updated_at'] ??= DateTime.now().toIso8601String();
+        enriched['avatar_url'] ??= newProfile['avatar_url'];
+        _currentUser = UserModel.fromJson(enriched);
+        debugPrint('✅ Profile created from auth metadata: ${_currentUser?.firstName} ${_currentUser?.lastName}');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('❌ Failed to create profile from auth metadata: $e');
+      return false;
     }
   }
 

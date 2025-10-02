@@ -26,9 +26,8 @@ class SupabaseService {
     required String timestamp,
   }) async {
     try {
-      // Create a temporary client with service role key for admin operations
-      // Note: In production, this should be done via a server-side function
-      // For now, we'll try with the existing client and handle RLS issues
+      print('🚀 Starting profile creation for user: $userId');
+      print('📝 User data received: $userData');
 
       final profileData = {
         'id': userId,
@@ -44,12 +43,14 @@ class SupabaseService {
         'created_at': timestamp,
         'updated_at': timestamp,
         'is_email_verified': false,
+        'assigned_psychologist_id': null, // Explicitly set to null - no auto-assignment
       };
 
-      print('Attempting to insert profile data: $profileData');
+      print('📋 Final profile data to insert: $profileData');
 
-      // Try using the database function first (most reliable)
+      // Strategy 1: Try using the database function first (most reliable)
       try {
+        print('🔧 Attempting profile creation via database function...');
         await client.rpc('create_missing_user_profile', params: {
           'user_id': userId,
           'user_email': email,
@@ -62,58 +63,229 @@ class SupabaseService {
           'gender': userData['gender'] ?? '',
         });
         print('✅ Profile created successfully via database function');
+        
+        // Verify the profile was created
+        await _verifyProfileCreation(userId);
         return;
       } catch (rpcError) {
         print('❌ Database function failed: $rpcError');
+        print('🔄 Trying alternative methods...');
       }
 
-      // Fallback: Try direct insert
+      // Strategy 2: Try direct insert with error details
       try {
+        print('🔧 Attempting direct insert...');
         await client.from('user_profiles').insert(profileData);
         print('✅ Profile inserted successfully via direct insert');
+        
+        // Verify the profile was created
+        await _verifyProfileCreation(userId);
         return;
       } catch (directError) {
         print('❌ Direct insert failed: $directError');
+        print('📊 Error details: ${directError.toString()}');
       }
 
-      // Fallback: Try upsert
+      // Strategy 3: Try upsert (insert or update)
       try {
+        print('🔧 Attempting upsert...');
         await client.from('user_profiles').upsert(profileData);
         print('✅ Profile created successfully via upsert');
+        
+        // Verify the profile was created
+        await _verifyProfileCreation(userId);
         return;
+      } catch (upsertError) {
+        print('❌ Upsert failed: $upsertError');
+        print('📊 Error details: ${upsertError.toString()}');
+      }
+
+      // Strategy 4: Store for retry during sign-in (use persistent storage)
+      print('⚠️ All direct creation methods failed, storing for sign-in retry');
+      
+      // Store both in memory and in auth metadata for persistence
+      _pendingUserData = {
+        'user_id': userId,
+        'email': email,
+        'first_name': userData['first_name'] ?? '',
+        'middle_name': userData['middle_name'] ?? '',
+        'last_name': userData['last_name'] ?? '',
+        'birth_date': userData['birth_date'],
+        'contact_number': userData['contact_number'] ?? '',
+        'emergency_contact': userData['emergency_contact'] ?? '',
+        'gender': userData['gender'] ?? '',
+        'timestamp': timestamp,
+      };
+      
+      // Also try to update the auth metadata to persist the data
+      try {
+        await client.auth.updateUser(UserAttributes(
+          data: {
+            'first_name': userData['first_name'] ?? '',
+            'middle_name': userData['middle_name'] ?? '',
+            'last_name': userData['last_name'] ?? '',
+            'birth_date': userData['birth_date'],
+            'contact_number': userData['contact_number'] ?? '',
+            'emergency_contact': userData['emergency_contact'] ?? '',
+            'gender': userData['gender'] ?? '',
+            'profile_creation_failed': true, // Flag to indicate profile needs creation
+            'profile_data_stored': timestamp,
+          },
+        ));
+        print('✅ User metadata updated with profile data for persistence');
+      } catch (metadataError) {
+        print('❌ Failed to update user metadata: $metadataError');
+      }
+      
+      print('⏳ Stored profile data for creation during sign-in: $_pendingUserData');
+      
+    } catch (e) {
+      print('💥 Critical error in _createUserProfileDirectly: $e');
+      print('📊 Stack trace: ${e.toString()}');
+      
+      // Always store as fallback
+      _pendingUserData = {
+        'user_id': userId,
+        'email': email,
+        'first_name': userData['first_name'] ?? '',
+        'middle_name': userData['middle_name'] ?? '',
+        'last_name': userData['last_name'] ?? '',
+        'birth_date': userData['birth_date'],
+        'contact_number': userData['contact_number'] ?? '',
+        'emergency_contact': userData['emergency_contact'] ?? '',
+        'gender': userData['gender'] ?? '',
+        'timestamp': timestamp,
+      };
+      print('🔄 Fallback: Stored data for profile creation during sign-in');
+    }
+  }
+
+  // Helper method to verify profile creation
+  Future<void> _verifyProfileCreation(String userId) async {
+    try {
+      print('🔍 Verifying profile creation for user: $userId');
+      final profile = await client
+          .from('user_profiles')
+          .select('id, first_name, last_name, email')
+          .eq('id', userId)
+          .maybeSingle();
+      
+      if (profile != null) {
+        print('✅ Profile verification successful: ${profile['first_name']} ${profile['last_name']} (${profile['email']})');
+      } else {
+        print('❌ Profile verification failed: No profile found');
+        throw Exception('Profile not found after creation');
+      }
+    } catch (e) {
+      print('❌ Profile verification error: $e');
+      throw Exception('Failed to verify profile creation');
+    }
+  }
+
+  // Method to create profile from pending data stored during signup
+  Future<bool> createProfileFromPendingData(String userId) async {
+    // First check in-memory pending data
+    if (_pendingUserData != null) {
+      return await _createFromPendingData(_pendingUserData!, userId);
+    }
+
+    // If no in-memory data, check auth metadata for persistence
+    try {
+      final authUser = client.auth.currentUser;
+      if (authUser?.userMetadata?['profile_creation_failed'] == true) {
+        print('🔄 Found profile creation flag in auth metadata, attempting recovery...');
+        
+        final metadata = authUser!.userMetadata!;
+        final pendingData = {
+          'user_id': userId,
+          'email': metadata['email'] ?? authUser.email ?? '',
+          'first_name': metadata['first_name'] ?? '',
+          'middle_name': metadata['middle_name'] ?? '',
+          'last_name': metadata['last_name'] ?? '',
+          'birth_date': metadata['birth_date'],
+          'contact_number': metadata['contact_number'] ?? '',
+          'emergency_contact': metadata['emergency_contact'] ?? '',
+          'gender': metadata['gender'] ?? '',
+          'timestamp': metadata['profile_data_stored'] ?? DateTime.now().toIso8601String(),
+        };
+        
+        final success = await _createFromPendingData(pendingData, userId);
+        
+        if (success) {
+          // Clear the flag from metadata
+          try {
+            await client.auth.updateUser(UserAttributes(
+              data: {
+                'profile_creation_failed': null,
+                'profile_data_stored': null,
+              },
+            ));
+            print('✅ Cleared profile creation flag from metadata');
+          } catch (e) {
+            print('❌ Failed to clear metadata flag: $e');
+          }
+        }
+        
+        return success;
+      }
+    } catch (e) {
+      print('❌ Error checking auth metadata for pending data: $e');
+    }
+
+    print('❌ No pending user data found for profile creation');
+    return false;
+  }
+
+  // Helper method to create profile from pending data
+  Future<bool> _createFromPendingData(Map<String, dynamic> pendingData, String userId) async {
+    try {
+      print('🔄 Creating profile from pending data for user: $userId');
+      print('📋 Pending data: $pendingData');
+
+      final timestamp = pendingData['timestamp'] ?? DateTime.now().toIso8601String();
+      
+      final profileData = {
+        'id': userId,
+        'email': pendingData['email'],
+        'first_name': pendingData['first_name'] ?? '',
+        'middle_name': pendingData['middle_name'] ?? '',
+        'last_name': pendingData['last_name'] ?? '',
+        'birth_date': pendingData['birth_date'],
+        'contact_number': pendingData['contact_number'] ?? '',
+        'emergency_contact': pendingData['emergency_contact'] ?? '',
+        'gender': pendingData['gender'] ?? '',
+        'role': 'patient',
+        'created_at': timestamp,
+        'updated_at': timestamp,
+        'is_email_verified': false,
+        'assigned_psychologist_id': null,
+      };
+
+      // Try multiple strategies
+      try {
+        await client.from('user_profiles').upsert(profileData);
+        print('✅ Profile created from pending data via upsert');
+        await _verifyProfileCreation(userId);
+        _pendingUserData = null; // Clear pending data on success
+        return true;
       } catch (upsertError) {
         print('❌ Upsert failed: $upsertError');
       }
 
-      // If both fail, store for later creation during sign-in
-      _pendingUserData = {
-        'user_id': userId,
-        'email': email,
-        'first_name': userData['first_name'],
-        'middle_name': userData['middle_name'],
-        'last_name': userData['last_name'],
-        'birth_date': userData['birth_date'],
-        'contact_number': userData['contact_number'],
-        'emergency_contact': userData['emergency_contact'],
-        'gender': userData['gender'],
-      };
-      print(
-          '⏳ Stored data for profile creation during sign-in: $_pendingUserData');
+      try {
+        await client.from('user_profiles').insert(profileData);
+        print('✅ Profile created from pending data via insert');
+        await _verifyProfileCreation(userId);
+        _pendingUserData = null; // Clear pending data on success
+        return true;
+      } catch (insertError) {
+        print('❌ Insert failed: $insertError');
+      }
+
+      return false;
     } catch (e) {
-      print('❌ Error in _createUserProfileDirectly: $e');
-      // Store for later creation as fallback
-      _pendingUserData = {
-        'user_id': userId,
-        'email': email,
-        'first_name': userData['first_name'],
-        'middle_name': userData['middle_name'],
-        'last_name': userData['last_name'],
-        'birth_date': userData['birth_date'],
-        'contact_number': userData['contact_number'],
-        'emergency_contact': userData['emergency_contact'],
-        'gender': userData['gender'],
-      };
-      print('⏳ Fallback: Stored data for profile creation during sign-in');
+      print('❌ Error creating profile from pending data: $e');
+      return false;
     }
   }
 
@@ -1274,20 +1446,20 @@ class SupabaseService {
 
   // Psychologist methods
   Future<Map<String, dynamic>?> getAssignedPsychologist() async {
+    print('🔍 getAssignedPsychologist: Starting...');
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
       // First get the user's assigned psychologist ID
+      print('📞 getAssignedPsychologist: Calling getUserProfile...');
       final userProfile = await getUserProfile();
+      print('📋 getAssignedPsychologist: Got userProfile: ${userProfile != null ? 'Found' : 'Null'}');
+      
       if (userProfile == null) {
-        // If no user profile found, try fetching a default psychologist
-        final psychologists =
-            await client.from('psychologists').select().limit(1).maybeSingle();
-
-        if (psychologists != null) {
-          return _ensurePsychologistFields(psychologists);
-        }
+        // If no user profile found, return null
+        // Don't auto-assign psychologists
+        print('❌ getAssignedPsychologist: No user profile found - returning null');
         return null;
       }
 
@@ -1307,19 +1479,8 @@ class SupabaseService {
         }
         return null;
       } else {
-        // If user doesn't have assigned psychologist, get the first available one
-        final psychologist =
-            await client.from('psychologists').select().limit(1).maybeSingle();
-
-        // If a psychologist is found, assign it to the user
-        if (psychologist != null) {
-          await client
-              .from('user_profiles')
-              .update({'assigned_psychologist_id': psychologist['id']}).eq(
-                  'id', user.id);
-
-          return _ensurePsychologistFields(psychologist);
-        }
+        // If user doesn't have assigned psychologist, return null
+        // Psychologists should only be assigned manually by admin
         return null;
       }
     } catch (e) {

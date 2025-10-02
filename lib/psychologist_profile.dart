@@ -4,7 +4,6 @@ import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
 import 'services/supabase_service.dart';
 import 'utils/logger.dart';
-import 'psychologist_list_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PsychologistProfilePage extends StatefulWidget {
@@ -81,9 +80,12 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   }
 
   Future<void> _loadPsychologistData() async {
+    print('🔍 Starting _loadPsychologistData...');
     try {
       // Load psychologist data (main priority)
+      print('📞 Calling getAssignedPsychologist...');
       final psychologistData = await _supabaseService.getAssignedPsychologist();
+      print('📋 Got psychologist data: ${psychologistData != null ? 'Found' : 'Null'}');
 
       if (psychologistData != null) {
         if (mounted) {
@@ -135,6 +137,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      // Always turn off loading state whether successful or failed
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -439,39 +448,59 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       color: Colors.grey[300],
                     ),
 
-                    // If no psychologist, show message and button
+                    // If no psychologist, show informative message
                     if (_psychologist == null) ...[
                       Padding(
                         padding: const EdgeInsets.all(24.0),
                         child: Column(
                           children: [
+                            const Icon(
+                              Icons.person_off_outlined,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 16),
                             const Text(
-                              'No psychologist is currently assigned to you.',
+                              'No Psychologist Assigned',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 20,
                                 color: Colors.black87,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.bold,
                               ),
                               textAlign: TextAlign.center,
                             ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                final changed = await Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) =>
-                                          const PsychologistListScreen()),
-                                );
-                                if (changed == true) {
-                                  await _loadData();
-                                }
-                              },
-                              icon: const Icon(Icons.person_search),
-                              label: const Text('Find a Psychologist'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF3AA772),
-                                foregroundColor: Colors.white,
+                            const SizedBox(height: 12),
+                            const Text(
+                              'A psychologist will be assigned to you by an administrator. This typically happens after your initial assessment.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue.shade200),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.blue.shade700),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Please contact support if you have questions about your psychologist assignment.',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.blue.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],

@@ -62,10 +62,61 @@ class AuthWrapper extends StatelessWidget {
         }
 
         // If user is authenticated, show the main app (HomePage)
-        // Don't require currentUser to be loaded - isAuthenticated should be enough
+        // BUT WAIT for currentUser to be loaded to avoid showing "Guest"
         if (authProvider.isAuthenticated) {
-          debugPrint('✅ AuthWrapper - User authenticated, showing HomePage');
-          return const HomePage();
+          // Check if we have user profile data loaded
+          if (authProvider.currentUser != null) {
+            debugPrint('✅ AuthWrapper - User authenticated with profile data, showing HomePage');
+            return const HomePage();
+          } else {
+            // User is authenticated but profile data is still loading
+            debugPrint('⏳ AuthWrapper - User authenticated but profile loading, showing loading screen');
+            return Scaffold(
+              body: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF2D9254), // Match login page dark green
+                      Color(0xFF00382A), // Match login page deep green
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Loading your profile...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      // Add retry button in case loading takes too long
+                      ElevatedButton(
+                        onPressed: () async {
+                          debugPrint('🔄 Manual retry requested by user');
+                          await authProvider.loadUserProfile();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF2D9254),
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
         }
 
         // If user is not authenticated, show the authentication screens

@@ -48,6 +48,8 @@ class _ProfilePageState extends State<ProfilePage> {
   void _loadUserData() {
     final user = context.read<AuthProvider>().currentUser;
     if (user != null) {
+      debugPrint('📋 Loading profile data for user: ${user.email}');
+      
       _firstNameController.text = user.firstName ?? '';
       _middleNameController.text = user.middleName ?? '';
       _lastNameController.text = user.lastName ?? '';
@@ -61,6 +63,62 @@ class _ProfilePageState extends State<ProfilePage> {
         _selectedBirthDate = user.birthDate;
         _birthDateController.text =
             DateFormat('MMM dd, yyyy').format(user.birthDate!);
+      }
+
+      // Check for incomplete profile and log for debugging
+      final missingFields = <String>[];
+      if (user.firstName == null || user.firstName!.trim().isEmpty) missingFields.add('First Name');
+      if (user.lastName == null || user.lastName!.trim().isEmpty) missingFields.add('Last Name');
+      if (user.birthDate == null) missingFields.add('Birth Date');
+      if (user.gender == null || user.gender!.trim().isEmpty) missingFields.add('Gender');
+      if (user.contactNumber == null || user.contactNumber!.trim().isEmpty) missingFields.add('Contact Number');
+      if (user.emergencyContact == null || user.emergencyContact!.trim().isEmpty) missingFields.add('Emergency Contact');
+
+      if (missingFields.isNotEmpty) {
+        debugPrint('⚠️ Incomplete profile detected. Missing: ${missingFields.join(', ')}');
+        
+        // Show a helpful message to the user if this is not an editing session
+        if (!widget.isEditable && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Your profile is incomplete. Missing: ${missingFields.join(', ')}'),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Complete Profile',
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (context) => const ProfilePage(isEditable: true),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            }
+          });
+        }
+      } else {
+        debugPrint('✅ Profile is complete');
+      }
+    } else {
+      debugPrint('❌ No user data available for profile loading');
+      
+      // Show error message if no user data
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to load profile data. Please try signing in again.'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+        });
       }
     }
   }

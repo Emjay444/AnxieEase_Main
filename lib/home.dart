@@ -2932,17 +2932,61 @@ class _HomeContentState extends State<HomeContent> {
                             );
                           }
 
-                          // Default to 'Guest' if no user or no first name
-                          String firstName = 'Guest';
-                          // Use firstName directly from user model
-                          if (authProvider.currentUser != null &&
-                              authProvider.currentUser!.firstName != null &&
-                              authProvider.currentUser!.firstName!.isNotEmpty) {
-                            firstName = authProvider.currentUser!.firstName!;
+                          // Improved user name display with better fallback logic
+                          String displayName = 'Guest';
+                          final user = authProvider.currentUser;
+                          
+                          if (user != null) {
+                            // Priority 1: Use first name if available
+                            if (user.firstName != null && user.firstName!.trim().isNotEmpty) {
+                              displayName = user.firstName!.trim();
+                            } 
+                            // Priority 2: Extract from full name if available
+                            else if (user.fullName != null && user.fullName!.trim().isNotEmpty) {
+                              final parts = user.fullName!.trim().split(' ');
+                              if (parts.isNotEmpty) {
+                                displayName = parts.first;
+                              }
+                            }
+                            // Priority 3: Use email prefix as fallback
+                            else if (user.email.isNotEmpty) {
+                              final emailParts = user.email.split('@');
+                              if (emailParts.isNotEmpty && emailParts.first.isNotEmpty) {
+                                displayName = emailParts.first.replaceAll('.', ' ').split(' ').map((word) => 
+                                  word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : ''
+                                ).join(' ');
+                              }
+                            }
+                          }
+
+                          // Show loading state if still loading and no user data
+                          if (authProvider.isLoading && user == null) {
+                            return Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      theme.textTheme.titleLarge?.color ?? Colors.black
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Loading...',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontSize: screenWidth * 0.055,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            );
                           }
 
                           return Text(
-                            'Hello $firstName',
+                            'Hello $displayName',
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontSize: screenWidth * 0.055,
                               fontWeight: FontWeight.bold,
