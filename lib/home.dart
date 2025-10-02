@@ -2850,6 +2850,31 @@ class _HomeContentState extends State<HomeContent> {
     return null;
   }
 
+  // Helper method to get time-based greeting
+  String _getTimeBasedGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good morning';
+    } else if (hour < 17) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  }
+
+  // Helper method to get formatted date
+  String _getFormattedDate() {
+    final now = DateTime.now();
+    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    final weekday = weekdays[now.weekday - 1];
+    final month = months[now.month - 1];
+    
+    return '$weekday, $month ${now.day}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -2860,33 +2885,42 @@ class _HomeContentState extends State<HomeContent> {
     return SafeArea(
       child: Column(
         children: [
-          // Top Bar (white card with shadow)
+          // Top Bar (enhanced card with gradient and shadow)
           Material(
-            elevation: 4,
+            elevation: 0, // Remove material elevation, we'll use custom shadow
             color: Colors.transparent,
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: screenWidth * 0.05,
-                vertical: screenWidth * 0.03,
+                vertical: screenWidth * 0.04, // Slightly increased padding
               ),
               decoration: BoxDecoration(
-                color: theme.cardColor,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.cardColor,
+                    theme.cardColor.withOpacity(0.95),
+                  ],
+                  stops: const [0.0, 1.0],
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 12,
-                    spreadRadius: 0.5,
-                    offset: const Offset(0, 4),
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 20,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 8),
                   ),
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 4,
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 6,
+                    spreadRadius: 0,
                     offset: const Offset(0, 2),
                   ),
                 ],
                 borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(18),
-                  bottomRight: Radius.circular(18),
+                  bottomLeft: Radius.circular(24), // Increased border radius
+                  bottomRight: Radius.circular(24),
                 ),
               ),
               child: Row(
@@ -2996,19 +3030,34 @@ class _HomeContentState extends State<HomeContent> {
                           return Text(
                             'Hello $displayName',
                             style: theme.textTheme.titleLarge?.copyWith(
-                              fontSize: screenWidth * 0.055,
-                              fontWeight: FontWeight.bold,
+                              fontSize: screenWidth * 0.06, // Slightly larger
+                              fontWeight: FontWeight.w700, // Bolder
+                              letterSpacing: -0.5, // Tighter letter spacing
+                              height: 1.2,
                             ),
                           );
                         },
                       ),
+                      const SizedBox(height: 2), // Add spacing between elements
                       Text(
-                        'Welcome back',
+                        _getTimeBasedGreeting(),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          fontSize: screenWidth * 0.035,
+                          fontSize: screenWidth * 0.038, // Slightly larger
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.75),
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.2,
                         ),
                       ),
-                      // (No date chip in the white card design)
+                      const SizedBox(height: 1),
+                      Text(
+                        _getFormattedDate(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: screenWidth * 0.032, // Slightly larger
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.55),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ],
                   ),
                   GestureDetector(
