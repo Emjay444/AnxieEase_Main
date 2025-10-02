@@ -1044,14 +1044,16 @@ Future<void> _configureFCM() async {
 
         // Check if this is a wellness reminder or breathing exercise reminder
         final messageType = data['type'] ?? '';
-        if (messageType == 'reminder' &&
+        if ((messageType == 'reminder' || messageType == 'breathing_reminder') &&
             (notification?.title?.contains('Breathing Exercise') == true ||
                 notification?.title?.contains('🫁') == true ||
-                data['related_screen'] == 'breathing_screen')) {
+                notification?.title?.contains('Breathe') == true ||
+                data['related_screen'] == 'breathing_screen' ||
+                data['category'] == 'daily_breathing')) {
           // Handle breathing exercise reminder
           debugPrint('🫁 Breathing exercise reminder FCM received');
 
-          // Inline banner for instant feedback
+          // Only show in-app banner (no duplicate local notification)
           _showInAppBanner(
             title: notification?.title ?? '🫁 Breathing Exercise Reminder',
             body: notification?.body ??
@@ -1065,21 +1067,6 @@ Future<void> _configureFCM() async {
             },
           );
 
-          // Also post a system notification as a fallback
-          final notificationService = NotificationService();
-          await notificationService.initialize();
-          await AwesomeNotifications().createNotification(
-            content: NotificationContent(
-              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              channelKey: 'wellness_reminders',
-              title: notification?.title ?? '🫁 Breathing Exercise Reminder',
-              body: notification?.body ??
-                  'Time for a breathing exercise! Take a moment to relax and breathe.',
-              notificationLayout: NotificationLayout.Default,
-              category: NotificationCategory.Reminder,
-            ),
-          );
-
           // Store breathing exercise reminder in Supabase for notifications screen
           await _storeBreathingReminderNotification(notification, data);
         } else if (messageType == 'wellness_reminder' ||
@@ -1091,7 +1078,7 @@ Future<void> _configureFCM() async {
           debugPrint('   Device time: ${currentTime.toString()}');
           debugPrint('   Timestamp from FCM: ${data['timestamp'] ?? 'N/A'}');
 
-          // Inline banner for instant feedback
+          // Only show in-app banner (no duplicate local notification)
           _showInAppBanner(
             title: notification?.title ?? 'Wellness Reminder',
             body: notification?.body ??
@@ -1106,21 +1093,6 @@ Future<void> _configureFCM() async {
                   dest.contains('ground') ? '/grounding' : '/breathing';
               rootNavigatorKey.currentState?.pushNamed(route);
             },
-          );
-
-          // Also post a system notification as a fallback
-          final notificationService = NotificationService();
-          await notificationService.initialize();
-          await AwesomeNotifications().createNotification(
-            content: NotificationContent(
-              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              channelKey: 'wellness_reminders',
-              title: notification?.title ?? 'Wellness Reminder',
-              body: notification?.body ??
-                  'Take a moment to check how you\'re feeling.',
-              notificationLayout: NotificationLayout.Default,
-              category: NotificationCategory.Reminder,
-            ),
           );
 
           // Store wellness reminder in Supabase for notifications screen

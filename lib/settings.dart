@@ -94,7 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                  '🫁 Breathing reminders enabled - you\'ll receive notifications every 30 minutes'),
+                  '🫁 Breathing reminders enabled - you\'ll receive a daily breathing exercise reminder'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -539,7 +539,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       subtitle: Text(
         _breathingRemindersEnabled
-            ? 'Receive breathing exercise reminders every 30 minutes'
+            ? 'Receive a daily breathing exercise reminder'
             : 'Breathing reminders are disabled',
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               fontSize: 14,

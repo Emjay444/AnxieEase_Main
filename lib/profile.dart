@@ -39,8 +39,8 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Start in editing mode only if explicitly allowed.
-    _isEditing = widget.isEditable;
+    // Always start in view mode, even if page is editable
+    _isEditing = false;
     _loadUserData();
     _loadProfileImage();
   }
@@ -183,8 +183,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickImage() async {
-    if (!_isEditing) return;
-
+    // Allow profile picture editing even in view mode
     try {
       final picker = ImagePicker();
       final pickedImage = await picker.pickImage(
@@ -370,7 +369,6 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: const Color(0xFF3AA772),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: const [],
       ),
       body: Form(
         key: _formKey,
@@ -402,62 +400,72 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         GestureDetector(
                           onTap: _pickImage,
-                          child: Stack(
-                            alignment: Alignment.bottomRight,
-                            children: [
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.25),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF3AA772),
-                                      Color(0xFF55B789)
+                          child: Tooltip(
+                            message: 'Tap to change profile picture',
+                            child: Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.25),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
                                     ],
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF3AA772),
+                                        Color(0xFF55B789)
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                child: CircleAvatar(
-                                  radius: 58,
-                                  backgroundColor: Colors.white,
                                   child: CircleAvatar(
-                                    radius: 54,
-                                    backgroundColor: const Color(0xFF3AA772),
-                                    backgroundImage: _getAvatarImage(),
-                                    child: _getAvatarImage() == null
-                                        ? Text(
-                                            _firstNameController.text.isNotEmpty
-                                                ? _firstNameController.text[0]
-                                                    .toUpperCase()
-                                                : '?',
-                                            style: const TextStyle(
-                                              fontSize: 42,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : null,
+                                    radius: 58,
+                                    backgroundColor: Colors.white,
+                                    child: CircleAvatar(
+                                      radius: 54,
+                                      backgroundColor: const Color(0xFF3AA772),
+                                      backgroundImage: _getAvatarImage(),
+                                      child: _getAvatarImage() == null
+                                          ? Text(
+                                              _firstNameController.text.isNotEmpty
+                                                  ? _firstNameController.text[0]
+                                                      .toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                fontSize: 42,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (_isEditing)
+                                // Always show camera icon for profile picture editing
                                 Container(
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(24),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
                                   padding: const EdgeInsets.all(6),
                                   child: const Icon(Icons.camera_alt,
                                       size: 18, color: Color(0xFF3AA772)),
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -714,6 +722,17 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                 ),
               ),
+            )
+          : null,
+      floatingActionButton: widget.isEditable && !_isEditing
+          ? FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _isEditing = true;
+                });
+              },
+              backgroundColor: const Color(0xFF3AA772),
+              child: const Icon(Icons.edit, color: Colors.white),
             )
           : null,
     );

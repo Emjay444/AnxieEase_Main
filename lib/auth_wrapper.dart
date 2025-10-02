@@ -100,19 +100,6 @@ class AuthWrapper extends StatelessWidget {
                           color: Colors.white70,
                         ),
                       ),
-                      const SizedBox(height: 32),
-                      // Add retry button in case loading takes too long
-                      ElevatedButton(
-                        onPressed: () async {
-                          debugPrint('🔄 Manual retry requested by user');
-                          await authProvider.loadUserProfile();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF2D9254),
-                        ),
-                        child: const Text('Retry'),
-                      ),
                     ],
                   ),
                 ),

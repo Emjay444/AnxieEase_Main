@@ -404,6 +404,21 @@ const WELLNESS_MESSAGES = {
       body: "Gentle reminder: You have the strength to handle whatever today brings.",
       type: "affirmation",
     },
+    {
+      title: "Morning Gratitude 🙏",
+      body: "Start with thanks: Name one thing you're grateful for right now, even something small.",
+      type: "gratitude",
+    },
+    {
+      title: "Hydration First 💧",
+      body: "Before coffee or tasks, drink a glass of water. Your brain needs hydration to think clearly.",
+      type: "wellness",
+    },
+    {
+      title: "Gentle Awakening 🌸",
+      body: "No need to rush. Take 3 deep breaths and ease into your day with kindness to yourself.",
+      type: "mindfulness",
+    },
   ],
   afternoon: [
     {
@@ -430,6 +445,26 @@ const WELLNESS_MESSAGES = {
       title: "Stress Relief 🌸",
       body: "Quick tip: Drink some water and stretch your shoulders. Your body will thank you.",
       type: "wellness",
+    },
+    {
+      title: "Midday Motivation 💪",
+      body: "You're halfway through the day! Every small step forward counts. Keep going.",
+      type: "affirmation",
+    },
+    {
+      title: "Tension Release 😌",
+      body: "Clench your fists tight for 5 seconds, then release. Feel the tension leave your body.",
+      type: "relaxation",
+    },
+    {
+      title: "Progress Check ✅",
+      body: "What's one thing you've accomplished today? Celebrate it, no matter how small.",
+      type: "reflection",
+    },
+    {
+      title: "Afternoon Reset 🔄",
+      body: "Feeling scattered? Place your hand on your heart and take 5 conscious breaths.",
+      type: "grounding",
     },
   ],
   evening: [
@@ -458,6 +493,31 @@ const WELLNESS_MESSAGES = {
       body: "Try the 'body scan' - mentally check each part of your body and consciously relax it.",
       type: "relaxation",
     },
+    {
+      title: "Day's End Wisdom 🦉",
+      body: "You survived today's challenges. That's not nothing - that's everything. Be proud.",
+      type: "affirmation",
+    },
+    {
+      title: "Transition Ritual 🕯️",
+      body: "Create a boundary between day and night. Put down your worries, pick up peace.",
+      type: "mindfulness",
+    },
+    {
+      title: "Tomorrow's Promise 🌠",
+      body: "Rest knowing tomorrow brings new possibilities. You don't have to solve everything tonight.",
+      type: "comfort",
+    },
+    {
+      title: "Gentle Night 🌙",
+      body: "Progressive relaxation: Start with your toes, tense for 3 seconds, then release. Work upward.",
+      type: "relaxation",
+    },
+    {
+      title: "Self-Compassion 💜",
+      body: "Speak to yourself like you would a dear friend. You deserve the same kindness you give others.",
+      type: "affirmation",
+    },
   ],
 };
 
@@ -472,23 +532,31 @@ let sentWellnessMessages: {
   evening: [],
 };
 
-// Scheduled wellness reminders - runs multiple times daily
+// Scheduled wellness reminders - runs 5 times daily for better anxiety prevention
 export const sendWellnessReminders = functions.pubsub
-  .schedule("0 9,17,23 * * *") // 9 AM, 5 PM, 11 PM daily
+  .schedule("0 8,12,16,20,22 * * *") // 8 AM, 12 PM, 4 PM, 8 PM, 10 PM daily
   .timeZone("Asia/Manila") // Philippine time zone
   .onRun(async (context) => {
     try {
-      const currentHour = new Date().getHours();
+      // Get Philippine time instead of server time
+      const philippineTime = new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Manila",
+        hour12: false,
+      });
+      const currentHour = parseInt(philippineTime.split(", ")[1].split(":")[0]);
+      
       let timeCategory: keyof typeof WELLNESS_MESSAGES;
 
-      // Determine time category
-      if (currentHour >= 6 && currentHour < 12) {
+      // Determine time category based on Philippine time - updated for 5 daily reminders
+      if (currentHour >= 6 && currentHour < 11) {
         timeCategory = "morning";
-      } else if (currentHour >= 12 && currentHour < 18) {
+      } else if (currentHour >= 11 && currentHour < 17) {
         timeCategory = "afternoon";
       } else {
         timeCategory = "evening";
       }
+
+      console.log(`🕐 Philippine time hour: ${currentHour}, category: ${timeCategory}`);
 
       // Get a non-repeating message
       const message = getRandomWellnessMessage(timeCategory);
@@ -587,6 +655,72 @@ export const sendManualWellnessReminder = functions.https.onCall(
     }
   }
 );
+
+// Daily breathing exercise reminder - runs once daily at 2 PM
+export const sendDailyBreathingReminder = functions.pubsub
+  .schedule("0 14 * * *") // 2 PM daily
+  .timeZone("Asia/Manila") // Philippine time zone
+  .onRun(async (context) => {
+    try {
+      const breathingMessages = [
+        {
+          title: "🫁 Daily Breathing Exercise",
+          body: "Take 5 minutes for deep breathing. Inhale slowly, hold, then exhale completely. Your mind will thank you.",
+        },
+        {
+          title: "🌬️ Breathe & Reset", 
+          body: "Try the 4-7-8 technique: Inhale for 4, hold for 7, exhale for 8. Perfect for releasing tension.",
+        },
+        {
+          title: "💨 Mindful Breathing",
+          body: "Box breathing time: Inhale 4 counts, hold 4, exhale 4, hold 4. Repeat 3 times for instant calm.",
+        },
+        {
+          title: "🍃 Breathing Break",
+          body: "Belly breathing: Place one hand on chest, one on belly. Breathe so only the belly hand moves.",
+        },
+        {
+          title: "🌟 Deep Breath Moment",
+          body: "Take 3 deep breaths right now. Feel your shoulders relax and your mind clear with each exhale.",
+        },
+      ];
+
+      // Get a random breathing message
+      const message = breathingMessages[Math.floor(Math.random() * breathingMessages.length)];
+
+      // Send FCM notification
+      const fcmMessage = {
+        data: {
+          type: "breathing_reminder",
+          category: "daily_breathing",
+          messageType: "breathing",
+          timestamp: Date.now().toString(),
+        },
+        notification: {
+          title: message.title,
+          body: message.body,
+        },
+        android: {
+          priority: "normal" as const,
+          notification: {
+            channelId: "wellness_reminders",
+            priority: "default" as const,
+            defaultSound: true,
+            tag: `breathing_daily_${Date.now()}`,
+          },
+        },
+        topic: "wellness_reminders",
+      };
+
+      const response = await admin.messaging().send(fcmMessage);
+      console.log("✅ Daily breathing reminder sent:", response);
+
+      return response;
+    } catch (error) {
+      console.error("❌ Error sending daily breathing reminder:", error);
+      throw error;
+    }
+  });
 
 // Helper function to get random wellness message without repetition
 function getRandomWellnessMessage(

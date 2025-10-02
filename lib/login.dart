@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:provider/provider.dart';
 import 'dart:async'; // Import for Timer
 import 'forgotpass.dart';
@@ -157,6 +158,21 @@ class _LoginScreenState extends State<LoginScreen> {
   void _submit(BuildContext context) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+    await _performLoginWithRetry(authProvider);
+  }
+
+  Future<void> _performLoginWithRetry(AuthProvider authProvider, {int attempt = 1, int maxAttempts = 3}) async {
+    const retryableErrors = [
+      'network',
+      'timeout',
+      'connection',
+      'server error',
+      'internal error',
+      'service unavailable',
+      'connection closed',
+      'clientexception',
+    ];
+
     // Check if account is locked out
     if (_lockoutEndTime != null && DateTime.now().isBefore(_lockoutEndTime!)) {
       final remainingSeconds =
@@ -256,7 +272,33 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      // Increment failed login attempts
+      String errorMessage = e.toString().toLowerCase();
+      bool shouldRetry = retryableErrors.any((error) => errorMessage.contains(error));
+
+      // If it's a retryable error and we haven't exceeded max attempts, retry automatically
+      if (shouldRetry && attempt < maxAttempts) {
+        debugPrint('🔄 Login attempt $attempt failed with retryable error: $e');
+        debugPrint('⏳ Auto-retrying in ${attempt} seconds... (Attempt ${attempt + 1}/$maxAttempts)');
+        
+        // Show a brief message about auto-retry
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection issue detected. Auto-retrying... (${attempt + 1}/$maxAttempts)'),
+            duration: Duration(seconds: attempt),
+            backgroundColor: Colors.orange,
+          ),
+        );
+
+        // Wait with exponential backoff
+        await Future.delayed(Duration(seconds: attempt));
+        
+        if (mounted) {
+          await _performLoginWithRetry(authProvider, attempt: attempt + 1, maxAttempts: maxAttempts);
+        }
+        return;
+      }
+
+      // For non-retryable errors or when max attempts reached, handle normally
       setState(() {
         _failedLoginAttempts++;
 
@@ -269,11 +311,11 @@ class _LoginScreenState extends State<LoginScreen> {
       // Log the error for debugging
       Logger.error('Login error', e);
 
-      String errorMessage;
+      String displayErrorMessage;
       // Check for specific error messages from Supabase
       if (e.toString().contains('Invalid login credentials') ||
           e.toString().contains('Invalid email or password')) {
-        errorMessage = 'Invalid email or password.';
+        displayErrorMessage = 'Invalid email or password.';
 
         // Set field errors for visual indication and clear password
         setState(() {
@@ -282,16 +324,18 @@ class _LoginScreenState extends State<LoginScreen> {
           passwordController.clear(); // Clear password field for security
         });
       } else if (e.toString().contains('verify your email')) {
-        errorMessage =
+        displayErrorMessage =
             'Please verify your email before logging in. Check your inbox for the verification link.';
       } else if (e.toString().contains('rate limit')) {
-        errorMessage = 'Too many login attempts. Please try again later.';
-      } else if (e.toString().contains('network')) {
-        errorMessage = 'Network error. Please check your internet connection.';
+        displayErrorMessage = 'Too many login attempts. Please try again later.';
+      } else if (shouldRetry && attempt >= maxAttempts) {
+        displayErrorMessage = 'Connection failed after $maxAttempts attempts. Please check your internet and try again.';
+      } else if (errorMessage.contains('network')) {
+        displayErrorMessage = 'Network error. Please check your internet connection.';
       } else {
         // For any other error, still show "Invalid email or password" for security reasons
         // when credentials are likely the issue
-        errorMessage = 'Invalid email or password.';
+        displayErrorMessage = 'Invalid email or password.';
 
         // Set field errors for visual indication and clear password
         setState(() {
@@ -309,7 +353,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) {
           ScaffoldMessenger.of(scaffoldContext).showSnackBar(
             SnackBar(
-              content: Text(errorMessage),
+              content: Text(displayErrorMessage),
               duration: const Duration(seconds: 6), // Increased duration
               backgroundColor: Colors.red,
               behavior:
