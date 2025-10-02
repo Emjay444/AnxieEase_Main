@@ -414,6 +414,10 @@ class _WatchScreenState extends State<WatchScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Low battery warning banner
+            if ((batteryPercentage ?? 0) <= 10 && (batteryPercentage ?? 0) > 0)
+              _buildLowBatteryWarning(),
+            
             // Device status card
             _buildDeviceStatusCard(),
             const SizedBox(height: 24),
@@ -712,11 +716,7 @@ class _WatchScreenState extends State<WatchScreen>
           Row(
             children: [
               Expanded(
-                child: _buildStatusItem(
-                  'Battery',
-                  '${(batteryPercentage ?? 0).toStringAsFixed(0)}%',
-                  Icons.battery_full,
-                ),
+                child: _buildBatteryStatusItem(),
               ),
               Container(
                 width: 1,
@@ -759,6 +759,157 @@ class _WatchScreenState extends State<WatchScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBatteryStatusItem() {
+    final battery = batteryPercentage ?? 0;
+    final isLowBattery = battery <= 10;
+    final isCriticalBattery = battery <= 5;
+    final isOffline = !isConnected || battery <= 0;
+    
+    // Choose appropriate icon and color
+    IconData batteryIcon;
+    Color iconColor;
+    Color textColor;
+    
+    if (isOffline) {
+      batteryIcon = Icons.battery_unknown;
+      iconColor = Colors.grey;
+      textColor = Colors.grey;
+    } else if (isCriticalBattery) {
+      batteryIcon = Icons.battery_alert;
+      iconColor = Colors.red;
+      textColor = Colors.red;
+    } else if (isLowBattery) {
+      batteryIcon = Icons.battery_2_bar;
+      iconColor = Colors.orange;
+      textColor = Colors.orange;
+    } else if (battery < 25) {
+      batteryIcon = Icons.battery_3_bar;
+      iconColor = Colors.yellow;
+      textColor = Colors.white;
+    } else if (battery < 50) {
+      batteryIcon = Icons.battery_4_bar;
+      iconColor = Colors.white;
+      textColor = Colors.white;
+    } else {
+      batteryIcon = Icons.battery_full;
+      iconColor = Colors.green;
+      textColor = Colors.white;
+    }
+
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(batteryIcon, color: iconColor, size: 28),
+            // Add warning indicator for low battery
+            if (isLowBattery && !isOffline)
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: isCriticalBattery ? Colors.red : Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isOffline ? 'N/A' : '${battery.toStringAsFixed(0)}%',
+          style: TextStyle(
+            color: textColor,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Battery',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 14,
+              ),
+            ),
+            if (isLowBattery && !isOffline) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.warning,
+                color: isCriticalBattery ? Colors.red : Colors.orange,
+                size: 14,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLowBatteryWarning() {
+    final battery = batteryPercentage ?? 0;
+    final isCritical = battery <= 5;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isCritical ? Colors.red[50] : Colors.orange[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCritical ? Colors.red : Colors.orange,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isCritical ? Icons.battery_alert : Icons.battery_2_bar,
+            color: isCritical ? Colors.red : Colors.orange,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isCritical ? 'Critical Battery!' : 'Low Battery Warning',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isCritical ? Colors.red[700] : Colors.orange[700],
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isCritical 
+                    ? 'Device battery at ${battery.toStringAsFixed(0)}%. Please charge immediately!'
+                    : 'Device battery at ${battery.toStringAsFixed(0)}%. Consider charging soon.',
+                  style: TextStyle(
+                    color: isCritical ? Colors.red[600] : Colors.orange[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.warning,
+            color: isCritical ? Colors.red : Colors.orange,
+            size: 20,
+          ),
+        ],
+      ),
     );
   }
 

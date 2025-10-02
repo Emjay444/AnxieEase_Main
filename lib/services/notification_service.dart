@@ -382,6 +382,21 @@ class NotificationService extends ChangeNotifier {
           playSound: true,
           icon: 'resource://drawable/launcher_icon',
         ),
+
+        // Device alerts (battery, connectivity)
+        NotificationChannel(
+          channelKey: 'device_alerts_channel',
+          channelName: 'Device Alerts',
+          channelDescription: 'Wearable device battery and connectivity alerts',
+          defaultColor: const Color(0xFFFF6B00), // Orange for device alerts
+          importance: NotificationImportance.High,
+          ledColor: const Color(0xFFFF6B00),
+          enableVibration: true,
+          vibrationPattern: lowVibrationPattern,
+          playSound: true,
+          soundSource: 'resource://raw/device_alert_sound',
+          icon: 'resource://drawable/launcher_icon',
+        ),
       ],
     );
 
@@ -1079,6 +1094,68 @@ class NotificationService extends ChangeNotifier {
 
     debugPrint(
         'Scheduled anxiety prevention reminder for ${scheduledTime.toString()} with ID $notificationId');
+  }
+
+  /// Send low battery notification for wearable device
+  Future<bool> sendLowBatteryNotification({
+    required String deviceId,
+    required int batteryLevel,
+    required bool isCritical,
+  }) async {
+    if (!_isInitialized) {
+      debugPrint('❌ NotificationService not initialized, cannot send low battery notification');
+      return false;
+    }
+
+    final String title = isCritical 
+        ? '🔋 Critical Battery Alert!'
+        : '⚠️ Low Battery Warning';
+    
+    final String body = isCritical
+        ? 'Your wearable device battery is at $batteryLevel%. Please charge immediately to avoid data loss!'
+        : 'Your wearable device battery is at $batteryLevel%. Consider charging soon.';
+
+    // Use different deduplication keys for low vs critical battery
+    final String notificationType = isCritical ? 'critical_battery' : 'low_battery';
+
+    return await _sendNotificationWithDeduplication(
+      type: notificationType,
+      title: title,
+      body: body,
+      channelKey: 'device_alerts_channel',
+      payload: {
+        'type': notificationType,
+        'device_id': deviceId,
+        'battery_level': batteryLevel.toString(),
+        'is_critical': isCritical.toString(),
+        'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
+  }
+
+  /// Send device offline notification when battery dies
+  Future<bool> sendDeviceOfflineNotification({
+    required String deviceId,
+  }) async {
+    if (!_isInitialized) {
+      debugPrint('❌ NotificationService not initialized, cannot send device offline notification');
+      return false;
+    }
+
+    const String title = '📱 Device Disconnected';
+    const String body = 'Your wearable device has gone offline due to low battery. Charge and reconnect to resume monitoring.';
+
+    return await _sendNotificationWithDeduplication(
+      type: 'device_offline',
+      title: title,
+      body: body,
+      channelKey: 'device_alerts_channel',
+      payload: {
+        'type': 'device_offline',
+        'device_id': deviceId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
   }
 
   @override

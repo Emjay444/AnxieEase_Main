@@ -25,6 +25,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _obscureConfirmPassword = true;
   bool _tokenExpired = false;
 
+  // Password requirements tracking
+  Map<String, bool> _passwordRequirements = {
+    'length': false,
+    'uppercase': false,
+    'lowercase': false,
+    'number': false,
+    'special': false,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +57,22 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
   }
 
+  void _validatePasswordRequirements(String password) {
+    setState(() {
+      _passwordRequirements = {
+        'length': password.length >= 8,
+        'uppercase': password.contains(RegExp(r'[A-Z]')),
+        'lowercase': password.contains(RegExp(r'[a-z]')),
+        'number': password.contains(RegExp(r'[0-9]')),
+        'special': password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')),
+      };
+    });
+  }
+
+  bool _isPasswordValid() {
+    return _passwordRequirements.values.every((requirement) => requirement);
+  }
+
   Future<void> _updatePassword() async {
     if (_passwordController.text.isEmpty ||
         _confirmPasswordController.text.isEmpty) {
@@ -64,10 +89,40 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
 
-    // Enhanced password validation
-    if (_passwordController.text.length < 6) {
+    // Comprehensive password validation
+    final password = _passwordController.text;
+    
+    if (password.length < 8) {
       setState(() {
-        _errorMessage = 'Password must be at least 6 characters long';
+        _errorMessage = 'Password must be at least 8 characters long';
+      });
+      return;
+    }
+
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      setState(() {
+        _errorMessage = 'Password must contain at least one uppercase letter';
+      });
+      return;
+    }
+
+    if (!password.contains(RegExp(r'[a-z]'))) {
+      setState(() {
+        _errorMessage = 'Password must contain at least one lowercase letter';
+      });
+      return;
+    }
+
+    if (!password.contains(RegExp(r'[0-9]'))) {
+      setState(() {
+        _errorMessage = 'Password must contain at least one number';
+      });
+      return;
+    }
+
+    if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+      setState(() {
+        _errorMessage = 'Password must contain at least one special character (!@#\$%^&*(),.?":{}|<>)';
       });
       return;
     }
@@ -353,6 +408,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
+                        onChanged: _validatePasswordRequirements,
                         decoration: InputDecoration(
                           hintText: "Enter new password",
                           hintStyle: TextStyle(color: Colors.grey.shade400),
@@ -387,6 +443,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         style: const TextStyle(color: Colors.black87),
                         enabled: !_isLoading && !_isSuccess,
                       ),
+
+                      // Password Requirements Widget
+                      if (_passwordController.text.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _buildPasswordRequirements(),
+                      ],
 
                       const SizedBox(height: 20),
 
@@ -443,8 +505,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
                       // Update Password Button
                       ElevatedButton(
-                        onPressed:
-                            _isLoading || _isSuccess ? null : _updatePassword,
+                        onPressed: _isLoading || _isSuccess || !_isPasswordValid()
+                            ? null
+                            : _updatePassword,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF3AA772),
                           foregroundColor: Colors.white,
@@ -531,6 +594,75 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPasswordRequirements() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Password Requirements:',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildRequirementItem(
+            'At least 8 characters',
+            _passwordRequirements['length'] ?? false,
+          ),
+          _buildRequirementItem(
+            'One uppercase letter (A-Z)',
+            _passwordRequirements['uppercase'] ?? false,
+          ),
+          _buildRequirementItem(
+            'One lowercase letter (a-z)',
+            _passwordRequirements['lowercase'] ?? false,
+          ),
+          _buildRequirementItem(
+            'One number (0-9)',
+            _passwordRequirements['number'] ?? false,
+          ),
+          _buildRequirementItem(
+            'One special character (!@#\$%^&*)',
+            _passwordRequirements['special'] ?? false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequirementItem(String text, bool isMet) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isMet ? Icons.check_circle : Icons.circle_outlined,
+            size: 16,
+            color: isMet ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: isMet ? Colors.green : Colors.grey.shade600,
+              fontWeight: isMet ? FontWeight.w500 : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }

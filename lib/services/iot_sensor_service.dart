@@ -3,8 +3,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../firebase_options.dart';
 import '../utils/logger.dart';
+import 'notification_service.dart';
 
 /// Pure IoT Sensor Service
 ///
@@ -43,6 +45,8 @@ class IoTSensorService extends ChangeNotifier {
   double _batteryLevel = 85.0;
   bool _isDeviceWorn = false;
   bool _isConnected = false;
+  bool _isDeviceShutdown = false; // Track if device is actually off
+  bool _lowBatteryWarningShown = false; // Track if warning already shown
 
   // Realistic value ranges and patterns
   final Random _random = Random();
@@ -60,6 +64,9 @@ class IoTSensorService extends ChangeNotifier {
   bool get isDeviceWorn => _isDeviceWorn;
   bool get isConnected => _isConnected;
   bool get isActive => _isActive;
+  bool get isDeviceShutdown => _isDeviceShutdown;
+  bool get isLowBattery => _batteryLevel <= 10;
+  bool get isCriticalBattery => _batteryLevel <= 5;
   String get deviceId => _deviceId;
   String get userId => _userId;
   String get currentSeverityLevel => _currentSeverityLevel;
@@ -257,7 +264,7 @@ class IoTSensorService extends ChangeNotifier {
           'accelZ': 0.0,
           'ambientTemp': 20 +
               _random.nextDouble() * 8, // Room temperature still detectable
-          'battPerc': _batteryLevel.clamp(1, 100).round(),
+          'battPerc': _isDeviceShutdown ? 0 : _batteryLevel.clamp(1, 100).round(),
           'bodyTemp': 0.0, // No body temperature when not worn
           'gyroX': 0.0,
           'gyroY': 0.0,
@@ -322,10 +329,47 @@ class IoTSensorService extends ChangeNotifier {
       // Generate ambient temperature (room temperature)
       _ambientTemperature = 20 + _random.nextDouble() * 8; // 20-28°C
 
-      // Simulate battery drain
-      _batteryLevel = max(0, _batteryLevel - _random.nextDouble() * 0.1);
-      if (_batteryLevel < 20) {
+      // Simulate battery drain with improved logic
+      if (!_isDeviceShutdown) {
+        // Normal battery drain - but never below 1% unless device shuts down
+        final batteryDrain = _random.nextDouble() * 0.1;
+        _batteryLevel = max(1.0, _batteryLevel - batteryDrain);
+        
+        // Check for low battery warnings
+        if (_batteryLevel <= 10 && !_lowBatteryWarningShown) {
+          _showLowBatteryWarning();
+          _lowBatteryWarningShown = true;
+        }
+        
+        // Reset warning flag if battery goes above 15% (hysteresis)
+        if (_batteryLevel > 15) {
+          _lowBatteryWarningShown = false;
+        }
+        
+        // Device shuts down at exactly 1% (critical battery)
+        if (_batteryLevel <= 1.0) {
+          _isDeviceShutdown = true;
+          _isConnected = false;
+          _batteryLevel = 0.0; // Now it can show 0%
+          AppLogger.d('IoTSensorService: Device shut down due to critical battery');
+          
+          // Send device offline notification
+          _sendDeviceOfflineNotification();
+        }
+      }
+      
+      // Simulate charging when battery gets low (but not if shut down)
+      if (_batteryLevel < 20 && !_isDeviceShutdown) {
         _batteryLevel = 100; // Simulate charging
+        _lowBatteryWarningShown = false; // Reset warning
+        AppLogger.d('IoTSensorService: Device charged to 100%');
+      }
+      
+      // If device was shut down but battery is recharged, turn it back on
+      if (_isDeviceShutdown && _batteryLevel > 5) {
+        _isDeviceShutdown = false;
+        _isConnected = true;
+        AppLogger.d('IoTSensorService: Device powered back on after charging');
       }
 
       // Check if stress event should end
@@ -361,7 +405,7 @@ class IoTSensorService extends ChangeNotifier {
         'accelY': double.parse(accelY.toStringAsFixed(2)),
         'accelZ': double.parse(accelZ.toStringAsFixed(2)),
         'ambientTemp': double.parse(_ambientTemperature.toStringAsFixed(1)),
-        'battPerc': _batteryLevel.clamp(1, 100).round(),
+        'battPerc': _isDeviceShutdown ? 0 : _batteryLevel.clamp(1, 100).round(),
         'bodyTemp': _isDeviceWorn
             ? double.parse(_bodyTemperature.toStringAsFixed(1))
             : 0,
@@ -491,4 +535,51 @@ class IoTSensorService extends ChangeNotifier {
     _sensorTimer?.cancel();
     super.dispose();
   }
+
+  /// Show low battery warning and send FCM notification if possible
+  void _showLowBatteryWarning() async {
+    final batteryPercent = _batteryLevel.round();
+    final isCritical = batteryPercent <= 5;
+    
+    AppLogger.w('IoTSensorService: Low battery warning - $batteryPercent%');
+    
+    // Send notification through notification service
+    try {
+      final notificationService = NotificationService();
+      final success = await notificationService.sendLowBatteryNotification(
+        deviceId: _deviceId,
+        batteryLevel: batteryPercent,
+        isCritical: isCritical,
+      );
+      
+      if (success) {
+        AppLogger.d('IoTSensorService: Low battery notification sent successfully');
+      } else {
+        AppLogger.w('IoTSensorService: Low battery notification was blocked or failed');
+      }
+    } catch (e) {
+      AppLogger.e('IoTSensorService: Error sending low battery notification: $e');
+    }
+  }
+
+  /// Send device offline notification
+  void _sendDeviceOfflineNotification() async {
+    try {
+      final notificationService = NotificationService();
+      final success = await notificationService.sendDeviceOfflineNotification(
+        deviceId: _deviceId,
+      );
+      
+      if (success) {
+        AppLogger.d('IoTSensorService: Device offline notification sent successfully');
+      } else {
+        AppLogger.w('IoTSensorService: Device offline notification was blocked or failed');
+      }
+    } catch (e) {
+      AppLogger.e('IoTSensorService: Error sending device offline notification: $e');
+    }
+  }
+
+  /// Check if device should be considered offline due to battery
+  bool get isOfflineForBattery => _isDeviceShutdown || _batteryLevel <= 0;
 }

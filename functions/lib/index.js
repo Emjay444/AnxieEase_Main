@@ -1,7 +1,7 @@
 "use strict";
 var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -824,4 +824,153 @@ exports.detectAnxietyMultiParameter = functions.database
         return null;
     }
 });
+// ========================
+// BATTERY MONITORING FUNCTIONS
+// ========================
+// Cloud Function to monitor device battery levels and send FCM notifications
+exports.monitorDeviceBattery = functions.database
+    .ref("/devices/{deviceId}/current/battPerc")
+    .onUpdate(async (change, context) => {
+    try {
+        const deviceId = context.params.deviceId;
+        const beforeBattery = change.before.val();
+        const afterBattery = change.after.val();
+        console.log(`🔋 Battery changed for device ${deviceId}: ${beforeBattery}% → ${afterBattery}%`);
+        // Only trigger notifications on battery decrease (not increase/charging)
+        if (afterBattery >= beforeBattery) {
+            console.log("✅ Battery increased or stayed same, no notification needed");
+            return null;
+        }
+        // Get user FCM token for this device
+        const fcmToken = await getDeviceFCMToken(deviceId);
+        if (!fcmToken) {
+            console.log(`❌ No FCM token found for device ${deviceId}`);
+            return null;
+        }
+        // Check if we need to send notifications
+        const shouldSendLowBattery = afterBattery <= 10 && beforeBattery > 10;
+        const shouldSendCriticalBattery = afterBattery <= 5 && beforeBattery > 5;
+        const shouldSendDeviceOffline = afterBattery === 0 && beforeBattery > 0;
+        if (shouldSendDeviceOffline) {
+            await sendBatteryNotification(fcmToken, "device_offline", afterBattery, deviceId);
+        }
+        else if (shouldSendCriticalBattery) {
+            await sendBatteryNotification(fcmToken, "critical_battery", afterBattery, deviceId);
+        }
+        else if (shouldSendLowBattery) {
+            await sendBatteryNotification(fcmToken, "low_battery", afterBattery, deviceId);
+        }
+        return null;
+    }
+    catch (error) {
+        console.error("❌ Error in battery monitoring:", error);
+        return null;
+    }
+});
+// Helper function to get FCM token for a device
+async function getDeviceFCMToken(deviceId) {
+    const db = admin.database();
+    try {
+        // Try to get FCM token from device assignment
+        const assignmentTokenRef = db.ref(`/devices/${deviceId}/assignment/fcmToken`);
+        const assignmentSnapshot = await assignmentTokenRef.once("value");
+        if (assignmentSnapshot.exists()) {
+            console.log(`✅ Found FCM token via assignment for device ${deviceId}`);
+            return assignmentSnapshot.val();
+        }
+        // Fallback: try to get from device level
+        const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
+        const deviceSnapshot = await deviceTokenRef.once("value");
+        if (deviceSnapshot.exists()) {
+            console.log(`✅ Found FCM token at device level for device ${deviceId}`);
+            return deviceSnapshot.val();
+        }
+        console.log(`❌ No FCM token found for device ${deviceId}`);
+        return null;
+    }
+    catch (error) {
+        console.error(`❌ Error getting FCM token for device ${deviceId}:`, error);
+        return null;
+    }
+}
+// Helper function to send battery notifications
+async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
+    try {
+        const { title, body, icon } = getBatteryNotificationContent(type, batteryLevel);
+        const message = {
+            token: fcmToken,
+            data: {
+                type: type,
+                device_id: deviceId,
+                battery_level: batteryLevel.toString(),
+                title: title,
+                body: body,
+                timestamp: Date.now().toString(),
+                click_action: "FLUTTER_NOTIFICATION_CLICK",
+            },
+            // For background notifications to show properly
+            notification: {
+                title: title,
+                body: body,
+                icon: icon,
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    icon: "ic_notification",
+                    color: type === "critical_battery" || type === "device_offline" ? "#FF0000" : "#FF6B00",
+                    priority: "high",
+                    defaultSound: true,
+                    channelId: "device_alerts_channel",
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        alert: {
+                            title: title,
+                            body: body,
+                        },
+                        sound: "default",
+                        badge: 1,
+                    },
+                },
+            },
+        };
+        const response = await admin.messaging().send(message);
+        console.log(`✅ Battery notification sent successfully: ${type} for device ${deviceId}`, response);
+    }
+    catch (error) {
+        console.error(`❌ Error sending battery notification: ${type} for device ${deviceId}:`, error);
+    }
+}
+// Helper function to get battery notification content
+function getBatteryNotificationContent(type, batteryLevel) {
+    switch (type) {
+        case "low_battery":
+            return {
+                title: "⚠️ Low Battery Warning",
+                body: `Your wearable device battery is at ${batteryLevel}%. Consider charging soon.`,
+                icon: "battery_warning",
+            };
+        case "critical_battery":
+            return {
+                title: "🔋 Critical Battery Alert!",
+                body: `Your wearable device battery is at ${batteryLevel}%. Please charge immediately!`,
+                icon: "battery_alert",
+            };
+        case "device_offline":
+            return {
+                title: "📱 Device Disconnected",
+                body: "Your wearable device has gone offline due to low battery. Charge and reconnect to resume monitoring.",
+                icon: "device_offline",
+            };
+        default:
+            return {
+                title: "Battery Alert",
+                body: `Device battery: ${batteryLevel}%`,
+                icon: "battery_unknown",
+            };
+    }
+}
 //# sourceMappingURL=index.js.map
