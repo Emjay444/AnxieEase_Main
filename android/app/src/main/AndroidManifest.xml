@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Phone call permissions for emergency calling -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Location permissions for clinic finder -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -100,15 +102,30 @@
             android:name="com.google.android.geo.API_KEY.alt"
             android:value="AIzaSyCzIImQ-Yw5ZSWLiGq3JDDMLn-dnBeVNMQ"/>
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- Package visibility declarations for Android 11+ so implicit intents can resolve -->
     <queries>
+        <!-- Text processing (used by Flutter engine) -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+
+        <!-- Dialer: allow resolving tel: URIs via ACTION_DIAL -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+
+        <!-- Optional: SMS handlers in case of future use -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+
+        <!-- Optional: Geo handlers for maps/clinic finder deep links -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
         </intent>
     </queries>
 </manifest>

@@ -89,7 +89,7 @@ class AppointmentModel {
       case AppointmentStatus.approved:
         return 'Approved';
       case AppointmentStatus.denied:
-        return 'Denied';
+        return 'Unavailable';
       case AppointmentStatus.confirmed:
         return 'Confirmed';
       case AppointmentStatus.completed:

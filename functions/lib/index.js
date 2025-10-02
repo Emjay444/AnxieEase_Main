@@ -918,7 +918,9 @@ async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
                 priority: "high",
                 notification: {
                     icon: "ic_notification",
-                    color: type === "critical_battery" || type === "device_offline" ? "#FF0000" : "#FF6B00",
+                    color: type === "critical_battery" || type === "device_offline"
+                        ? "#FF0000"
+                        : "#FF6B00",
                     priority: "high",
                     defaultSound: true,
                     channelId: "device_alerts_channel",

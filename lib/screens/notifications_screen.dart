@@ -402,7 +402,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       if (confirmed) {
         // Show help modal with emergency contact and clinic finder
-        await _showHelpModal(severity);
+        await _showHelpModal(severity, notificationId);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -416,7 +416,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   // Show help modal with emergency contact and clinic finder
-  Future<void> _showHelpModal(String? severity) async {
+  Future<void> _showHelpModal(String? severity, String? notificationId) async {
     // Get user's emergency contact
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.currentUser;
@@ -579,6 +579,73 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         // Action Buttons
                         Column(
                           children: [
+                            // Emergency Call 911 Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    // Method 1: Try direct Android intent for dialer
+                                    final dialerUri = Uri(scheme: 'tel', path: '911');
+                                    if (await canLaunchUrl(dialerUri)) {
+                                      await launchUrl(dialerUri, mode: LaunchMode.externalApplication);
+                                    } else {
+                                      // Method 2: Try alternative dialer intent
+                                      const platform = MethodChannel('anxieease.dev/emergency');
+                                      try {
+                                        await platform.invokeMethod('makeEmergencyCall', {'number': '911'});
+                                      } catch (platformError) {
+                                        // Method 3: Show manual dial instructions
+                                        if (mounted) {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Emergency Call'),
+                                              content: const Text(
+                                                'Please manually dial 911 on your phone\'s keypad.\n\n'
+                                                'Alternative emergency numbers:\n'
+                                                '• 117 (PNP Emergency Hotline)\n'
+                                                '• Use your phone\'s emergency call feature',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context),
+                                                  child: const Text('OK'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Please manually dial 911'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.emergency, 
+                                    color: Colors.white, size: 20),
+                                label: const Text('Emergency Call 911'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
                             // Breathing Exercise Button
                             SizedBox(
                               width: double.infinity,
@@ -681,6 +748,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       },
     );
+
+    // Mark notification as completed/read after modal is dismissed (regardless of how)
+    if (notificationId != null && mounted) {
+      try {
+        await _supabaseService.markNotificationAsRead(notificationId);
+        // Refresh notifications to show updated status
+        _loadNotifications();
+      } catch (e) {
+        debugPrint('Error marking notification as completed: $e');
+      }
+    }
   }
 
   // Show dialog for already answered notifications
@@ -799,7 +877,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.pop(context);
-                          _showHelpModal(severity);
+                          _showHelpModal(severity, notification['id']);
                         },
                         icon: const Icon(Icons.favorite, size: 16),
                         label: const Text('Get Help',
@@ -1414,7 +1492,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _callNumber(String number) async {
     final uri = Uri(scheme: 'tel', path: number);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+      // Prefer external mode to ensure system dialer is used
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

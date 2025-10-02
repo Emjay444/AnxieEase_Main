@@ -27,7 +27,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     'All',
     'Pending',
     'Accepted',
-    'Denied',
+    'Unavailable',
     'Completed'
   ];
 
@@ -1050,7 +1050,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             case 'Accepted':
               return apt.status == AppointmentStatus.accepted ||
                   apt.status == AppointmentStatus.approved;
-            case 'Denied':
+            case 'Unavailable':
               return apt.status == AppointmentStatus.denied ||
                   apt.status == AppointmentStatus.cancelled;
             case 'Completed':
@@ -1197,7 +1197,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             // Cancelled appointments
             if (cancelledAppointments.isNotEmpty) ...[
               _buildAppointmentCategory(
-                  'Recent Cancelled/Denied', cancelledAppointments, Colors.red),
+                  'Recent Cancelled/Unavailable', cancelledAppointments, Colors.grey[600]!),
               const SizedBox(height: 16),
             ],
           ],
