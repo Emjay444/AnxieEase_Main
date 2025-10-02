@@ -586,21 +586,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 onPressed: () async {
                                   try {
                                     // Method 1: Try direct Android intent for dialer
-                                    final dialerUri = Uri(scheme: 'tel', path: '911');
+                                    final dialerUri =
+                                        Uri(scheme: 'tel', path: '911');
                                     if (await canLaunchUrl(dialerUri)) {
-                                      await launchUrl(dialerUri, mode: LaunchMode.externalApplication);
+                                      await launchUrl(dialerUri,
+                                          mode: LaunchMode.externalApplication);
                                     } else {
                                       // Method 2: Try alternative dialer intent
-                                      const platform = MethodChannel('anxieease.dev/emergency');
+                                      const platform = MethodChannel(
+                                          'anxieease.dev/emergency');
                                       try {
-                                        await platform.invokeMethod('makeEmergencyCall', {'number': '911'});
+                                        await platform.invokeMethod(
+                                            'makeEmergencyCall',
+                                            {'number': '911'});
                                       } catch (platformError) {
                                         // Method 3: Show manual dial instructions
                                         if (mounted) {
                                           showDialog(
                                             context: context,
                                             builder: (context) => AlertDialog(
-                                              title: const Text('Emergency Call'),
+                                              title:
+                                                  const Text('Emergency Call'),
                                               content: const Text(
                                                 'Please manually dial 911 on your phone\'s keypad.\n\n'
                                                 'Alternative emergency numbers:\n'
@@ -609,7 +615,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                               ),
                                               actions: [
                                                 TextButton(
-                                                  onPressed: () => Navigator.pop(context),
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
                                                   child: const Text('OK'),
                                                 ),
                                               ],
@@ -620,16 +627,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     }
                                   } catch (e) {
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         const SnackBar(
-                                          content: Text('Please manually dial 911'),
+                                          content:
+                                              Text('Please manually dial 911'),
                                           backgroundColor: Colors.red,
                                         ),
                                       );
                                     }
                                   }
                                 },
-                                icon: const Icon(Icons.emergency, 
+                                icon: const Icon(Icons.emergency,
                                     color: Colors.white, size: 20),
                                 label: const Text('Emergency Call 911'),
                                 style: ElevatedButton.styleFrom(

@@ -1196,8 +1196,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
             // Cancelled appointments
             if (cancelledAppointments.isNotEmpty) ...[
-              _buildAppointmentCategory(
-                  'Recent Cancelled/Unavailable', cancelledAppointments, Colors.grey[600]!),
+              _buildAppointmentCategory('Recent Cancelled/Unavailable',
+                  cancelledAppointments, Colors.grey[600]!),
               const SizedBox(height: 16),
             ],
           ],

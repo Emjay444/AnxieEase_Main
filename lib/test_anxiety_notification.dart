@@ -13,29 +13,33 @@ class AnxietyNotificationTester {
   static Future<void> testAnxietyNotification(String severity) async {
     try {
       await _notificationService.initialize();
-      
+
       // Test data for different severity levels
       final Map<String, Map<String, String>> testData = {
         'mild': {
           'title': '🟢 Gentle Check-in',
-          'body': 'We noticed some changes in your readings. Are you experiencing any anxiety right now?',
+          'body':
+              'We noticed some changes in your readings. Are you experiencing any anxiety right now?',
         },
         'moderate': {
           'title': '🟠 Checking In With You',
-          'body': 'Your heart rate has been elevated. How are you feeling right now?',
+          'body':
+              'Your heart rate has been elevated. How are you feeling right now?',
         },
         'severe': {
           'title': '🔴 Are You Okay?',
-          'body': 'We detected concerning changes in your vital signs. Are you experiencing anxiety or distress?',
+          'body':
+              'We detected concerning changes in your vital signs. Are you experiencing anxiety or distress?',
         },
         'critical': {
           'title': '🚨 Urgent Check-in',
-          'body': 'Critical anxiety levels detected. Please confirm you are safe or seek immediate help.',
+          'body':
+              'Critical anxiety levels detected. Please confirm you are safe or seek immediate help.',
         }
       };
 
       final data = testData[severity] ?? testData['mild']!;
-      
+
       // Send local notification
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
@@ -61,7 +65,7 @@ class AnxietyNotificationTester {
             actionType: ActionType.Default,
           ),
           NotificationActionButton(
-            key: 'CONFIRM_NO', 
+            key: 'CONFIRM_NO',
             label: 'I\'m okay',
             actionType: ActionType.DismissAction,
           ),
@@ -78,7 +82,6 @@ class AnxietyNotificationTester {
       );
 
       print('✅ Test $severity anxiety notification sent successfully');
-      
     } catch (e) {
       print('❌ Error sending test notification: $e');
     }
@@ -103,10 +106,10 @@ class AnxietyNotificationTester {
   /// Test all severity levels with delay
   static Future<void> testAllSeverityLevels() async {
     const severities = ['mild', 'moderate', 'severe', 'critical'];
-    
+
     for (int i = 0; i < severities.length; i++) {
       await testAnxietyNotification(severities[i]);
-      
+
       // Wait 3 seconds between notifications
       if (i < severities.length - 1) {
         await Future.delayed(const Duration(seconds: 3));
@@ -141,7 +144,7 @@ class AnxietyNotificationTestWidget extends StatelessWidget {
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 16),
-            
+
             // Individual severity test buttons
             Wrap(
               spacing: 8,
@@ -151,36 +154,41 @@ class AnxietyNotificationTestWidget extends StatelessWidget {
                   context,
                   '🟢 Mild',
                   Colors.green,
-                  () => AnxietyNotificationTester.testAnxietyNotification('mild'),
+                  () =>
+                      AnxietyNotificationTester.testAnxietyNotification('mild'),
                 ),
                 _buildTestButton(
                   context,
-                  '🟠 Moderate', 
+                  '🟠 Moderate',
                   Colors.orange,
-                  () => AnxietyNotificationTester.testAnxietyNotification('moderate'),
+                  () => AnxietyNotificationTester.testAnxietyNotification(
+                      'moderate'),
                 ),
                 _buildTestButton(
                   context,
                   '🔴 Severe',
                   Colors.red,
-                  () => AnxietyNotificationTester.testAnxietyNotification('severe'),
+                  () => AnxietyNotificationTester.testAnxietyNotification(
+                      'severe'),
                 ),
                 _buildTestButton(
                   context,
                   '🚨 Critical',
                   Colors.purple,
-                  () => AnxietyNotificationTester.testAnxietyNotification('critical'),
+                  () => AnxietyNotificationTester.testAnxietyNotification(
+                      'critical'),
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Test all button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => AnxietyNotificationTester.testAllSeverityLevels(),
+                onPressed: () =>
+                    AnxietyNotificationTester.testAllSeverityLevels(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -188,7 +196,7 @@ class AnxietyNotificationTestWidget extends StatelessWidget {
                 child: const Text('🚀 Test All Levels (3s delay)'),
               ),
             ),
-            
+
             const SizedBox(height: 8),
             const Text(
               'Note: Notifications will appear in your device\'s notification panel and the app\'s notifications screen.',
@@ -200,7 +208,8 @@ class AnxietyNotificationTestWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTestButton(BuildContext context, String label, Color color, VoidCallback onPressed) {
+  Widget _buildTestButton(
+      BuildContext context, String label, Color color, VoidCallback onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
