@@ -2866,12 +2866,24 @@ class _HomeContentState extends State<HomeContent> {
   String _getFormattedDate() {
     final now = DateTime.now();
     final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+
     final weekday = weekdays[now.weekday - 1];
     final month = months[now.month - 1];
-    
+
     return '$weekday, $month ${now.day}';
   }
 
@@ -3043,7 +3055,8 @@ class _HomeContentState extends State<HomeContent> {
                         _getTimeBasedGreeting(),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontSize: screenWidth * 0.038, // Slightly larger
-                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.75),
+                          color: theme.textTheme.bodyMedium?.color
+                              ?.withOpacity(0.75),
                           fontWeight: FontWeight.w500,
                           letterSpacing: 0.2,
                         ),
@@ -3053,7 +3066,8 @@ class _HomeContentState extends State<HomeContent> {
                         _getFormattedDate(),
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: screenWidth * 0.032, // Slightly larger
-                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.55),
+                          color: theme.textTheme.bodyMedium?.color
+                              ?.withOpacity(0.55),
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.5,
                         ),
