@@ -395,7 +395,11 @@ class AuthProvider extends ChangeNotifier {
           debugPrint('❌ User profile missing during update - signing out...');
           // Sign out if we have auth but no profile (corrupted state)
           await _supabaseService.signOut();
-          await _storageService.clearCredentials();
+          // Only clear credentials if "Remember Me" is disabled
+          final rememberMe = await _storageService.getRememberMe();
+          if (!rememberMe) {
+            await _storageService.clearCredentials();
+          }
           _currentUser = null;
           notifyListeners();
         }
@@ -459,7 +463,11 @@ class AuthProvider extends ChangeNotifier {
                 '🔄 AuthProvider - Signing out due to missing profile...');
             // Sign out if we have auth but no profile (corrupted state)
             await _supabaseService.signOut();
-            await _storageService.clearCredentials();
+            // Only clear credentials if "Remember Me" is disabled
+            final rememberMe = await _storageService.getRememberMe();
+            if (!rememberMe) {
+              await _storageService.clearCredentials();
+            }
             _currentUser = null;
           }
         } catch (e) {
@@ -574,8 +582,14 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(true);
       debugPrint('🔄 Starting sign out process...');
 
-      // Clear stored credentials
-      await _storageService.clearCredentials();
+      // Only clear stored credentials if "Remember Me" is disabled
+      final rememberMe = await _storageService.getRememberMe();
+      if (!rememberMe) {
+        await _storageService.clearCredentials();
+        debugPrint('🧹 Credentials cleared (Remember Me is disabled)');
+      } else {
+        debugPrint('💾 Credentials preserved (Remember Me is enabled)');
+      }
 
       // Sign out from Supabase
       await _supabaseService.signOut();

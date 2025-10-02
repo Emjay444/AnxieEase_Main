@@ -71,15 +71,21 @@ class StorageService {
   Future<void> setRememberMe(bool value) async {
     await _prefs.setBool(_rememberMeKey, value);
     Logger.debug('Remember Me set to: $value');
+    debugPrint('🔧 StorageService - Remember Me set to: $value');
 
     // If "Remember Me" is turned off, clear stored credentials
     if (!value) {
       await clearCredentials();
+      debugPrint('🧹 StorageService - Credentials cleared because Remember Me was disabled');
+    } else {
+      debugPrint('💾 StorageService - Credentials preserved because Remember Me is enabled');
     }
   }
 
   Future<bool> getRememberMe() async {
-    return _prefs.getBool(_rememberMeKey) ?? false;
+    final value = _prefs.getBool(_rememberMeKey) ?? false;
+    debugPrint('🔍 StorageService - getRememberMe() returning: $value');
+    return value;
   }
 
   // Save credentials securely
@@ -88,8 +94,10 @@ class StorageService {
       await _secureStorage.write(key: _emailKey, value: email);
       await _secureStorage.write(key: _passwordKey, value: password);
       Logger.debug('Credentials saved securely');
+      debugPrint('💾 StorageService - Credentials saved for email: $email');
     } catch (e) {
       Logger.error('Failed to save credentials', e);
+      debugPrint('❌ StorageService - Failed to save credentials: $e');
     }
   }
 
@@ -98,12 +106,14 @@ class StorageService {
     try {
       final email = await _secureStorage.read(key: _emailKey);
       final password = await _secureStorage.read(key: _passwordKey);
+      debugPrint('🔍 StorageService - Retrieved credentials: email=${email != null ? email : 'null'}, password=${password != null ? '[HIDDEN]' : 'null'}');
       return {
         'email': email,
         'password': password,
       };
     } catch (e) {
       Logger.error('Failed to retrieve credentials', e);
+      debugPrint('❌ StorageService - Failed to retrieve credentials: $e');
       return {
         'email': null,
         'password': null,
@@ -117,8 +127,10 @@ class StorageService {
       await _secureStorage.delete(key: _emailKey);
       await _secureStorage.delete(key: _passwordKey);
       Logger.debug('Credentials cleared');
+      debugPrint('🧹 StorageService - Credentials cleared from secure storage');
     } catch (e) {
       Logger.error('Failed to clear credentials', e);
+      debugPrint('❌ StorageService - Failed to clear credentials: $e');
     }
   }
 }

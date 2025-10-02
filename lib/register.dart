@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'main.dart';
 import 'package:intl/intl.dart';
+import 'legal/legal_documents_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
   final VoidCallback onSwitch;
@@ -761,10 +762,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   activeColor: Colors.green,
                                 ),
                                 const Expanded(
-                                  child: Text(
-                                    "I agree to the Terms & Privacy",
-                                    style: TextStyle(color: Colors.black54),
-                                  ),
+                                  child: ClickableTermsText(),
                                 ),
                               ],
                             ),
