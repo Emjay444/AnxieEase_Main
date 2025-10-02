@@ -113,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Only refresh credentials on the first call to avoid clearing form multiple times
     if (!_hasRefreshed) {
       _hasRefreshed = true;
@@ -127,28 +127,29 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _refreshStoredCredentials() async {
     try {
       debugPrint('🔄 LoginScreen - _refreshStoredCredentials() called');
-      
+
       // Get remember me status
       final rememberMe = await _storageService.getRememberMe();
       debugPrint('🔍 LoginScreen - Current remember me status: $rememberMe');
       debugPrint('🔍 LoginScreen - Widget remember me status: $_rememberMe');
-      
+
       // Update remember me status
       _rememberMe = rememberMe;
-      
+
       if (_rememberMe) {
         // Load and display saved credentials
         debugPrint('💾 LoginScreen - Loading saved credentials...');
         final savedCredentials = await _storageService.getSavedCredentials();
-        
+
         if (savedCredentials['email'] != null) {
-          debugPrint('📧 LoginScreen - Setting email field to: ${savedCredentials['email']}');
+          debugPrint(
+              '📧 LoginScreen - Setting email field to: ${savedCredentials['email']}');
           emailController.text = savedCredentials['email']!;
           _emailFieldTouched = true;
         } else {
           debugPrint('📧 LoginScreen - No saved email found');
         }
-        
+
         if (savedCredentials['password'] != null) {
           debugPrint('🔒 LoginScreen - Setting password field (hidden)');
           passwordController.text = savedCredentials['password']!;
@@ -156,9 +157,10 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('🔒 LoginScreen - No saved password found');
         }
       } else {
-        debugPrint('❌ LoginScreen - Remember me is disabled, not loading credentials');
+        debugPrint(
+            '❌ LoginScreen - Remember me is disabled, not loading credentials');
       }
-      
+
       // Update UI
       if (mounted) {
         setState(() {});
@@ -173,7 +175,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // Initialize storage and load credentials
   Future<void> _initStorageAndLoadCredentials() async {
     try {
-      debugPrint('🚀 LoginScreen - Initializing storage and loading credentials...');
+      debugPrint(
+          '🚀 LoginScreen - Initializing storage and loading credentials...');
       await _storageService.init();
 
       // Get remember me status
@@ -182,13 +185,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // If remember me is enabled, load credentials
       if (_rememberMe) {
-        debugPrint('💾 LoginScreen - Remember me is enabled, loading credentials...');
+        debugPrint(
+            '💾 LoginScreen - Remember me is enabled, loading credentials...');
         final savedCredentials = await _storageService.getSavedCredentials();
 
         if (savedCredentials['email'] != null) {
           emailController.text = savedCredentials['email']!;
           _emailFieldTouched = true;
-          debugPrint('📧 LoginScreen - Email loaded: ${savedCredentials['email']}');
+          debugPrint(
+              '📧 LoginScreen - Email loaded: ${savedCredentials['email']}');
         } else {
           debugPrint('📧 LoginScreen - No saved email found');
         }
@@ -200,7 +205,8 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('🔒 LoginScreen - No saved password found');
         }
       } else {
-        debugPrint('❌ LoginScreen - Remember me is disabled, not loading credentials');
+        debugPrint(
+            '❌ LoginScreen - Remember me is disabled, not loading credentials');
       }
 
       // Update UI
@@ -318,23 +324,27 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Save credentials BEFORE signing in to prevent navigation interruption
-      debugPrint('🔍 LoginScreen - Checking Remember Me status before signing in...');
+      debugPrint(
+          '🔍 LoginScreen - Checking Remember Me status before signing in...');
       debugPrint('🔍 LoginScreen - Widget _rememberMe: $_rememberMe');
-      
+
       // Double-check the stored remember me preference
       final storedRememberMe = await _storageService.getRememberMe();
       debugPrint('🔍 LoginScreen - Stored remember me: $storedRememberMe');
-      
+
       if (_rememberMe) {
-        debugPrint('💾 LoginScreen - Remember me is checked, saving credentials NOW...');
+        debugPrint(
+            '💾 LoginScreen - Remember me is checked, saving credentials NOW...');
         await _storageService.saveCredentials(
           emailController.text.trim(),
           passwordController.text,
         );
         Logger.debug('Credentials saved for "Remember Me" BEFORE sign in');
-        debugPrint('✅ LoginScreen - Credentials saved successfully BEFORE sign in');
+        debugPrint(
+            '✅ LoginScreen - Credentials saved successfully BEFORE sign in');
       } else {
-        debugPrint('🧹 LoginScreen - Remember me is NOT checked, ensuring no credentials are saved...');
+        debugPrint(
+            '🧹 LoginScreen - Remember me is NOT checked, ensuring no credentials are saved...');
         // Note: setRememberMe(false) automatically clears credentials
         Logger.debug('Remember Me disabled, credentials cleared');
         debugPrint('✅ LoginScreen - Remember me disabled');
@@ -713,13 +723,18 @@ class _LoginScreenState extends State<LoginScreen> {
                           onChanged: (value) {
                             setState(() {
                               _rememberMe = value ?? false;
-                              debugPrint('🔘 LoginScreen - Remember Me checkbox changed to: $_rememberMe');
+                              debugPrint(
+                                  '🔘 LoginScreen - Remember Me checkbox changed to: $_rememberMe');
                             });
                             // Save the Remember Me preference immediately when checkbox changes
-                            _storageService.setRememberMe(_rememberMe).then((_) {
-                              debugPrint('💾 LoginScreen - Remember Me preference saved to storage: $_rememberMe');
+                            _storageService
+                                .setRememberMe(_rememberMe)
+                                .then((_) {
+                              debugPrint(
+                                  '💾 LoginScreen - Remember Me preference saved to storage: $_rememberMe');
                             }).catchError((e) {
-                              debugPrint('❌ LoginScreen - Failed to save Remember Me preference: $e');
+                              debugPrint(
+                                  '❌ LoginScreen - Failed to save Remember Me preference: $e');
                             });
                           },
                           checkColor: Colors.white,

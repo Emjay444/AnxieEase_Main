@@ -25,7 +25,7 @@ class LegalDocumentsExample extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-            
+
             // Terms of Service Button
             ElevatedButton.icon(
               onPressed: () => LegalDocumentDialog.showTermsOfService(context),
@@ -34,13 +34,14 @@ class LegalDocumentsExample extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 minimumSize: const Size(200, 50),
               ),
             ),
-            
+
             const SizedBox(height: 15),
-            
+
             // Privacy Policy Button
             ElevatedButton.icon(
               onPressed: () => LegalDocumentDialog.showPrivacyPolicy(context),
@@ -49,13 +50,14 @@ class LegalDocumentsExample extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 minimumSize: const Size(200, 50),
               ),
             ),
-            
+
             const SizedBox(height: 30),
-            
+
             // Example of clickable text (like in registration)
             Container(
               padding: const EdgeInsets.all(15),
@@ -77,9 +79,9 @@ class LegalDocumentsExample extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 15),
-            
+
             const Text(
               'Click on "Terms of Service" or "Privacy Policy" above to view the documents',
               style: TextStyle(

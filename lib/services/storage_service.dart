@@ -76,9 +76,11 @@ class StorageService {
     // If "Remember Me" is turned off, clear stored credentials
     if (!value) {
       await clearCredentials();
-      debugPrint('🧹 StorageService - Credentials cleared because Remember Me was disabled');
+      debugPrint(
+          '🧹 StorageService - Credentials cleared because Remember Me was disabled');
     } else {
-      debugPrint('💾 StorageService - Credentials preserved because Remember Me is enabled');
+      debugPrint(
+          '💾 StorageService - Credentials preserved because Remember Me is enabled');
     }
   }
 
@@ -106,7 +108,8 @@ class StorageService {
     try {
       final email = await _secureStorage.read(key: _emailKey);
       final password = await _secureStorage.read(key: _passwordKey);
-      debugPrint('🔍 StorageService - Retrieved credentials: email=${email != null ? email : 'null'}, password=${password != null ? '[HIDDEN]' : 'null'}');
+      debugPrint(
+          '🔍 StorageService - Retrieved credentials: email=${email != null ? email : 'null'}, password=${password != null ? '[HIDDEN]' : 'null'}');
       return {
         'email': email,
         'password': password,
