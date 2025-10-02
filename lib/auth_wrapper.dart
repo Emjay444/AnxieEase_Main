@@ -66,11 +66,13 @@ class AuthWrapper extends StatelessWidget {
         if (authProvider.isAuthenticated) {
           // Check if we have user profile data loaded
           if (authProvider.currentUser != null) {
-            debugPrint('✅ AuthWrapper - User authenticated with profile data, showing HomePage');
+            debugPrint(
+                '✅ AuthWrapper - User authenticated with profile data, showing HomePage');
             return const HomePage();
           } else {
             // User is authenticated but profile data is still loading
-            debugPrint('⏳ AuthWrapper - User authenticated but profile loading, showing loading screen');
+            debugPrint(
+                '⏳ AuthWrapper - User authenticated but profile loading, showing loading screen');
             return Scaffold(
               body: Container(
                 decoration: const BoxDecoration(

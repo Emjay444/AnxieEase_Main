@@ -341,7 +341,8 @@ Future<void> _initializeRemainingServices(
 
     // Don't wait too long for auth - sync regardless
     Future.any([
-      _waitForAuthReady(ensureAuthenticated: false), // Don't require authentication
+      _waitForAuthReady(
+          ensureAuthenticated: false), // Don't require authentication
       Future.delayed(const Duration(seconds: 5), () {
         debugPrint('! Auth timeout - proceeding with sync anyway');
       })
@@ -1648,7 +1649,8 @@ Future<void> _waitForAuthReady({
 
         // Only log every 20 iterations (every 2 seconds) to prevent spam
         if (logCount % 20 == 0) {
-          debugPrint('🔐 Auth status: initialized=$init, authenticated=$authed');
+          debugPrint(
+              '🔐 Auth status: initialized=$init, authenticated=$authed');
         }
         logCount++;
 
@@ -1657,7 +1659,7 @@ Future<void> _waitForAuthReady({
               '✅ Auth is ready! (took ${DateTime.now().difference(start).inMilliseconds}ms)');
           return; // Ready
         }
-        
+
         // If we don't need authentication and auth is initialized, exit early
         if (init && !ensureAuthenticated) {
           debugPrint('✅ Auth initialized (authentication not required)');

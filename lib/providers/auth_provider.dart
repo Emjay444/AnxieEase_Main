@@ -110,16 +110,18 @@ class AuthProvider extends ChangeNotifier {
       try {
         _setLoading(true);
         debugPrint('🔐 Handling sign in for user: ${user.email}');
-        
+
         // Add timeout to prevent indefinite loading
         final profileData = await Future.any([
           _loadUserProfileWithRecovery(user),
-          Future.delayed(const Duration(seconds: 10), () => throw TimeoutException('Profile loading timed out')),
+          Future.delayed(const Duration(seconds: 10),
+              () => throw TimeoutException('Profile loading timed out')),
         ]);
-        
+
         if (profileData != null) {
           _currentUser = profileData;
-          debugPrint('✅ User profile loaded successfully: ${_currentUser?.firstName} ${_currentUser?.lastName}');
+          debugPrint(
+              '✅ User profile loaded successfully: ${_currentUser?.firstName} ${_currentUser?.lastName}');
         } else {
           debugPrint('❌ Failed to load user profile after all attempts');
           // Don't sign out immediately, give user a chance to retry
@@ -133,16 +135,17 @@ class AuthProvider extends ChangeNotifier {
         }
         // Create a minimal user object from auth data as fallback
         final authMetadata = user.userMetadata ?? {};
-        debugPrint('🔄 Creating fallback user from auth metadata: $authMetadata');
-        
+        debugPrint(
+            '🔄 Creating fallback user from auth metadata: $authMetadata');
+
         // Try multiple ways to get the name
         String firstName = '';
         String lastName = '';
-        
+
         // Strategy 1: Direct from metadata
         firstName = authMetadata['first_name']?.toString() ?? '';
         lastName = authMetadata['last_name']?.toString() ?? '';
-        
+
         // Strategy 2: If firstName is empty, try other metadata fields
         if (firstName.isEmpty) {
           firstName = authMetadata['given_name']?.toString() ?? '';
@@ -150,7 +153,7 @@ class AuthProvider extends ChangeNotifier {
         if (lastName.isEmpty) {
           lastName = authMetadata['family_name']?.toString() ?? '';
         }
-        
+
         // Strategy 3: Try full_name and split it
         if (firstName.isEmpty && lastName.isEmpty) {
           final fullName = authMetadata['full_name']?.toString() ?? '';
@@ -164,17 +167,21 @@ class AuthProvider extends ChangeNotifier {
             }
           }
         }
-        
+
         // Strategy 4: Extract from email as last resort
         if (firstName.isEmpty && user.email != null && user.email!.isNotEmpty) {
           final emailParts = user.email!.split('@');
           if (emailParts.isNotEmpty && emailParts.first.isNotEmpty) {
-            firstName = emailParts.first.replaceAll('.', ' ').split(' ').map((word) => 
-              word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : ''
-            ).join(' ');
+            firstName = emailParts.first
+                .replaceAll('.', ' ')
+                .split(' ')
+                .map((word) => word.isNotEmpty
+                    ? word[0].toUpperCase() + word.substring(1).toLowerCase()
+                    : '')
+                .join(' ');
           }
         }
-        
+
         _currentUser = UserModel(
           id: user.id,
           email: user.email ?? '',
@@ -183,13 +190,15 @@ class AuthProvider extends ChangeNotifier {
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
-        
-        debugPrint('🔄 Created fallback user: ${_currentUser?.firstName} ${_currentUser?.lastName} (${_currentUser?.email})');
-        
+
+        debugPrint(
+            '🔄 Created fallback user: ${_currentUser?.firstName} ${_currentUser?.lastName} (${_currentUser?.email})');
+
         // Try to create the missing profile in the database for future use
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           try {
-            debugPrint('🔄 Attempting to create missing profile in background...');
+            debugPrint(
+                '🔄 Attempting to create missing profile in background...');
             await _supabaseService.client.from('user_profiles').upsert({
               'id': user.id,
               'email': user.email ?? '',
@@ -206,8 +215,9 @@ class AuthProvider extends ChangeNotifier {
             debugPrint('❌ Background profile creation failed: $e');
           }
         });
-        
-        debugPrint('🔄 Created fallback user object to prevent "Guest" display');
+
+        debugPrint(
+            '🔄 Created fallback user object to prevent "Guest" display');
       } finally {
         _setLoading(false);
       }
@@ -242,8 +252,9 @@ class AuthProvider extends ChangeNotifier {
         enriched['avatar_url'] ??= userProfile['avatar_url'];
         return UserModel.fromJson(enriched);
       } else {
-        debugPrint('❌ User profile missing after sign in - attempting recovery...');
-        
+        debugPrint(
+            '❌ User profile missing after sign in - attempting recovery...');
+
         // Try to recover from pending user data first (from failed signup)
         if (await _tryCreateProfileFromPendingData(user)) {
           debugPrint('✅ Profile recovered from pending data');
@@ -283,8 +294,9 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> _tryCreateProfileFromPendingData(User user) async {
     try {
       debugPrint('🔄 Attempting to create profile from pending data...');
-      final success = await _supabaseService.createProfileFromPendingData(user.id);
-      
+      final success =
+          await _supabaseService.createProfileFromPendingData(user.id);
+
       if (success) {
         // Try to load the newly created profile
         final newProfile = await _supabaseService.getUserProfile();
@@ -295,7 +307,8 @@ class AuthProvider extends ChangeNotifier {
           enriched['updated_at'] ??= DateTime.now().toIso8601String();
           enriched['avatar_url'] ??= newProfile['avatar_url'];
           _currentUser = UserModel.fromJson(enriched);
-          debugPrint('✅ Profile created from pending data: ${_currentUser?.firstName} ${_currentUser?.lastName}');
+          debugPrint(
+              '✅ Profile created from pending data: ${_currentUser?.firstName} ${_currentUser?.lastName}');
           return true;
         }
       }
@@ -312,7 +325,7 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('🔄 Attempting to create profile from auth metadata...');
       final metadata = user.userMetadata ?? {};
       debugPrint('📋 Auth metadata available: $metadata');
-      
+
       await _supabaseService.client.from('user_profiles').upsert({
         'id': user.id,
         'email': user.email ?? '',
@@ -325,7 +338,7 @@ class AuthProvider extends ChangeNotifier {
         'is_email_verified': user.emailConfirmedAt != null,
         'assigned_psychologist_id': null, // Explicitly set to null
       });
-      
+
       // Try to load the newly created profile
       final newProfile = await _supabaseService.getUserProfile();
       if (newProfile != null) {
@@ -335,7 +348,8 @@ class AuthProvider extends ChangeNotifier {
         enriched['updated_at'] ??= DateTime.now().toIso8601String();
         enriched['avatar_url'] ??= newProfile['avatar_url'];
         _currentUser = UserModel.fromJson(enriched);
-        debugPrint('✅ Profile created from auth metadata: ${_currentUser?.firstName} ${_currentUser?.lastName}');
+        debugPrint(
+            '✅ Profile created from auth metadata: ${_currentUser?.firstName} ${_currentUser?.lastName}');
         return true;
       }
       return false;
@@ -378,8 +392,7 @@ class AuthProvider extends ChangeNotifier {
           debugPrint('✅ User profile updated: ${_currentUser?.firstName}');
           notifyListeners();
         } else {
-          debugPrint(
-              '❌ User profile missing during update - signing out...');
+          debugPrint('❌ User profile missing during update - signing out...');
           // Sign out if we have auth but no profile (corrupted state)
           await _supabaseService.signOut();
           await _storageService.clearCredentials();
@@ -442,7 +455,8 @@ class AuthProvider extends ChangeNotifier {
           } else {
             debugPrint(
                 '❌ AuthProvider - No user profile found despite authentication');
-            debugPrint('🔄 AuthProvider - Signing out due to missing profile...');
+            debugPrint(
+                '🔄 AuthProvider - Signing out due to missing profile...');
             // Sign out if we have auth but no profile (corrupted state)
             await _supabaseService.signOut();
             await _storageService.clearCredentials();

@@ -2935,14 +2935,16 @@ class _HomeContentState extends State<HomeContent> {
                           // Improved user name display with better fallback logic
                           String displayName = 'Guest';
                           final user = authProvider.currentUser;
-                          
+
                           if (user != null) {
                             // Priority 1: Use first name if available
-                            if (user.firstName != null && user.firstName!.trim().isNotEmpty) {
+                            if (user.firstName != null &&
+                                user.firstName!.trim().isNotEmpty) {
                               displayName = user.firstName!.trim();
-                            } 
+                            }
                             // Priority 2: Extract from full name if available
-                            else if (user.fullName != null && user.fullName!.trim().isNotEmpty) {
+                            else if (user.fullName != null &&
+                                user.fullName!.trim().isNotEmpty) {
                               final parts = user.fullName!.trim().split(' ');
                               if (parts.isNotEmpty) {
                                 displayName = parts.first;
@@ -2951,10 +2953,16 @@ class _HomeContentState extends State<HomeContent> {
                             // Priority 3: Use email prefix as fallback
                             else if (user.email.isNotEmpty) {
                               final emailParts = user.email.split('@');
-                              if (emailParts.isNotEmpty && emailParts.first.isNotEmpty) {
-                                displayName = emailParts.first.replaceAll('.', ' ').split(' ').map((word) => 
-                                  word.isNotEmpty ? word[0].toUpperCase() + word.substring(1).toLowerCase() : ''
-                                ).join(' ');
+                              if (emailParts.isNotEmpty &&
+                                  emailParts.first.isNotEmpty) {
+                                displayName = emailParts.first
+                                    .replaceAll('.', ' ')
+                                    .split(' ')
+                                    .map((word) => word.isNotEmpty
+                                        ? word[0].toUpperCase() +
+                                            word.substring(1).toLowerCase()
+                                        : '')
+                                    .join(' ');
                               }
                             }
                           }
@@ -2969,8 +2977,8 @@ class _HomeContentState extends State<HomeContent> {
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      theme.textTheme.titleLarge?.color ?? Colors.black
-                                    ),
+                                        theme.textTheme.titleLarge?.color ??
+                                            Colors.black),
                                   ),
                                 ),
                                 const SizedBox(width: 8),

@@ -43,7 +43,8 @@ class SupabaseService {
         'created_at': timestamp,
         'updated_at': timestamp,
         'is_email_verified': false,
-        'assigned_psychologist_id': null, // Explicitly set to null - no auto-assignment
+        'assigned_psychologist_id':
+            null, // Explicitly set to null - no auto-assignment
       };
 
       print('📋 Final profile data to insert: $profileData');
@@ -63,7 +64,7 @@ class SupabaseService {
           'gender': userData['gender'] ?? '',
         });
         print('✅ Profile created successfully via database function');
-        
+
         // Verify the profile was created
         await _verifyProfileCreation(userId);
         return;
@@ -77,7 +78,7 @@ class SupabaseService {
         print('🔧 Attempting direct insert...');
         await client.from('user_profiles').insert(profileData);
         print('✅ Profile inserted successfully via direct insert');
-        
+
         // Verify the profile was created
         await _verifyProfileCreation(userId);
         return;
@@ -91,7 +92,7 @@ class SupabaseService {
         print('🔧 Attempting upsert...');
         await client.from('user_profiles').upsert(profileData);
         print('✅ Profile created successfully via upsert');
-        
+
         // Verify the profile was created
         await _verifyProfileCreation(userId);
         return;
@@ -102,7 +103,7 @@ class SupabaseService {
 
       // Strategy 4: Store for retry during sign-in (use persistent storage)
       print('⚠️ All direct creation methods failed, storing for sign-in retry');
-      
+
       // Store both in memory and in auth metadata for persistence
       _pendingUserData = {
         'user_id': userId,
@@ -116,7 +117,7 @@ class SupabaseService {
         'gender': userData['gender'] ?? '',
         'timestamp': timestamp,
       };
-      
+
       // Also try to update the auth metadata to persist the data
       try {
         await client.auth.updateUser(UserAttributes(
@@ -128,7 +129,8 @@ class SupabaseService {
             'contact_number': userData['contact_number'] ?? '',
             'emergency_contact': userData['emergency_contact'] ?? '',
             'gender': userData['gender'] ?? '',
-            'profile_creation_failed': true, // Flag to indicate profile needs creation
+            'profile_creation_failed':
+                true, // Flag to indicate profile needs creation
             'profile_data_stored': timestamp,
           },
         ));
@@ -136,13 +138,13 @@ class SupabaseService {
       } catch (metadataError) {
         print('❌ Failed to update user metadata: $metadataError');
       }
-      
-      print('⏳ Stored profile data for creation during sign-in: $_pendingUserData');
-      
+
+      print(
+          '⏳ Stored profile data for creation during sign-in: $_pendingUserData');
     } catch (e) {
       print('💥 Critical error in _createUserProfileDirectly: $e');
       print('📊 Stack trace: ${e.toString()}');
-      
+
       // Always store as fallback
       _pendingUserData = {
         'user_id': userId,
@@ -169,9 +171,10 @@ class SupabaseService {
           .select('id, first_name, last_name, email')
           .eq('id', userId)
           .maybeSingle();
-      
+
       if (profile != null) {
-        print('✅ Profile verification successful: ${profile['first_name']} ${profile['last_name']} (${profile['email']})');
+        print(
+            '✅ Profile verification successful: ${profile['first_name']} ${profile['last_name']} (${profile['email']})');
       } else {
         print('❌ Profile verification failed: No profile found');
         throw Exception('Profile not found after creation');
@@ -193,8 +196,9 @@ class SupabaseService {
     try {
       final authUser = client.auth.currentUser;
       if (authUser?.userMetadata?['profile_creation_failed'] == true) {
-        print('🔄 Found profile creation flag in auth metadata, attempting recovery...');
-        
+        print(
+            '🔄 Found profile creation flag in auth metadata, attempting recovery...');
+
         final metadata = authUser!.userMetadata!;
         final pendingData = {
           'user_id': userId,
@@ -206,11 +210,12 @@ class SupabaseService {
           'contact_number': metadata['contact_number'] ?? '',
           'emergency_contact': metadata['emergency_contact'] ?? '',
           'gender': metadata['gender'] ?? '',
-          'timestamp': metadata['profile_data_stored'] ?? DateTime.now().toIso8601String(),
+          'timestamp': metadata['profile_data_stored'] ??
+              DateTime.now().toIso8601String(),
         };
-        
+
         final success = await _createFromPendingData(pendingData, userId);
-        
+
         if (success) {
           // Clear the flag from metadata
           try {
@@ -225,7 +230,7 @@ class SupabaseService {
             print('❌ Failed to clear metadata flag: $e');
           }
         }
-        
+
         return success;
       }
     } catch (e) {
@@ -237,13 +242,15 @@ class SupabaseService {
   }
 
   // Helper method to create profile from pending data
-  Future<bool> _createFromPendingData(Map<String, dynamic> pendingData, String userId) async {
+  Future<bool> _createFromPendingData(
+      Map<String, dynamic> pendingData, String userId) async {
     try {
       print('🔄 Creating profile from pending data for user: $userId');
       print('📋 Pending data: $pendingData');
 
-      final timestamp = pendingData['timestamp'] ?? DateTime.now().toIso8601String();
-      
+      final timestamp =
+          pendingData['timestamp'] ?? DateTime.now().toIso8601String();
+
       final profileData = {
         'id': userId,
         'email': pendingData['email'],
@@ -1454,12 +1461,14 @@ class SupabaseService {
       // First get the user's assigned psychologist ID
       print('📞 getAssignedPsychologist: Calling getUserProfile...');
       final userProfile = await getUserProfile();
-      print('📋 getAssignedPsychologist: Got userProfile: ${userProfile != null ? 'Found' : 'Null'}');
-      
+      print(
+          '📋 getAssignedPsychologist: Got userProfile: ${userProfile != null ? 'Found' : 'Null'}');
+
       if (userProfile == null) {
         // If no user profile found, return null
         // Don't auto-assign psychologists
-        print('❌ getAssignedPsychologist: No user profile found - returning null');
+        print(
+            '❌ getAssignedPsychologist: No user profile found - returning null');
         return null;
       }
 

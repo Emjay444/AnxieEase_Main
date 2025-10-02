@@ -85,7 +85,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       // Load psychologist data (main priority)
       print('📞 Calling getAssignedPsychologist...');
       final psychologistData = await _supabaseService.getAssignedPsychologist();
-      print('📋 Got psychologist data: ${psychologistData != null ? 'Found' : 'Null'}');
+      print(
+          '📋 Got psychologist data: ${psychologistData != null ? 'Found' : 'Null'}');
 
       if (psychologistData != null) {
         if (mounted) {
@@ -489,7 +490,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.info_outline, color: Colors.blue.shade700),
+                                  Icon(Icons.info_outline,
+                                      color: Colors.blue.shade700),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
