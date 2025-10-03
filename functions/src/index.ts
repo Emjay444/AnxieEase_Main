@@ -977,10 +977,12 @@ export const monitorDeviceBattery = functions.database
       }
 
       // Get assigned user ID from device assignment
-      const assignmentRef = admin.database().ref(`/devices/${deviceId}/assignment`);
+      const assignmentRef = admin
+        .database()
+        .ref(`/devices/${deviceId}/assignment`);
       const assignmentSnapshot = await assignmentRef.once("value");
       let assignedUserId = null;
-      
+
       if (assignmentSnapshot.exists()) {
         const assignmentData = assignmentSnapshot.val();
         assignedUserId = assignmentData?.assignedUser;
@@ -989,7 +991,11 @@ export const monitorDeviceBattery = functions.database
       // Get user FCM token for this device (with user validation)
       const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
       if (!fcmToken) {
-        console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ''}`);
+        console.log(
+          `❌ No FCM token found for device ${deviceId}${
+            assignedUserId ? ` (assigned to user: ${assignedUserId})` : ""
+          }`
+        );
         return null;
       }
 
@@ -1029,7 +1035,10 @@ export const monitorDeviceBattery = functions.database
   });
 
 // Helper function to get FCM token for a device with user validation
-async function getDeviceFCMToken(deviceId: string, userId?: string): Promise<string | null> {
+async function getDeviceFCMToken(
+  deviceId: string,
+  userId?: string
+): Promise<string | null> {
   const db = admin.database();
 
   try {
@@ -1045,11 +1054,17 @@ async function getDeviceFCMToken(deviceId: string, userId?: string): Promise<str
       if (fcmToken) {
         // If userId is provided, validate that the token belongs to that user
         if (userId && assignedUser && assignedUser !== userId) {
-          console.log(`⚠️ Assignment FCM token for device ${deviceId} belongs to user ${assignedUser}, not requesting user ${userId}`);
+          console.log(
+            `⚠️ Assignment FCM token for device ${deviceId} belongs to user ${assignedUser}, not requesting user ${userId}`
+          );
           return null;
         }
-        
-        console.log(`✅ Found FCM token via assignment for device ${deviceId}${userId ? ` (user: ${userId})` : ''}`);
+
+        console.log(
+          `✅ Found FCM token via assignment for device ${deviceId}${
+            userId ? ` (user: ${userId})` : ""
+          }`
+        );
         return fcmToken;
       }
     }
@@ -1059,7 +1074,9 @@ async function getDeviceFCMToken(deviceId: string, userId?: string): Promise<str
     const deviceSnapshot = await deviceTokenRef.once("value");
 
     if (deviceSnapshot.exists()) {
-      console.log(`✅ Found FCM token at legacy device level for device ${deviceId}`);
+      console.log(
+        `✅ Found FCM token at legacy device level for device ${deviceId}`
+      );
       return deviceSnapshot.val();
     }
 
@@ -1208,22 +1225,31 @@ export const sendWellnessReminder = functions.https.onCall(
       const sendPromises = [];
 
       for (const userId of userIds) {
-        const sendPromise = sendWellnessReminderToUser(userId, title, body, type);
+        const sendPromise = sendWellnessReminderToUser(
+          userId,
+          title,
+          body,
+          type
+        );
         sendPromises.push(sendPromise);
       }
 
       // Wait for all notifications to be sent
       const results = await Promise.allSettled(sendPromises);
-      
+
       results.forEach((result, index) => {
         if (result.status === "fulfilled" && result.value) {
           sentCount++;
         } else {
-          console.log(`⚠️ Failed to send wellness reminder to user ${userIds[index]}`);
+          console.log(
+            `⚠️ Failed to send wellness reminder to user ${userIds[index]}`
+          );
         }
       });
 
-      console.log(`✅ Wellness reminder sent to ${sentCount}/${userIds.length} users`);
+      console.log(
+        `✅ Wellness reminder sent to ${sentCount}/${userIds.length} users`
+      );
 
       return {
         success: true,
@@ -1252,10 +1278,16 @@ async function sendWellnessReminderToUser(
 ): Promise<boolean> {
   try {
     // Import the getUserFCMToken function from the anxiety detection module
-    const { getUserFCMToken } = await import("./realTimeSustainedAnxietyDetection");
-    
+    const { getUserFCMToken } = await import(
+      "./realTimeSustainedAnxietyDetection"
+    );
+
     // Get user-level FCM token for wellness notifications
-    const fcmToken = await getUserFCMToken(userId, undefined, "wellness_reminder");
+    const fcmToken = await getUserFCMToken(
+      userId,
+      undefined,
+      "wellness_reminder"
+    );
 
     if (!fcmToken) {
       console.log(`⚠️ No wellness FCM token found for user ${userId}`);
@@ -1307,7 +1339,10 @@ async function sendWellnessReminderToUser(
     console.log(`✅ Wellness reminder sent to user ${userId}:`, response);
     return true;
   } catch (error) {
-    console.error(`❌ Error sending wellness reminder to user ${userId}:`, error);
+    console.error(
+      `❌ Error sending wellness reminder to user ${userId}:`,
+      error
+    );
     return false;
   }
 }

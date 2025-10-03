@@ -413,7 +413,9 @@ async function sendUserAnxietyAlert(alertData: any) {
     );
 
     if (!fcmToken) {
-      console.log(`⚠️ No anxiety alert FCM token found for user ${alertData.userId} - user may not have device assigned`);
+      console.log(
+        `⚠️ No anxiety alert FCM token found for user ${alertData.userId} - user may not have device assigned`
+      );
       return null;
     }
 
@@ -541,7 +543,6 @@ export async function getUserFCMToken(
   deviceId?: string,
   notificationType: string = "anxiety_alert"
 ): Promise<string | null> {
-  
   // For ANXIETY ALERTS: Only get token from assignment level (device-assigned users)
   if (notificationType === "anxiety_alert" && deviceId) {
     const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
@@ -579,22 +580,30 @@ export async function getUserFCMToken(
   }
 
   // For WELLNESS NOTIFICATIONS: Get token from user level (all users)
-  if (notificationType === "wellness_reminder" || notificationType === "general") {
+  if (
+    notificationType === "wellness_reminder" ||
+    notificationType === "general"
+  ) {
     const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
     const tokenSnapshot = await userTokenRef.once("value");
 
     if (tokenSnapshot.exists()) {
       const tokenData = tokenSnapshot.val();
       // Handle both new structure {token: "...", updatedAt: "..."} and legacy string format
-      const token = typeof tokenData === 'string' ? tokenData : tokenData?.token;
-      
+      const token =
+        typeof tokenData === "string" ? tokenData : tokenData?.token;
+
       if (token) {
-        console.log(`✅ Found wellness FCM token at user level: /users/${userId}/fcmToken`);
+        console.log(
+          `✅ Found wellness FCM token at user level: /users/${userId}/fcmToken`
+        );
         return token;
       }
     }
 
-    console.log(`⚠️ No user-level FCM token found for wellness notification to user ${userId}`);
+    console.log(
+      `⚠️ No user-level FCM token found for wellness notification to user ${userId}`
+    );
     return null;
   }
 
@@ -618,10 +627,12 @@ export async function getUserFCMToken(
 
   if (tokenSnapshot.exists()) {
     const tokenData = tokenSnapshot.val();
-    const token = typeof tokenData === 'string' ? tokenData : tokenData?.token;
-    
+    const token = typeof tokenData === "string" ? tokenData : tokenData?.token;
+
     if (token) {
-      console.log(`✅ Found FCM token at user level (fallback): /users/${userId}/fcmToken`);
+      console.log(
+        `✅ Found FCM token at user level (fallback): /users/${userId}/fcmToken`
+      );
       return token;
     }
   }
