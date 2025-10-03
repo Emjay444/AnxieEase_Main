@@ -107,10 +107,13 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
             break;
           case 'critical':
             // For critical alerts, directly show help modal without confirmation
-            debugPrint('🚨 Critical alert → Direct help modal (auto-confirmed)');
+            debugPrint(
+                '🚨 Critical alert → Direct help modal (auto-confirmed)');
             await _showCriticalAlertHelpModal(
-              notificationTitle: receivedAction.title ?? 'Critical Anxiety Alert',
-              notificationMessage: receivedAction.body ?? 'Critical anxiety level detected.',
+              notificationTitle:
+                  receivedAction.title ?? 'Critical Anxiety Alert',
+              notificationMessage:
+                  receivedAction.body ?? 'Critical anxiety level detected.',
               notificationId: payload['notificationId'],
             );
             break;
@@ -1261,11 +1264,14 @@ Future<void> _configureFCM() async {
             rootNavigatorKey.currentState?.pushNamed('/grounding');
             break;
           case 'critical':
-            debugPrint('🔴 Critical alert → Direct help modal (auto-confirmed)');
+            debugPrint(
+                '🔴 Critical alert → Direct help modal (auto-confirmed)');
             // For critical alerts, directly show help modal without confirmation
             await _showCriticalAlertHelpModal(
-              notificationTitle: message.notification?.title ?? 'Critical Anxiety Alert',
-              notificationMessage: message.notification?.body ?? 'Critical anxiety level detected.',
+              notificationTitle:
+                  message.notification?.title ?? 'Critical Anxiety Alert',
+              notificationMessage: message.notification?.body ??
+                  'Critical anxiety level detected.',
               notificationId: message.data['notificationId'],
             );
             break;
@@ -1380,8 +1386,10 @@ Future<void> _configureFCM() async {
                   '🔴 Critical alert launch → Direct help modal (auto-confirmed)');
               // For critical alerts, directly show help modal without confirmation
               await _showCriticalAlertHelpModal(
-                notificationTitle: initialMsg.notification?.title ?? 'Critical Anxiety Alert',
-                notificationMessage: initialMsg.notification?.body ?? 'Critical anxiety level detected.',
+                notificationTitle:
+                    initialMsg.notification?.title ?? 'Critical Anxiety Alert',
+                notificationMessage: initialMsg.notification?.body ??
+                    'Critical anxiety level detected.',
                 notificationId: initialMsg.data['notificationId'],
               );
               break;
@@ -1708,14 +1716,16 @@ Future<void> _showCriticalAlertHelpModal({
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.05),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.red.withOpacity(0.2)),
+                            border:
+                                Border.all(color: Colors.red.withOpacity(0.2)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.phone_in_talk, color: Colors.red[700], size: 20),
+                                  Icon(Icons.phone_in_talk,
+                                      color: Colors.red[700], size: 20),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Emergency Contacts',
@@ -1729,7 +1739,8 @@ Future<void> _showCriticalAlertHelpModal({
                               const SizedBox(height: 12),
 
                               // User's Personal Emergency Contact (if available)
-                              if (emergencyContact != null && emergencyContact.trim().isNotEmpty) ...[
+                              if (emergencyContact != null &&
+                                  emergencyContact.trim().isNotEmpty) ...[
                                 _buildContactChip(
                                   label: 'Your Emergency Contact',
                                   number: emergencyContact.trim(),
@@ -1785,21 +1796,27 @@ Future<void> _showCriticalAlertHelpModal({
                                 onPressed: () async {
                                   try {
                                     // Method 1: Try direct Android intent for dialer
-                                    final dialerUri = Uri(scheme: 'tel', path: '911');
+                                    final dialerUri =
+                                        Uri(scheme: 'tel', path: '911');
                                     if (await canLaunchUrl(dialerUri)) {
-                                      await launchUrl(dialerUri, mode: LaunchMode.externalApplication);
+                                      await launchUrl(dialerUri,
+                                          mode: LaunchMode.externalApplication);
                                     } else {
                                       // Method 2: Try alternative dialer intent
-                                      const platform = MethodChannel('anxieease.dev/emergency');
+                                      const platform = MethodChannel(
+                                          'anxieease.dev/emergency');
                                       try {
-                                        await platform.invokeMethod('makeEmergencyCall', {'number': '911'});
+                                        await platform.invokeMethod(
+                                            'makeEmergencyCall',
+                                            {'number': '911'});
                                       } catch (platformError) {
                                         // Method 3: Show manual dial instructions
                                         if (context.mounted) {
                                           showDialog(
                                             context: dialogContext,
                                             builder: (context) => AlertDialog(
-                                              title: const Text('Emergency Call'),
+                                              title:
+                                                  const Text('Emergency Call'),
                                               content: const Text(
                                                 'Please manually dial 911 on your phone\'s keypad.\n\n'
                                                 'Alternative emergency numbers:\n'
@@ -1808,7 +1825,8 @@ Future<void> _showCriticalAlertHelpModal({
                                               ),
                                               actions: [
                                                 TextButton(
-                                                  onPressed: () => Navigator.pop(context),
+                                                  onPressed: () =>
+                                                      Navigator.pop(context),
                                                   child: const Text('OK'),
                                                 ),
                                               ],
@@ -1819,21 +1837,25 @@ Future<void> _showCriticalAlertHelpModal({
                                     }
                                   } catch (e) {
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         const SnackBar(
-                                          content: Text('Please manually dial 911'),
+                                          content:
+                                              Text('Please manually dial 911'),
                                           backgroundColor: Colors.red,
                                         ),
                                       );
                                     }
                                   }
                                 },
-                                icon: const Icon(Icons.emergency, color: Colors.white, size: 20),
+                                icon: const Icon(Icons.emergency,
+                                    color: Colors.white, size: 20),
                                 label: const Text('Emergency Call 911'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1849,14 +1871,17 @@ Future<void> _showCriticalAlertHelpModal({
                               child: ElevatedButton.icon(
                                 onPressed: () {
                                   Navigator.pop(dialogContext);
-                                  rootNavigatorKey.currentState?.pushNamed('/breathing');
+                                  rootNavigatorKey.currentState
+                                      ?.pushNamed('/breathing');
                                 },
-                                icon: const Icon(Icons.air, color: Colors.white),
+                                icon:
+                                    const Icon(Icons.air, color: Colors.white),
                                 label: const Text('Breathing Exercise'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.teal,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1871,14 +1896,17 @@ Future<void> _showCriticalAlertHelpModal({
                               child: ElevatedButton.icon(
                                 onPressed: () {
                                   Navigator.pop(dialogContext);
-                                  rootNavigatorKey.currentState?.pushNamed('/grounding');
+                                  rootNavigatorKey.currentState
+                                      ?.pushNamed('/grounding');
                                 },
-                                icon: const Icon(Icons.self_improvement, color: Colors.white),
+                                icon: const Icon(Icons.self_improvement,
+                                    color: Colors.white),
                                 label: const Text('Grounding Technique'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1896,16 +1924,19 @@ Future<void> _showCriticalAlertHelpModal({
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const SearchScreen(),
+                                      builder: (context) =>
+                                          const SearchScreen(),
                                     ),
                                   );
                                 },
-                                icon: Icon(Icons.local_hospital, color: Colors.red[700]),
+                                icon: Icon(Icons.local_hospital,
+                                    color: Colors.red[700]),
                                 label: const Text('Find Nearest Clinic'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red[700],
                                   side: BorderSide(color: Colors.red[700]!),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1945,16 +1976,19 @@ Future<void> _showCriticalAlertHelpModal({
         final supabaseService = SupabaseService();
         // Mark the notification as answered with confirmed = true (anxiety attack)
         await supabaseService.markNotificationAsAnswered(
-          notificationId, 
-          response: 'CONFIRMED_CRITICAL', // Confirmed as critical anxiety attack
+          notificationId,
+          response:
+              'CONFIRMED_CRITICAL', // Confirmed as critical anxiety attack
           severity: 'critical', // severity level
         );
-        debugPrint('✅ Critical alert automatically marked as confirmed anxiety attack in database');
+        debugPrint(
+            '✅ Critical alert automatically marked as confirmed anxiety attack in database');
       } catch (e) {
         debugPrint('❌ Error marking critical alert as confirmed: $e');
       }
     } else {
-      debugPrint('⚠️ No notification ID provided for critical alert confirmation');
+      debugPrint(
+          '⚠️ No notification ID provided for critical alert confirmation');
     }
   } catch (e) {
     debugPrint('❌ Error showing critical alert help modal: $e');
