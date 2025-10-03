@@ -7,23 +7,39 @@ import {
 
 const db = admin.database();
 
-// FCM token retrieval function
+// FCM token retrieval function with user validation
 async function getUserFCMToken(
   userId: string,
   deviceId?: string
 ): Promise<string | null> {
   // First try assignment-level token (primary location for shared devices)
   if (deviceId) {
-    const assignmentTokenRef = db.ref(
-      `/devices/${deviceId}/assignment/fcmToken`
-    );
-    const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
+    const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
+    const assignmentSnapshot = await assignmentRef.once("value");
 
-    if (assignmentTokenSnapshot.exists()) {
-      console.log(
-        `✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
-      );
-      return assignmentTokenSnapshot.val();
+    if (assignmentSnapshot.exists()) {
+      const assignmentData = assignmentSnapshot.val();
+      const fcmToken = assignmentData?.fcmToken;
+      const assignedUser = assignmentData?.assignedUser;
+
+      // VALIDATION: Ensure the token belongs to the requesting user
+      if (fcmToken && assignedUser === userId) {
+        console.log(
+          `✅ Found verified FCM token at assignment level for user ${userId}, device ${deviceId}`
+        );
+        return fcmToken;
+      } else if (fcmToken && assignedUser !== userId) {
+        console.log(
+          `⚠️ Assignment FCM token exists for device ${deviceId} but belongs to different user (${assignedUser}) not requesting user (${userId})`
+        );
+        // Don't return token - it belongs to another user
+      } else if (fcmToken && !assignedUser) {
+        console.log(
+          `⚠️ Assignment FCM token exists for device ${deviceId} but no assignedUser field - possible legacy token`
+        );
+        // For backward compatibility, allow legacy tokens without assignedUser field
+        return fcmToken;
+      }
     }
   }
 

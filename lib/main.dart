@@ -1725,33 +1725,79 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
     final adminDeviceService = AdminDeviceManagementService();
     final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
 
+    debugPrint('🔍 FCM Token Assignment Check - User Assignment Status:');
+    debugPrint('   - isAssigned: ${assignmentStatus.isAssigned}');
+    debugPrint('   - status: ${assignmentStatus.status}');
+    debugPrint('   - canUseDevice: ${assignmentStatus.canUseDevice}');
+
     if (assignmentStatus.canUseDevice) {
-      // User has device assigned - store at assignment level for anxiety alerts
+      // ADDITIONAL VALIDATION: Check if assignment node exists and belongs to current user
+      final supabaseService = SupabaseService();
+      final currentUser = supabaseService.client.auth.currentUser;
+      
+      if (currentUser == null) {
+        debugPrint('❌ No authenticated user - cannot store assignment FCM token');
+        return;
+      }
+
       final assignmentRef =
           FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
       final assignmentSnapshot = await assignmentRef.once();
       final assignmentData = assignmentSnapshot.snapshot.value as Map?;
 
+      // Validate that existing assignment belongs to current user
       if (assignmentData != null) {
-        // Update existing assignment with the FCM token
+        final assignedUserId = assignmentData['assignedUser'] as String?;
+        if (assignedUserId != null && assignedUserId != currentUser.id) {
+          debugPrint('⚠️ WARNING: Assignment exists for different user ($assignedUserId), current user: ${currentUser.id}');
+          debugPrint('⚠️ Skipping FCM token storage to prevent overwriting another user\'s token');
+          return;
+        }
+
+        // Safe to update - either no assignedUser field or it matches current user
         await assignmentRef.update({
           'fcmToken': token,
           'tokenAssignedAt': DateTime.now().toIso8601String(),
+          'assignedUser': currentUser.id, // Ensure we track which user this token belongs to
         });
-        debugPrint('✅ FCM token stored in assignment node: $deviceId');
+        debugPrint('✅ FCM token stored in assignment node: $deviceId (User: ${currentUser.id})');
       } else {
         // Create assignment if it doesn't exist
         await assignmentRef.set({
           'fcmToken': token,
           'tokenAssignedAt': DateTime.now().toIso8601String(),
+          'assignedUser': currentUser.id, // Track which user this token belongs to
           'status': 'inactive',
           'assignedAt': DateTime.now().toIso8601String(),
         });
-        debugPrint('✅ Created assignment with FCM token: $deviceId');
+        debugPrint('✅ Created assignment with FCM token: $deviceId (User: ${currentUser.id})');
       }
     } else {
-      debugPrint(
-          'ℹ️ User has no device assigned - skipping assignment FCM token');
+      debugPrint('ℹ️ User has no device assigned (status: ${assignmentStatus.status}) - skipping assignment FCM token');
+      
+      // IMPORTANT: If user is not assigned, ensure they don't have any assignment-level token
+      try {
+        final assignmentRef = FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
+        final assignmentSnapshot = await assignmentRef.once();
+        final assignmentData = assignmentSnapshot.snapshot.value as Map?;
+        
+        if (assignmentData != null) {
+          final supabaseService = SupabaseService();
+          final currentUser = supabaseService.client.auth.currentUser;
+          final assignedUserId = assignmentData['assignedUser'] as String?;
+          
+          // Remove FCM token if it belongs to current user (they're no longer assigned)
+          if (currentUser != null && assignedUserId == currentUser.id) {
+            await assignmentRef.update({
+              'fcmToken': null,
+              'tokenAssignedAt': null,
+            });
+            debugPrint('🧹 Removed assignment FCM token for unassigned user: ${currentUser.id}');
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Could not clean up assignment token: $e');
+      }
     }
 
     // Clean up old device-level token (legacy location)

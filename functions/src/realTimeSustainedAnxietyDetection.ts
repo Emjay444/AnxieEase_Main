@@ -532,7 +532,7 @@ async function persistAlertToSupabase(alertData: any) {
 }
 
 /**
- * Get user's FCM token for notifications with context-aware retrieval
+ * Get user's FCM token for notifications with context-aware retrieval and validation
  * For anxiety alerts: Use assignment-level token (device-assigned users only)
  * For wellness notifications: Use user-level token (all users)
  */
@@ -544,20 +544,36 @@ export async function getUserFCMToken(
   
   // For ANXIETY ALERTS: Only get token from assignment level (device-assigned users)
   if (notificationType === "anxiety_alert" && deviceId) {
-    const assignmentTokenRef = db.ref(
-      `/devices/${deviceId}/assignment/fcmToken`
-    );
-    const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
+    const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
+    const assignmentSnapshot = await assignmentRef.once("value");
 
-    if (assignmentTokenSnapshot.exists()) {
-      console.log(
-        `✅ Found anxiety alert FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`
-      );
-      return assignmentTokenSnapshot.val();
+    if (assignmentSnapshot.exists()) {
+      const assignmentData = assignmentSnapshot.val();
+      const fcmToken = assignmentData?.fcmToken;
+      const assignedUser = assignmentData?.assignedUser;
+
+      // VALIDATION: Ensure the token belongs to the requesting user
+      if (fcmToken && assignedUser === userId) {
+        console.log(
+          `✅ Found verified anxiety alert FCM token for user ${userId} at device ${deviceId}`
+        );
+        return fcmToken;
+      } else if (fcmToken && assignedUser !== userId) {
+        console.log(
+          `⚠️ Assignment FCM token exists for device ${deviceId} but belongs to different user (${assignedUser}) not requesting user (${userId})`
+        );
+        return null;
+      } else if (fcmToken && !assignedUser) {
+        console.log(
+          `⚠️ Assignment FCM token exists for device ${deviceId} but no assignedUser field - possible legacy token`
+        );
+        // For backward compatibility, allow legacy tokens without assignedUser field
+        return fcmToken;
+      }
     }
 
     console.log(
-      `⚠️ No assignment-level FCM token found for anxiety alert to user ${userId}, device ${deviceId}`
+      `⚠️ No valid assignment-level FCM token found for anxiety alert to user ${userId}, device ${deviceId}`
     );
     return null;
   }

@@ -1,7 +1,7 @@
 "use strict";
 var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -841,10 +841,18 @@ exports.monitorDeviceBattery = functions.database
             console.log("✅ Battery increased or stayed same, no notification needed");
             return null;
         }
-        // Get user FCM token for this device
-        const fcmToken = await getDeviceFCMToken(deviceId);
+        // Get assigned user ID from device assignment
+        const assignmentRef = admin.database().ref(`/devices/${deviceId}/assignment`);
+        const assignmentSnapshot = await assignmentRef.once("value");
+        let assignedUserId = null;
+        if (assignmentSnapshot.exists()) {
+            const assignmentData = assignmentSnapshot.val();
+            assignedUserId = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.assignedUser;
+        }
+        // Get user FCM token for this device (with user validation)
+        const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
         if (!fcmToken) {
-            console.log(`❌ No FCM token found for device ${deviceId}`);
+            console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ''}`);
             return null;
         }
         // Check if we need to send notifications
@@ -867,22 +875,32 @@ exports.monitorDeviceBattery = functions.database
         return null;
     }
 });
-// Helper function to get FCM token for a device
-async function getDeviceFCMToken(deviceId) {
+// Helper function to get FCM token for a device with user validation
+async function getDeviceFCMToken(deviceId, userId) {
     const db = admin.database();
     try {
-        // Try to get FCM token from device assignment
-        const assignmentTokenRef = db.ref(`/devices/${deviceId}/assignment/fcmToken`);
-        const assignmentSnapshot = await assignmentTokenRef.once("value");
+        // Try to get FCM token from device assignment with validation
+        const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
+        const assignmentSnapshot = await assignmentRef.once("value");
         if (assignmentSnapshot.exists()) {
-            console.log(`✅ Found FCM token via assignment for device ${deviceId}`);
-            return assignmentSnapshot.val();
+            const assignmentData = assignmentSnapshot.val();
+            const fcmToken = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.fcmToken;
+            const assignedUser = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.assignedUser;
+            if (fcmToken) {
+                // If userId is provided, validate that the token belongs to that user
+                if (userId && assignedUser && assignedUser !== userId) {
+                    console.log(`⚠️ Assignment FCM token for device ${deviceId} belongs to user ${assignedUser}, not requesting user ${userId}`);
+                    return null;
+                }
+                console.log(`✅ Found FCM token via assignment for device ${deviceId}${userId ? ` (user: ${userId})` : ''}`);
+                return fcmToken;
+            }
         }
-        // Fallback: try to get from device level
+        // Fallback: try to get from device level (legacy location)
         const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
         const deviceSnapshot = await deviceTokenRef.once("value");
         if (deviceSnapshot.exists()) {
-            console.log(`✅ Found FCM token at device level for device ${deviceId}`);
+            console.log(`✅ Found FCM token at legacy device level for device ${deviceId}`);
             return deviceSnapshot.val();
         }
         console.log(`❌ No FCM token found for device ${deviceId}`);
@@ -973,6 +991,117 @@ function getBatteryNotificationContent(type, batteryLevel) {
                 body: `Device battery: ${batteryLevel}%`,
                 icon: "battery_unknown",
             };
+    }
+}
+/**
+ * Send wellness reminder to all users (uses user-level FCM tokens)
+ * This function sends general wellness notifications to all users regardless of device assignment
+ */
+exports.sendWellnessReminder = functions.https.onCall(async (data, context) => {
+    try {
+        const { title, body, type = "wellness_reminder" } = data;
+        if (!title || !body) {
+            throw new functions.https.HttpsError("invalid-argument", "Title and body are required");
+        }
+        console.log(`📢 Sending wellness reminder to all users: ${title}`);
+        // Get all users from Firebase Database
+        const usersSnapshot = await admin.database().ref("/users").once("value");
+        const users = usersSnapshot.val();
+        if (!users) {
+            console.log("⚠️ No users found for wellness reminder");
+            return { success: true, message: "No users to send to", sentCount: 0 };
+        }
+        const userIds = Object.keys(users);
+        console.log(`👥 Found ${userIds.length} users for wellness reminder`);
+        let sentCount = 0;
+        const sendPromises = [];
+        for (const userId of userIds) {
+            const sendPromise = sendWellnessReminderToUser(userId, title, body, type);
+            sendPromises.push(sendPromise);
+        }
+        // Wait for all notifications to be sent
+        const results = await Promise.allSettled(sendPromises);
+        results.forEach((result, index) => {
+            if (result.status === "fulfilled" && result.value) {
+                sentCount++;
+            }
+            else {
+                console.log(`⚠️ Failed to send wellness reminder to user ${userIds[index]}`);
+            }
+        });
+        console.log(`✅ Wellness reminder sent to ${sentCount}/${userIds.length} users`);
+        return {
+            success: true,
+            message: `Wellness reminder sent successfully`,
+            sentCount,
+            totalUsers: userIds.length,
+        };
+    }
+    catch (error) {
+        console.error("❌ Error sending wellness reminder:", error);
+        throw new functions.https.HttpsError("internal", "Failed to send wellness reminder");
+    }
+});
+/**
+ * Helper function to send wellness reminder to a specific user
+ */
+async function sendWellnessReminderToUser(userId, title, body, type) {
+    try {
+        // Import the getUserFCMToken function from the anxiety detection module
+        const { getUserFCMToken } = await Promise.resolve().then(() => require("./realTimeSustainedAnxietyDetection"));
+        // Get user-level FCM token for wellness notifications
+        const fcmToken = await getUserFCMToken(userId, undefined, "wellness_reminder");
+        if (!fcmToken) {
+            console.log(`⚠️ No wellness FCM token found for user ${userId}`);
+            return false;
+        }
+        const message = {
+            token: fcmToken,
+            data: {
+                type: type,
+                userId: userId,
+                title: title,
+                body: body,
+                timestamp: Date.now().toString(),
+                click_action: "FLUTTER_NOTIFICATION_CLICK",
+            },
+            notification: {
+                title: title,
+                body: body,
+            },
+            android: {
+                priority: "normal",
+                notification: {
+                    icon: "ic_notification",
+                    color: "#2D9254",
+                    channelId: "wellness_reminders",
+                    priority: "default",
+                    defaultSound: true,
+                },
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "5", // Normal priority for wellness reminders
+                },
+                payload: {
+                    aps: {
+                        alert: {
+                            title: title,
+                            body: body,
+                        },
+                        sound: "default",
+                        badge: 1,
+                    },
+                },
+            },
+        };
+        const response = await admin.messaging().send(message);
+        console.log(`✅ Wellness reminder sent to user ${userId}:`, response);
+        return true;
+    }
+    catch (error) {
+        console.error(`❌ Error sending wellness reminder to user ${userId}:`, error);
+        return false;
     }
 }
 //# sourceMappingURL=index.js.map

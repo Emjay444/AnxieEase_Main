@@ -976,10 +976,20 @@ export const monitorDeviceBattery = functions.database
         return null;
       }
 
-      // Get user FCM token for this device
-      const fcmToken = await getDeviceFCMToken(deviceId);
+      // Get assigned user ID from device assignment
+      const assignmentRef = admin.database().ref(`/devices/${deviceId}/assignment`);
+      const assignmentSnapshot = await assignmentRef.once("value");
+      let assignedUserId = null;
+      
+      if (assignmentSnapshot.exists()) {
+        const assignmentData = assignmentSnapshot.val();
+        assignedUserId = assignmentData?.assignedUser;
+      }
+
+      // Get user FCM token for this device (with user validation)
+      const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
       if (!fcmToken) {
-        console.log(`❌ No FCM token found for device ${deviceId}`);
+        console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ''}`);
         return null;
       }
 
@@ -1018,28 +1028,38 @@ export const monitorDeviceBattery = functions.database
     }
   });
 
-// Helper function to get FCM token for a device
-async function getDeviceFCMToken(deviceId: string): Promise<string | null> {
+// Helper function to get FCM token for a device with user validation
+async function getDeviceFCMToken(deviceId: string, userId?: string): Promise<string | null> {
   const db = admin.database();
 
   try {
-    // Try to get FCM token from device assignment
-    const assignmentTokenRef = db.ref(
-      `/devices/${deviceId}/assignment/fcmToken`
-    );
-    const assignmentSnapshot = await assignmentTokenRef.once("value");
+    // Try to get FCM token from device assignment with validation
+    const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
+    const assignmentSnapshot = await assignmentRef.once("value");
 
     if (assignmentSnapshot.exists()) {
-      console.log(`✅ Found FCM token via assignment for device ${deviceId}`);
-      return assignmentSnapshot.val();
+      const assignmentData = assignmentSnapshot.val();
+      const fcmToken = assignmentData?.fcmToken;
+      const assignedUser = assignmentData?.assignedUser;
+
+      if (fcmToken) {
+        // If userId is provided, validate that the token belongs to that user
+        if (userId && assignedUser && assignedUser !== userId) {
+          console.log(`⚠️ Assignment FCM token for device ${deviceId} belongs to user ${assignedUser}, not requesting user ${userId}`);
+          return null;
+        }
+        
+        console.log(`✅ Found FCM token via assignment for device ${deviceId}${userId ? ` (user: ${userId})` : ''}`);
+        return fcmToken;
+      }
     }
 
-    // Fallback: try to get from device level
+    // Fallback: try to get from device level (legacy location)
     const deviceTokenRef = db.ref(`/devices/${deviceId}/fcmToken`);
     const deviceSnapshot = await deviceTokenRef.once("value");
 
     if (deviceSnapshot.exists()) {
-      console.log(`✅ Found FCM token at device level for device ${deviceId}`);
+      console.log(`✅ Found FCM token at legacy device level for device ${deviceId}`);
       return deviceSnapshot.val();
     }
 

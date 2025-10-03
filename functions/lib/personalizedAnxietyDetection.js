@@ -5,15 +5,30 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 const db = admin.database();
-// FCM token retrieval function
+// FCM token retrieval function with user validation
 async function getUserFCMToken(userId, deviceId) {
     // First try assignment-level token (primary location for shared devices)
     if (deviceId) {
-        const assignmentTokenRef = db.ref(`/devices/${deviceId}/assignment/fcmToken`);
-        const assignmentTokenSnapshot = await assignmentTokenRef.once("value");
-        if (assignmentTokenSnapshot.exists()) {
-            console.log(`✅ Found FCM token at assignment level: /devices/${deviceId}/assignment/fcmToken`);
-            return assignmentTokenSnapshot.val();
+        const assignmentRef = db.ref(`/devices/${deviceId}/assignment`);
+        const assignmentSnapshot = await assignmentRef.once("value");
+        if (assignmentSnapshot.exists()) {
+            const assignmentData = assignmentSnapshot.val();
+            const fcmToken = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.fcmToken;
+            const assignedUser = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.assignedUser;
+            // VALIDATION: Ensure the token belongs to the requesting user
+            if (fcmToken && assignedUser === userId) {
+                console.log(`✅ Found verified FCM token at assignment level for user ${userId}, device ${deviceId}`);
+                return fcmToken;
+            }
+            else if (fcmToken && assignedUser !== userId) {
+                console.log(`⚠️ Assignment FCM token exists for device ${deviceId} but belongs to different user (${assignedUser}) not requesting user (${userId})`);
+                // Don't return token - it belongs to another user
+            }
+            else if (fcmToken && !assignedUser) {
+                console.log(`⚠️ Assignment FCM token exists for device ${deviceId} but no assignedUser field - possible legacy token`);
+                // For backward compatibility, allow legacy tokens without assignedUser field
+                return fcmToken;
+            }
         }
     }
     // Fallback to device-level token (legacy location)
