@@ -33,6 +33,9 @@ import 'screens/device_linking_screen.dart';
 import 'screens/device_setup_wizard_screen.dart';
 import 'screens/baseline_recording_screen.dart';
 import 'screens/health_dashboard_screen.dart';
+import 'search.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 
 // Global completer to signal when services finish initialization (replaces polling bool)
 final Completer<void> servicesInitializedCompleter = Completer<void>();
@@ -103,16 +106,12 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
             navigator.pushNamed('/grounding');
             break;
           case 'critical':
-            navigator.pushNamed(
-              '/notifications',
-              arguments: {
-                'show': 'notification',
-                'title': receivedAction.title ?? 'Anxiety Alert',
-                'message': receivedAction.body ?? 'Please check your status.',
-                'type': 'alert',
-                'severity': severity,
-                'createdAt': DateTime.now().toIso8601String(),
-              },
+            // For critical alerts, directly show help modal without confirmation
+            debugPrint('🚨 Critical alert → Direct help modal (auto-confirmed)');
+            await _showCriticalAlertHelpModal(
+              notificationTitle: receivedAction.title ?? 'Critical Anxiety Alert',
+              notificationMessage: receivedAction.body ?? 'Critical anxiety level detected.',
+              notificationId: payload['notificationId'],
             );
             break;
           default:
@@ -1262,18 +1261,12 @@ Future<void> _configureFCM() async {
             rootNavigatorKey.currentState?.pushNamed('/grounding');
             break;
           case 'critical':
-            debugPrint('🔴 Critical alert → Notifications with urgent context');
-            rootNavigatorKey.currentState?.pushNamed(
-              '/notifications',
-              arguments: {
-                'show': 'notification',
-                'title': message.notification?.title ?? 'Anxiety Alert',
-                'message':
-                    message.notification?.body ?? 'Please check your status.',
-                'type': 'alert',
-                'severity': severity,
-                'createdAt': DateTime.now().toIso8601String(),
-              },
+            debugPrint('🔴 Critical alert → Direct help modal (auto-confirmed)');
+            // For critical alerts, directly show help modal without confirmation
+            await _showCriticalAlertHelpModal(
+              notificationTitle: message.notification?.title ?? 'Critical Anxiety Alert',
+              notificationMessage: message.notification?.body ?? 'Critical anxiety level detected.',
+              notificationId: message.data['notificationId'],
             );
             break;
           default:
@@ -1384,18 +1377,12 @@ Future<void> _configureFCM() async {
               break;
             case 'critical':
               debugPrint(
-                  '🔴 Critical alert launch → Notifications with urgent context');
-              rootNavigatorKey.currentState?.pushNamed(
-                '/notifications',
-                arguments: {
-                  'show': 'notification',
-                  'title': initialMsg.notification?.title ?? 'Anxiety Alert',
-                  'message': initialMsg.notification?.body ??
-                      'Please check your status.',
-                  'type': 'alert',
-                  'severity': severity,
-                  'createdAt': DateTime.now().toIso8601String(),
-                },
+                  '🔴 Critical alert launch → Direct help modal (auto-confirmed)');
+              // For critical alerts, directly show help modal without confirmation
+              await _showCriticalAlertHelpModal(
+                notificationTitle: initialMsg.notification?.title ?? 'Critical Anxiety Alert',
+                notificationMessage: initialMsg.notification?.body ?? 'Critical anxiety level detected.',
+                notificationId: initialMsg.data['notificationId'],
               );
               break;
             default:
@@ -1616,6 +1603,420 @@ void _triggerNotificationRefresh() {
       }
     });
   }
+}
+
+/// Show help modal directly for critical anxiety alerts
+/// This function automatically marks critical alerts as confirmed anxiety attacks
+Future<void> _showCriticalAlertHelpModal({
+  String? notificationTitle,
+  String? notificationMessage,
+  String? notificationId,
+}) async {
+  try {
+    final context = rootNavigatorKey.currentContext;
+    if (context == null) {
+      debugPrint('⚠️ No context available for critical alert help modal');
+      return;
+    }
+
+    // Get user's emergency contact
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    final emergencyContact = user?.emergencyContact;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.85,
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.red.withOpacity(0.05),
+                  Colors.white,
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.favorite,
+                        color: Colors.red[700],
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Critical Alert - We\'re Here to Help',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red[700],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Critical anxiety level detected. Here are immediate resources:',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.red[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Scrollable content section
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+
+                        // Emergency Contact Section
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red.withOpacity(0.2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.phone_in_talk, color: Colors.red[700], size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Emergency Contacts',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.red[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // User's Personal Emergency Contact (if available)
+                              if (emergencyContact != null && emergencyContact.trim().isNotEmpty) ...[
+                                _buildContactChip(
+                                  label: 'Your Emergency Contact',
+                                  number: emergencyContact.trim(),
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              // NCMH Crisis Hotlines
+                              Text(
+                                'NCMH (National Center for Mental Health) Crisis Hotline',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.red[700],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _buildContactChip(
+                                label: 'Main Hotline',
+                                number: '1553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Alternative',
+                                number: '180018881553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Smart/TNT',
+                                number: '09190571553',
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildContactChip(
+                                label: 'Globe/TM',
+                                number: '09178998727',
+                                color: Colors.red,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Action Buttons
+                        Column(
+                          children: [
+                            // Emergency Call 911 Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    // Method 1: Try direct Android intent for dialer
+                                    final dialerUri = Uri(scheme: 'tel', path: '911');
+                                    if (await canLaunchUrl(dialerUri)) {
+                                      await launchUrl(dialerUri, mode: LaunchMode.externalApplication);
+                                    } else {
+                                      // Method 2: Try alternative dialer intent
+                                      const platform = MethodChannel('anxieease.dev/emergency');
+                                      try {
+                                        await platform.invokeMethod('makeEmergencyCall', {'number': '911'});
+                                      } catch (platformError) {
+                                        // Method 3: Show manual dial instructions
+                                        if (context.mounted) {
+                                          showDialog(
+                                            context: dialogContext,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Emergency Call'),
+                                              content: const Text(
+                                                'Please manually dial 911 on your phone\'s keypad.\n\n'
+                                                'Alternative emergency numbers:\n'
+                                                '• 117 (PNP Emergency Hotline)\n'
+                                                '• Use your phone\'s emergency call feature',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context),
+                                                  child: const Text('OK'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Please manually dial 911'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.emergency, color: Colors.white, size: 20),
+                                label: const Text('Emergency Call 911'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Breathing Exercise Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(dialogContext);
+                                  rootNavigatorKey.currentState?.pushNamed('/breathing');
+                                },
+                                icon: const Icon(Icons.air, color: Colors.white),
+                                label: const Text('Breathing Exercise'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Grounding Technique Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(dialogContext);
+                                  rootNavigatorKey.currentState?.pushNamed('/grounding');
+                                },
+                                icon: const Icon(Icons.self_improvement, color: Colors.white),
+                                label: const Text('Grounding Technique'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Find Nearest Clinic Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(dialogContext);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const SearchScreen(),
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.local_hospital, color: Colors.red[700]),
+                                label: const Text('Find Nearest Clinic'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red[700],
+                                  side: BorderSide(color: Colors.red[700]!),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Close Button
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text(
+                                'Close',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // CRITICAL: Mark this critical alert as confirmed anxiety attack in the database
+    if (notificationId != null) {
+      try {
+        final supabaseService = SupabaseService();
+        // Mark the notification as answered with confirmed = true (anxiety attack)
+        await supabaseService.markNotificationAsAnswered(
+          notificationId, 
+          response: 'CONFIRMED_CRITICAL', // Confirmed as critical anxiety attack
+          severity: 'critical', // severity level
+        );
+        debugPrint('✅ Critical alert automatically marked as confirmed anxiety attack in database');
+      } catch (e) {
+        debugPrint('❌ Error marking critical alert as confirmed: $e');
+      }
+    } else {
+      debugPrint('⚠️ No notification ID provided for critical alert confirmation');
+    }
+  } catch (e) {
+    debugPrint('❌ Error showing critical alert help modal: $e');
+  }
+}
+
+/// Helper function to build contact chip (copied from notifications_screen.dart)
+Widget _buildContactChip({
+  required String label,
+  required String number,
+  required Color color,
+}) {
+  return GestureDetector(
+    onTap: () async {
+      try {
+        final Uri phoneUri = Uri(scheme: 'tel', path: number);
+        if (await canLaunchUrl(phoneUri)) {
+          await launchUrl(phoneUri, mode: LaunchMode.externalApplication);
+        } else {
+          debugPrint('Could not launch $phoneUri');
+        }
+      } catch (e) {
+        debugPrint('Error launching phone call: $e');
+      }
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.phone, color: color, size: 16),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                number,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Wait until authentication is initialized and optionally authenticated
