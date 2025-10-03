@@ -257,7 +257,7 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
         ),
 
-        // Severity-specific channels with custom sounds
+        // Severity-specific channels with default sounds (fixed audio issues)
         // TESTING: Ultra-aggressive mild anxiety channel for popup testing
         NotificationChannel(
           channelKey: 'mild_anxiety_alerts_v4',
@@ -269,7 +269,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
+          // Removed custom soundSource to use default system sound
           defaultPrivacy: NotificationPrivacy.Public, // Show on all screens
           icon: 'resource://drawable/launcher_icon',
           // Avoid critical alerts to prevent OEMs from looping sounds
@@ -290,7 +290,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
+          // Removed custom soundSource to use default system sound
           defaultPrivacy:
               NotificationPrivacy.Public, // Make sure it shows on lock screen
           icon: 'resource://drawable/launcher_icon',
@@ -308,7 +308,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/mild_alert', // Custom sound for mild
+          // Removed custom soundSource to use default system sound
           icon: 'resource://drawable/launcher_icon',
           criticalAlerts: true, // Enable critical alerts for popup testing
         ),
@@ -322,8 +322,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFFF9800),
           enableVibration: true,
           playSound: true,
-          soundSource:
-              'resource://raw/moderate_alert', // Custom sound for moderate
+          // Removed custom soundSource to use default system sound
           icon: 'resource://drawable/launcher_icon',
         ),
 
@@ -337,7 +336,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFF44336),
           enableVibration: true,
           playSound: true,
-          soundSource: 'resource://raw/severe_alert', // Custom sound for severe
+          // Removed custom soundSource to use default system sound
           icon: 'resource://drawable/launcher_icon',
           // Removed criticalAlerts: true to prevent looping
         ),
@@ -351,8 +350,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFD32F2F),
           enableVibration: true,
           playSound: true,
-          soundSource:
-              'resource://raw/critical_alert', // Custom sound for critical
+          // Removed custom soundSource to use default system sound
           icon: 'resource://drawable/launcher_icon',
           // Keep non-critical; rely on Max importance
         ),
@@ -394,7 +392,7 @@ class NotificationService extends ChangeNotifier {
           enableVibration: true,
           vibrationPattern: lowVibrationPattern,
           playSound: true,
-          soundSource: 'resource://raw/device_alert_sound',
+          // Removed custom soundSource to use default system sound
           icon: 'resource://drawable/launcher_icon',
         ),
       ],
@@ -1064,6 +1062,7 @@ class NotificationService extends ChangeNotifier {
         second: 0,
         millisecond: 0,
         repeats: false,
+        timeZone: await AwesomeNotifications().getLocalTimeZoneIdentifier(),
       ),
     );
 

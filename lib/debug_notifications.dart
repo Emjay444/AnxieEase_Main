@@ -75,6 +75,7 @@ class _NotificationDebugScreenState extends State<NotificationDebugScreen> {
           minute: scheduleTime.minute,
           second: scheduleTime.second,
           repeats: false,
+          timeZone: await AwesomeNotifications().getLocalTimeZoneIdentifier(),
         ),
       );
 
