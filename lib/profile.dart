@@ -182,6 +182,532 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  // Show profile picture options dialog
+  void _showProfilePictureOptions() {
+    final user = context.read<AuthProvider>().currentUser;
+    final hasImage = _getAvatarImage() != null;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Text(
+                  'Profile Picture',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                
+                // Profile picture preview
+                if (hasImage) ...[
+                  GestureDetector(
+                    onTap: () => _showFullSizeImage(),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: 60,
+                        backgroundImage: _getAvatarImage(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Tap to view full size',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF3AA772),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 60,
+                      backgroundColor: const Color(0xFF3AA772),
+                      child: Text(
+                        user?.firstName?.isNotEmpty == true
+                            ? user!.firstName![0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          fontSize: 40,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No profile picture set',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+                
+                const SizedBox(height: 30),
+                
+                // Action buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Change/Add picture button
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _pickImage();
+                      },
+                      icon: Icon(hasImage ? Icons.edit : Icons.add_a_photo),
+                      label: Text(hasImage ? 'Change' : 'Add Photo'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3AA772),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                    
+                    // Remove picture button (only if image exists)
+                    if (hasImage)
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _removeProfilePicture();
+                        },
+                        icon: const Icon(Icons.delete),
+                        label: const Text('Remove'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[400],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                
+                const SizedBox(height: 15),
+                
+                // Cancel button
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Show full size image preview
+  void _showFullSizeImage() {
+    final avatarImage = _getAvatarImage();
+    if (avatarImage == null) return;
+
+    Navigator.of(context).pop(); // Close options dialog first
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (BuildContext context) {
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              // Full screen image with zoom capability - stretched to fill
+              Positioned.fill(
+                child: InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.1,
+                  maxScale: 5.0,
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    color: Colors.black,
+                    child: Center(
+                      child: Image(
+                        image: avatarImage,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.contain, // This will stretch to fill while maintaining aspect ratio
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[900],
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white54,
+                                size: 100,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Status bar overlay for immersive experience
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: MediaQuery.of(context).padding.top,
+                  color: Colors.black54,
+                ),
+              ),
+              
+              // Close button - top right
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 15,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(25),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    splashRadius: 25,
+                  ),
+                ),
+              ),
+              
+              // Info overlay - top left with fade in animation
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 15,
+                left: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.zoom_in,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pinch to zoom',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Bottom action bar with glassmorphism effect
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                    top: 20,
+                    left: 20,
+                    right: 20,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.9),
+                      ],
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // Change picture button
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _pickImage();
+                            },
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('Change Photo'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF3AA772),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                              elevation: 8,
+                              shadowColor: Colors.black.withOpacity(0.3),
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Remove picture button
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _removeProfilePicture();
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Remove'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red[600],
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                              elevation: 8,
+                              shadowColor: Colors.black.withOpacity(0.3),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Targeted profile picture cache clearing method
+  Future<void> _clearProfileImageCache() async {
+    try {
+      final user = context.read<AuthProvider>().currentUser;
+      
+      // Only evict specific profile-related network images
+      if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
+        try {
+          // Evict the current avatar URL
+          NetworkImage(user.avatarUrl!).evict();
+          
+          // Also try to evict common cache-busted variations
+          final baseUrl = user.avatarUrl!.split('?')[0]; // Remove query params
+          NetworkImage(baseUrl).evict();
+          
+          debugPrint('🖼️ Evicted profile image from cache: ${user.avatarUrl}');
+        } catch (e) {
+          debugPrint('Error evicting specific profile image: $e');
+        }
+      }
+      
+      // Force rebuild this specific widget
+      if (mounted) {
+        setState(() {
+          // Just trigger rebuild of this profile widget
+        });
+      }
+    } catch (e) {
+      debugPrint('Error in profile image cache clear: $e');
+    }
+  }
+
+  // Remove profile picture
+  Future<void> _removeProfilePicture() async {
+    try {
+      final user = context.read<AuthProvider>().currentUser;
+      if (user == null) return;
+
+      // Show confirmation dialog
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Remove Profile Picture'),
+          content: const Text('Are you sure you want to remove your profile picture?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[400],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      // TARGETED CACHE CLEARING BEFORE ANY CHANGES - only profile images
+      await _clearProfileImageCache();
+
+      // IMMEDIATE UI UPDATE - Clear local image state first
+      if (mounted) {
+        setState(() {
+          _profileImage = null;
+        });
+      }
+
+      // Another round of targeted cache clearing after state change
+      await _clearProfileImageCache();
+
+      // Update user profile in database to remove avatar URL (explicit flag)
+      try {
+        await context.read<AuthProvider>().updateProfile(
+          firstName: user.firstName,
+          lastName: user.lastName,
+          contactNumber: user.contactNumber,
+          emergencyContact: user.emergencyContact,
+          gender: user.gender,
+          avatarUrl: null,
+          removeAvatar: true, // ensure column is set to NULL
+        );
+        debugPrint('✅ Successfully updated profile to remove avatar URL');
+      } catch (e) {
+        debugPrint('Error updating profile: $e');
+        throw Exception('Failed to update profile: $e');
+      }
+
+      // Delete local profile images after successful database update
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final dir = Directory(directory.path);
+        
+        // Delete all profile images for this user
+        await for (var entity in dir.list()) {
+          if (entity is File) {
+            final filename = path.basename(entity.path);
+            if (filename.startsWith('profile_${user.id}')) {
+              await entity.delete();
+              debugPrint('Deleted local profile image: $filename');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error deleting local images: $e');
+      }
+
+      // FORCE ANOTHER UI UPDATE after database changes
+      if (mounted) {
+        setState(() {
+          _profileImage = null;
+        });
+        
+        // Final round of targeted profile image cache clearing
+        await _clearProfileImageCache();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture removed successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error removing profile picture: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing profile picture: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _pickImage() async {
     // Allow profile picture editing even in view mode
     try {
@@ -201,6 +727,9 @@ class _ProfilePageState extends State<ProfilePage> {
         final user = context.read<AuthProvider>().currentUser;
 
         if (user != null) {
+          // TARGETED CACHE CLEARING BEFORE ANY CHANGES - only profile images
+          await _clearProfileImageCache();
+
           // Use a timestamp in filename to avoid caching issues
           final imagePath =
               path.join(directory.path, 'profile_${user.id}_$timestamp.jpg');
@@ -211,14 +740,38 @@ class _ProfilePageState extends State<ProfilePage> {
           // Delete any previous profile images
           await _deleteOldProfileImages(user.id, directory, timestamp);
 
-          // Upload to Supabase storage
-          try {
-            final avatarUrl =
-                await context.read<AuthProvider>().uploadAvatar(savedFile);
+          // IMMEDIATELY update local state to show new image (before upload)
+          if (mounted) {
+            setState(() {
+              _profileImage = savedFile;
+            });
+          }
 
-            if (avatarUrl != null) {
-              debugPrint(
-                  'Avatar uploaded successfully to Supabase: $avatarUrl');
+          // Upload to Supabase storage
+          String? newAvatarUrl;
+          try {
+            newAvatarUrl = await context.read<AuthProvider>().uploadAvatar(savedFile);
+
+            if (newAvatarUrl != null) {
+              debugPrint('Avatar uploaded successfully to Supabase: $newAvatarUrl');
+              
+              // FORCE IMMEDIATE UI UPDATE with the new URL
+              if (mounted) {
+                // Targeted profile image cache clearing for new image
+                await _clearProfileImageCache();
+                
+                // Trigger rebuild with new data
+                setState(() {
+                  // Force rebuild to pick up new avatar URL from AuthProvider
+                });
+                
+                // Wait a moment then clear cache again for network image
+                Future.delayed(const Duration(milliseconds: 100), () async {
+                  if (mounted) {
+                    await _clearProfileImageCache();
+                  }
+                });
+              }
             }
           } catch (supabaseError) {
             debugPrint('Error uploading to Supabase: $supabaseError');
@@ -229,17 +782,8 @@ class _ProfilePageState extends State<ProfilePage> {
           if (await savedFile.exists()) {
             debugPrint('Profile image saved successfully to: $imagePath');
 
-            // Clear any image caches
-            PaintingBinding.instance.imageCache.clear();
-            PaintingBinding.instance.imageCache.clearLiveImages();
-
-            // Update the state with the permanently saved file
+            // Show success message
             if (mounted) {
-              setState(() {
-                _profileImage = savedFile;
-              });
-
-              // Show success message
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                     content: Text('Profile picture updated successfully')),
@@ -289,14 +833,15 @@ class _ProfilePageState extends State<ProfilePage> {
   ImageProvider? _getAvatarImage() {
     final user = context.read<AuthProvider>().currentUser;
 
-    // Priority 1: Supabase avatar URL
-    if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
-      return NetworkImage(user.avatarUrl!);
-    }
-
-    // Priority 2: Local profile image
+    // Priority 1: Local profile image (most recent)
     if (_profileImage != null) {
       return FileImage(_profileImage!);
+    }
+
+    // Priority 2: Supabase avatar URL (no global cache-busting; we evict on change)
+    if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
+      final avatarUrl = user.avatarUrl!;
+      return NetworkImage(avatarUrl);
     }
 
     // No image available
@@ -399,9 +944,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Column(
                       children: [
                         GestureDetector(
-                          onTap: _pickImage,
+                          onTap: () => _showProfilePictureOptions(),
                           child: Tooltip(
-                            message: 'Tap to change profile picture',
+                            message: 'Tap to view or change profile picture',
                             child: Stack(
                               alignment: Alignment.bottomRight,
                               children: [
@@ -431,6 +976,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                       radius: 54,
                                       backgroundColor: const Color(0xFF3AA772),
                                       backgroundImage: _getAvatarImage(),
+                                      key: ValueKey('profile_avatar_${context.read<AuthProvider>().currentUser?.avatarUrl ?? 'no-avatar'}_${_profileImage?.path ?? 'no-local'}'),
                                       child: _getAvatarImage() == null
                                           ? Text(
                                               _firstNameController

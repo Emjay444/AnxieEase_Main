@@ -629,9 +629,24 @@ class AuthProvider extends ChangeNotifier {
     String? contactNumber,
     String? emergencyContact,
     String? gender,
+    String? avatarUrl,
+    bool removeAvatar = false,
   }) async {
     try {
       _setLoading(true);
+
+      // If we're explicitly removing the avatar, update local state immediately
+      if (removeAvatar && _currentUser != null) {
+        // Evict previous avatar image from cache (targeted)
+        if (_currentUser!.avatarUrl != null &&
+            _currentUser!.avatarUrl!.isNotEmpty) {
+          try {
+            NetworkImage(_currentUser!.avatarUrl!).evict();
+          } catch (_) {}
+        }
+        _currentUser = _currentUser!.copyWith(avatarUrl: null);
+        notifyListeners();
+      }
 
       final updates = {
         if (firstName != null) 'first_name': firstName,
@@ -641,10 +656,34 @@ class AuthProvider extends ChangeNotifier {
         if (contactNumber != null) 'contact_number': contactNumber,
         if (emergencyContact != null) 'emergency_contact': emergencyContact,
         if (gender != null) 'gender': gender,
+        // If a new avatarUrl is provided, set it; if explicitly removing, set to null
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+        if (avatarUrl == null && removeAvatar) 'avatar_url': null,
       };
 
       // Update the profile fields
       await _supabaseService.updateUserProfile(updates);
+
+      // Targeted cache eviction for avatar changes only
+      if (_currentUser?.avatarUrl != null) {
+        try {
+          NetworkImage(_currentUser!.avatarUrl!).evict();
+        } catch (e) {
+          debugPrint('Error evicting previous avatar from cache: $e');
+        }
+      }
+
+      // Optimistic local update for faster UI feedback
+      if (_currentUser != null) {
+        if (avatarUrl != null) {
+          _currentUser = _currentUser!.copyWith(avatarUrl: avatarUrl);
+        } else if (removeAvatar) {
+          _currentUser = _currentUser!.copyWith(avatarUrl: null);
+        } else {
+          // Keep existing avatar
+        }
+        notifyListeners();
+      }
 
       final userProfile = await _supabaseService.getUserProfile();
       if (userProfile != null) {
@@ -665,8 +704,8 @@ class AuthProvider extends ChangeNotifier {
         // Ensure avatar_url is included
         enriched['avatar_url'] ??= userProfile['avatar_url'];
 
-        _currentUser = UserModel.fromJson(enriched);
-        notifyListeners();
+  _currentUser = UserModel.fromJson(enriched);
+  notifyListeners();
       }
     } catch (e) {
       print('Error updating profile: $e');
@@ -689,7 +728,22 @@ class AuthProvider extends ChangeNotifier {
           await _supabaseService.uploadUserAvatar(_currentUser!.id, imageFile);
 
       if (avatarUrl != null) {
-        // Reload the user profile to get the updated avatar URL
+        // Try to evict old avatar image if it exists (targeted clearing)
+        if (_currentUser?.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty) {
+          try {
+            NetworkImage(_currentUser!.avatarUrl!).evict();
+          } catch (e) {
+            debugPrint('Error evicting old avatar: $e');
+          }
+        }
+        
+        // Immediately update the current user with the new avatar URL
+        _currentUser = _currentUser!.copyWith(avatarUrl: avatarUrl);
+        
+        // Trigger immediate UI refresh
+        notifyListeners();
+        
+        // Also reload the user profile to ensure consistency
         await loadUserProfile();
       }
 

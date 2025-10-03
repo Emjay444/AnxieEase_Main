@@ -2887,6 +2887,366 @@ class _HomeContentState extends State<HomeContent> {
     return '$weekday, $month ${now.day}';
   }
 
+  // Show profile picture preview dialog
+  void _showProfilePicturePreview() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    
+    if (user == null) return;
+
+    // Get the current avatar image
+    ImageProvider? avatarImage;
+    String? avatarUrl = user.avatarUrl;
+    
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      avatarImage = NetworkImage(avatarUrl);
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Text(
+                  '${user.firstName ?? "User"}\'s Profile',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                
+                // Profile picture preview
+                GestureDetector(
+                  onTap: avatarImage != null ? () => _showFullSizeImageFromHome(avatarImage!) : null,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      key: ValueKey('home_avatar_${user.avatarUrl ?? 'no-avatar'}'),
+                      radius: 60,
+                      backgroundColor: const Color(0xFF3AA772),
+                      backgroundImage: avatarImage,
+                      child: avatarImage == null
+                          ? Text(
+                              user.firstName?.isNotEmpty == true
+                                  ? user.firstName![0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                
+                // User info
+                Text(
+                  '${user.firstName ?? ""} ${user.lastName ?? ""}'.trim(),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF3AA772),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  user.email,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                
+                if (avatarImage != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Tap image to view full size',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+                
+                const SizedBox(height: 25),
+                
+                // Action buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // View Profile button
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfilePage(),
+                          ),
+                        );
+                        
+                        // Refresh image cache when returning
+                        setState(() {
+                          PaintingBinding.instance.imageCache.clear();
+                          PaintingBinding.instance.imageCache.clearLiveImages();
+                        });
+                      },
+                      icon: const Icon(Icons.person),
+                      label: const Text('View Profile'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3AA772),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 15),
+                
+                // Close button
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Close',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Show full size image from home screen
+  void _showFullSizeImageFromHome(ImageProvider avatarImage) {
+    Navigator.of(context).pop(); // Close preview dialog first
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (BuildContext context) {
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              // Full screen image with zoom capability - stretched to fill
+              Positioned.fill(
+                child: InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.1,
+                  maxScale: 5.0,
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    color: Colors.black,
+                    child: Center(
+                      child: Image(
+                        image: avatarImage,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.contain, // This will stretch to fill while maintaining aspect ratio
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[900],
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image,
+                                color: Colors.white54,
+                                size: 100,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Status bar overlay for immersive experience
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: MediaQuery.of(context).padding.top,
+                  color: Colors.black54,
+                ),
+              ),
+              
+              // Close button - top right
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 15,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(25),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    splashRadius: 25,
+                  ),
+                ),
+              ),
+              
+              // Info overlay - top left
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 15,
+                left: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.zoom_in,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pinch to zoom',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Bottom action bar with glassmorphism effect
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                    top: 20,
+                    left: 20,
+                    right: 20,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.9),
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProfilePage(),
+                            ),
+                          );
+                          
+                          // Refresh image cache when returning
+                          setState(() {
+                            PaintingBinding.instance.imageCache.clear();
+                            PaintingBinding.instance.imageCache.clearLiveImages();
+                          });
+                        },
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Edit Profile'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3AA772),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          elevation: 8,
+                          shadowColor: Colors.black.withOpacity(0.3),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -3074,22 +3434,29 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                     ],
                   ),
-                  GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ProfilePage(),
-                        ),
-                      );
+                  Tooltip(
+                    message: 'Tap: Preview • Long press: Edit Profile',
+                    child: GestureDetector(
+                      onTap: () => _showProfilePicturePreview(),
+                      onLongPress: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfilePage(),
+                          ),
+                        );
 
-                      // Refresh image cache when returning from profile page
-                      setState(() {
-                        PaintingBinding.instance.imageCache.clear();
-                        PaintingBinding.instance.imageCache.clearLiveImages();
-                      });
-                    },
-                    child: Consumer<AuthProvider>(
+                        // Targeted refresh: evict only current avatar URL
+                        final user = context.read<AuthProvider>().currentUser;
+                        final url = user?.avatarUrl;
+                        if (url != null && url.isNotEmpty) {
+                          try {
+                            NetworkImage(url).evict();
+                          } catch (_) {}
+                        }
+                        if (mounted) setState(() {});
+                      },
+                      child: Consumer<AuthProvider>(
                       builder: (context, authProvider, child) {
                         // Check if user has an avatar URL first, then fallback to local file
                         final user = authProvider.currentUser;
@@ -3107,6 +3474,7 @@ class _HomeContentState extends State<HomeContent> {
                             child: ClipOval(
                               child: Image.network(
                                 avatarUrl,
+                                key: ValueKey('home_avatar_${avatarUrl}'),
                                 width: screenWidth * 0.12,
                                 height: screenWidth * 0.12,
                                 fit: BoxFit.cover,
@@ -3214,7 +3582,8 @@ class _HomeContentState extends State<HomeContent> {
                         );
                       },
                     ),
-                  ),
+                  ), // Close GestureDetector
+                  ), // Close Tooltip
                 ],
               ),
             ),

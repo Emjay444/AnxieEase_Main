@@ -2154,12 +2154,20 @@ class SupabaseService {
   Future<String?> uploadUserAvatar(String userId, File imageFile) async {
     try {
       final fileExt = imageFile.path.split('.').last;
-      final fileName = '$userId.$fileExt';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // Use a unique filename for every upload to avoid stale caching
+      final fileName = '$userId-$timestamp.$fileExt';
       final filePath = 'users/$fileName';
 
       // Upload file to Supabase Storage (avatars bucket)
-      await client.storage.from('avatars').upload(filePath, imageFile,
-          fileOptions: const FileOptions(cacheControl: '3600', upsert: true));
+      await client.storage.from('avatars').upload(
+            filePath,
+            imageFile,
+            fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: true, // safe even with unique path
+            ),
+          );
 
       // Get public URL
       final imageUrl = client.storage.from('avatars').getPublicUrl(filePath);
@@ -2168,6 +2176,20 @@ class SupabaseService {
       await client
           .from('user_profiles')
           .update({'avatar_url': imageUrl}).eq('id', userId);
+
+      // Best-effort: clean up older avatar files for this user
+      try {
+        final files = await client.storage.from('avatars').list(path: 'users');
+        final oldFiles = files
+            .where((f) => f.name.startsWith('$userId-') && f.name != fileName)
+            .map((f) => 'users/${f.name}')
+            .toList();
+        if (oldFiles.isNotEmpty) {
+          await client.storage.from('avatars').remove(oldFiles);
+        }
+      } catch (_) {
+        // Ignore cleanup errors
+      }
 
       return imageUrl;
     } catch (e) {
