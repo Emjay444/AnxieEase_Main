@@ -2891,13 +2891,13 @@ class _HomeContentState extends State<HomeContent> {
   void _showProfilePicturePreview() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.currentUser;
-    
+
     if (user == null) return;
 
     // Get the current avatar image
     ImageProvider? avatarImage;
     String? avatarUrl = user.avatarUrl;
-    
+
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       avatarImage = NetworkImage(avatarUrl);
     }
@@ -2933,10 +2933,12 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Profile picture preview
                 GestureDetector(
-                  onTap: avatarImage != null ? () => _showFullSizeImageFromHome(avatarImage!) : null,
+                  onTap: avatarImage != null
+                      ? () => _showFullSizeImageFromHome(avatarImage!)
+                      : null,
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -2949,7 +2951,8 @@ class _HomeContentState extends State<HomeContent> {
                       ],
                     ),
                     child: CircleAvatar(
-                      key: ValueKey('home_avatar_${user.avatarUrl ?? 'no-avatar'}'),
+                      key: ValueKey(
+                          'home_avatar_${user.avatarUrl ?? 'no-avatar'}'),
                       radius: 60,
                       backgroundColor: const Color(0xFF3AA772),
                       backgroundImage: avatarImage,
@@ -2969,7 +2972,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
                 const SizedBox(height: 15),
-                
+
                 // User info
                 Text(
                   '${user.firstName ?? ""} ${user.lastName ?? ""}'.trim(),
@@ -2987,7 +2990,7 @@ class _HomeContentState extends State<HomeContent> {
                     color: Colors.grey[600],
                   ),
                 ),
-                
+
                 if (avatarImage != null) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -2998,9 +3001,9 @@ class _HomeContentState extends State<HomeContent> {
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 25),
-                
+
                 // Action buttons
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -3015,7 +3018,7 @@ class _HomeContentState extends State<HomeContent> {
                             builder: (context) => const ProfilePage(),
                           ),
                         );
-                        
+
                         // Refresh image cache when returning
                         setState(() {
                           PaintingBinding.instance.imageCache.clear();
@@ -3038,9 +3041,9 @@ class _HomeContentState extends State<HomeContent> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 15),
-                
+
                 // Close button
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -3063,7 +3066,7 @@ class _HomeContentState extends State<HomeContent> {
   // Show full size image from home screen
   void _showFullSizeImageFromHome(ImageProvider avatarImage) {
     Navigator.of(context).pop(); // Close preview dialog first
-    
+
     showDialog(
       context: context,
       barrierColor: Colors.black,
@@ -3087,7 +3090,8 @@ class _HomeContentState extends State<HomeContent> {
                         image: avatarImage,
                         width: double.infinity,
                         height: double.infinity,
-                        fit: BoxFit.contain, // This will stretch to fill while maintaining aspect ratio
+                        fit: BoxFit
+                            .contain, // This will stretch to fill while maintaining aspect ratio
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             color: Colors.grey[900],
@@ -3105,7 +3109,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
               ),
-              
+
               // Status bar overlay for immersive experience
               Positioned(
                 top: 0,
@@ -3116,7 +3120,7 @@ class _HomeContentState extends State<HomeContent> {
                   color: Colors.black54,
                 ),
               ),
-              
+
               // Close button - top right
               Positioned(
                 top: MediaQuery.of(context).padding.top + 10,
@@ -3141,13 +3145,14 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
               ),
-              
+
               // Info overlay - top left
               Positioned(
                 top: MediaQuery.of(context).padding.top + 15,
                 left: 20,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(20),
@@ -3177,7 +3182,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ),
               ),
-              
+
               // Bottom action bar with glassmorphism effect
               Positioned(
                 bottom: 0,
@@ -3213,11 +3218,12 @@ class _HomeContentState extends State<HomeContent> {
                               builder: (context) => const ProfilePage(),
                             ),
                           );
-                          
+
                           // Refresh image cache when returning
                           setState(() {
                             PaintingBinding.instance.imageCache.clear();
-                            PaintingBinding.instance.imageCache.clearLiveImages();
+                            PaintingBinding.instance.imageCache
+                                .clearLiveImages();
                           });
                         },
                         icon: const Icon(Icons.edit),
@@ -3457,132 +3463,133 @@ class _HomeContentState extends State<HomeContent> {
                         if (mounted) setState(() {});
                       },
                       child: Consumer<AuthProvider>(
-                      builder: (context, authProvider, child) {
-                        // Check if user has an avatar URL first, then fallback to local file
-                        final user = authProvider.currentUser;
-                        final avatarUrl = user?.avatarUrl;
+                        builder: (context, authProvider, child) {
+                          // Check if user has an avatar URL first, then fallback to local file
+                          final user = authProvider.currentUser;
+                          final avatarUrl = user?.avatarUrl;
 
-                        // Debug logging to see avatar URL status
-                        debugPrint(
-                            '🖼️ Avatar debug - User: ${user?.firstName}, Avatar URL: $avatarUrl');
+                          // Debug logging to see avatar URL status
+                          debugPrint(
+                              '🖼️ Avatar debug - User: ${user?.firstName}, Avatar URL: $avatarUrl');
 
-                        // If we have an avatar URL, try to use network image with error handling
-                        if (avatarUrl != null && avatarUrl.isNotEmpty) {
-                          return CircleAvatar(
-                            radius: screenWidth * 0.06,
-                            backgroundColor: const Color(0xFF3AA772),
-                            child: ClipOval(
-                              child: Image.network(
-                                avatarUrl,
-                                key: ValueKey('home_avatar_${avatarUrl}'),
-                                width: screenWidth * 0.12,
-                                height: screenWidth * 0.12,
-                                fit: BoxFit.cover,
-                                loadingBuilder:
-                                    (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                      value:
-                                          loadingProgress.expectedTotalBytes !=
-                                                  null
-                                              ? loadingProgress
-                                                      .cumulativeBytesLoaded /
-                                                  loadingProgress
-                                                      .expectedTotalBytes!
-                                              : null,
-                                    ),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) {
-                                  debugPrint(
-                                      'Error loading network avatar: $error');
-                                  // Fallback to first letter if network image fails
-                                  String firstLetter = 'G';
-                                  if (user != null &&
-                                      user.firstName != null &&
-                                      user.firstName!.isNotEmpty) {
-                                    firstLetter =
-                                        user.firstName![0].toUpperCase();
-                                  }
-                                  return Center(
-                                    child: Text(
-                                      firstLetter,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
+                          // If we have an avatar URL, try to use network image with error handling
+                          if (avatarUrl != null && avatarUrl.isNotEmpty) {
+                            return CircleAvatar(
+                              radius: screenWidth * 0.06,
+                              backgroundColor: const Color(0xFF3AA772),
+                              child: ClipOval(
+                                child: Image.network(
+                                  avatarUrl,
+                                  key: ValueKey('home_avatar_${avatarUrl}'),
+                                  width: screenWidth * 0.12,
+                                  height: screenWidth * 0.12,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                         color: Colors.white,
+                                        value: loadingProgress
+                                                    .expectedTotalBytes !=
+                                                null
+                                            ? loadingProgress
+                                                    .cumulativeBytesLoaded /
+                                                loadingProgress
+                                                    .expectedTotalBytes!
+                                            : null,
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
+                                    debugPrint(
+                                        'Error loading network avatar: $error');
+                                    // Fallback to first letter if network image fails
+                                    String firstLetter = 'G';
+                                    if (user != null &&
+                                        user.firstName != null &&
+                                        user.firstName!.isNotEmpty) {
+                                      firstLetter =
+                                          user.firstName![0].toUpperCase();
+                                    }
+                                    return Center(
+                                      child: Text(
+                                        firstLetter,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                          );
-                        }
+                            );
+                          }
 
-                        // Fallback to local file system
-                        debugPrint(
-                            '🖼️ Avatar debug - No URL found, checking local files for user: ${user?.id}');
-                        return FutureBuilder<File?>(
-                          future:
-                              _loadProfileImage(authProvider.currentUser?.id),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                              return CircleAvatar(
-                                radius: screenWidth * 0.06,
-                                backgroundColor:
-                                    theme.primaryColor.withValues(alpha: 0.1),
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.primaryColor,
-                                ),
-                              );
-                            }
-
-                            if (snapshot.hasData && snapshot.data != null) {
-                              // Use the actual profile image from local storage
-                              return CircleAvatar(
-                                radius: screenWidth * 0.06,
-                                backgroundImage: FileImage(
-                                  snapshot.data!,
-                                  scale: 1.0,
-                                ),
-                                key: ValueKey(snapshot.data!.path),
-                              );
-                            } else {
-                              // If no profile image, show first letter of name or fallback icon
-                              String firstLetter = 'G';
-                              if (authProvider.currentUser != null &&
-                                  authProvider.currentUser!.firstName != null &&
-                                  authProvider
-                                      .currentUser!.firstName!.isNotEmpty) {
-                                firstLetter = authProvider
-                                    .currentUser!.firstName![0]
-                                    .toUpperCase();
+                          // Fallback to local file system
+                          debugPrint(
+                              '🖼️ Avatar debug - No URL found, checking local files for user: ${user?.id}');
+                          return FutureBuilder<File?>(
+                            future:
+                                _loadProfileImage(authProvider.currentUser?.id),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return CircleAvatar(
+                                  radius: screenWidth * 0.06,
+                                  backgroundColor:
+                                      theme.primaryColor.withValues(alpha: 0.1),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.primaryColor,
+                                  ),
+                                );
                               }
 
-                              return CircleAvatar(
-                                radius: screenWidth * 0.06,
-                                backgroundColor: const Color(0xFF3AA772),
-                                child: Text(
-                                  firstLetter,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                              if (snapshot.hasData && snapshot.data != null) {
+                                // Use the actual profile image from local storage
+                                return CircleAvatar(
+                                  radius: screenWidth * 0.06,
+                                  backgroundImage: FileImage(
+                                    snapshot.data!,
+                                    scale: 1.0,
                                   ),
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ), // Close GestureDetector
+                                  key: ValueKey(snapshot.data!.path),
+                                );
+                              } else {
+                                // If no profile image, show first letter of name or fallback icon
+                                String firstLetter = 'G';
+                                if (authProvider.currentUser != null &&
+                                    authProvider.currentUser!.firstName !=
+                                        null &&
+                                    authProvider
+                                        .currentUser!.firstName!.isNotEmpty) {
+                                  firstLetter = authProvider
+                                      .currentUser!.firstName![0]
+                                      .toUpperCase();
+                                }
+
+                                return CircleAvatar(
+                                  radius: screenWidth * 0.06,
+                                  backgroundColor: const Color(0xFF3AA772),
+                                  child: Text(
+                                    firstLetter,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ), // Close GestureDetector
                   ), // Close Tooltip
                 ],
               ),

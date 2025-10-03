@@ -218,7 +218,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Profile picture preview
                 if (hasImage) ...[
                   GestureDetector(
@@ -285,9 +285,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 30),
-                
+
                 // Action buttons
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -312,7 +312,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                     ),
-                    
+
                     // Remove picture button (only if image exists)
                     if (hasImage)
                       ElevatedButton.icon(
@@ -336,9 +336,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 15),
-                
+
                 // Cancel button
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -364,7 +364,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (avatarImage == null) return;
 
     Navigator.of(context).pop(); // Close options dialog first
-    
+
     showDialog(
       context: context,
       barrierColor: Colors.black,
@@ -388,7 +388,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         image: avatarImage,
                         width: double.infinity,
                         height: double.infinity,
-                        fit: BoxFit.contain, // This will stretch to fill while maintaining aspect ratio
+                        fit: BoxFit
+                            .contain, // This will stretch to fill while maintaining aspect ratio
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             color: Colors.grey[900],
@@ -406,7 +407,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
-              
+
               // Status bar overlay for immersive experience
               Positioned(
                 top: 0,
@@ -417,7 +418,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   color: Colors.black54,
                 ),
               ),
-              
+
               // Close button - top right
               Positioned(
                 top: MediaQuery.of(context).padding.top + 10,
@@ -442,13 +443,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
-              
+
               // Info overlay - top left with fade in animation
               Positioned(
                 top: MediaQuery.of(context).padding.top + 15,
                 left: 20,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(20),
@@ -478,7 +480,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
-              
+
               // Bottom action bar with glassmorphism effect
               Positioned(
                 bottom: 0,
@@ -529,7 +531,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ),
                       ),
-                      
+
                       // Remove picture button
                       Expanded(
                         child: Container(
@@ -569,23 +571,23 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _clearProfileImageCache() async {
     try {
       final user = context.read<AuthProvider>().currentUser;
-      
+
       // Only evict specific profile-related network images
       if (user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty) {
         try {
           // Evict the current avatar URL
           NetworkImage(user.avatarUrl!).evict();
-          
+
           // Also try to evict common cache-busted variations
           final baseUrl = user.avatarUrl!.split('?')[0]; // Remove query params
           NetworkImage(baseUrl).evict();
-          
+
           debugPrint('🖼️ Evicted profile image from cache: ${user.avatarUrl}');
         } catch (e) {
           debugPrint('Error evicting specific profile image: $e');
         }
       }
-      
+
       // Force rebuild this specific widget
       if (mounted) {
         setState(() {
@@ -608,7 +610,8 @@ class _ProfilePageState extends State<ProfilePage> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Remove Profile Picture'),
-          content: const Text('Are you sure you want to remove your profile picture?'),
+          content: const Text(
+              'Are you sure you want to remove your profile picture?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -644,14 +647,14 @@ class _ProfilePageState extends State<ProfilePage> {
       // Update user profile in database to remove avatar URL (explicit flag)
       try {
         await context.read<AuthProvider>().updateProfile(
-          firstName: user.firstName,
-          lastName: user.lastName,
-          contactNumber: user.contactNumber,
-          emergencyContact: user.emergencyContact,
-          gender: user.gender,
-          avatarUrl: null,
-          removeAvatar: true, // ensure column is set to NULL
-        );
+              firstName: user.firstName,
+              lastName: user.lastName,
+              contactNumber: user.contactNumber,
+              emergencyContact: user.emergencyContact,
+              gender: user.gender,
+              avatarUrl: null,
+              removeAvatar: true, // ensure column is set to NULL
+            );
         debugPrint('✅ Successfully updated profile to remove avatar URL');
       } catch (e) {
         debugPrint('Error updating profile: $e');
@@ -662,7 +665,7 @@ class _ProfilePageState extends State<ProfilePage> {
       try {
         final directory = await getApplicationDocumentsDirectory();
         final dir = Directory(directory.path);
-        
+
         // Delete all profile images for this user
         await for (var entity in dir.list()) {
           if (entity is File) {
@@ -682,7 +685,7 @@ class _ProfilePageState extends State<ProfilePage> {
         setState(() {
           _profileImage = null;
         });
-        
+
         // Final round of targeted profile image cache clearing
         await _clearProfileImageCache();
       }
@@ -750,21 +753,23 @@ class _ProfilePageState extends State<ProfilePage> {
           // Upload to Supabase storage
           String? newAvatarUrl;
           try {
-            newAvatarUrl = await context.read<AuthProvider>().uploadAvatar(savedFile);
+            newAvatarUrl =
+                await context.read<AuthProvider>().uploadAvatar(savedFile);
 
             if (newAvatarUrl != null) {
-              debugPrint('Avatar uploaded successfully to Supabase: $newAvatarUrl');
-              
+              debugPrint(
+                  'Avatar uploaded successfully to Supabase: $newAvatarUrl');
+
               // FORCE IMMEDIATE UI UPDATE with the new URL
               if (mounted) {
                 // Targeted profile image cache clearing for new image
                 await _clearProfileImageCache();
-                
+
                 // Trigger rebuild with new data
                 setState(() {
                   // Force rebuild to pick up new avatar URL from AuthProvider
                 });
-                
+
                 // Wait a moment then clear cache again for network image
                 Future.delayed(const Duration(milliseconds: 100), () async {
                   if (mounted) {
@@ -976,7 +981,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                       radius: 54,
                                       backgroundColor: const Color(0xFF3AA772),
                                       backgroundImage: _getAvatarImage(),
-                                      key: ValueKey('profile_avatar_${context.read<AuthProvider>().currentUser?.avatarUrl ?? 'no-avatar'}_${_profileImage?.path ?? 'no-local'}'),
+                                      key: ValueKey(
+                                          'profile_avatar_${context.read<AuthProvider>().currentUser?.avatarUrl ?? 'no-avatar'}_${_profileImage?.path ?? 'no-local'}'),
                                       child: _getAvatarImage() == null
                                           ? Text(
                                               _firstNameController

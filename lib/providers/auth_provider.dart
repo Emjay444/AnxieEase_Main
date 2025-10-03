@@ -704,8 +704,8 @@ class AuthProvider extends ChangeNotifier {
         // Ensure avatar_url is included
         enriched['avatar_url'] ??= userProfile['avatar_url'];
 
-  _currentUser = UserModel.fromJson(enriched);
-  notifyListeners();
+        _currentUser = UserModel.fromJson(enriched);
+        notifyListeners();
       }
     } catch (e) {
       print('Error updating profile: $e');
@@ -729,20 +729,21 @@ class AuthProvider extends ChangeNotifier {
 
       if (avatarUrl != null) {
         // Try to evict old avatar image if it exists (targeted clearing)
-        if (_currentUser?.avatarUrl != null && _currentUser!.avatarUrl!.isNotEmpty) {
+        if (_currentUser?.avatarUrl != null &&
+            _currentUser!.avatarUrl!.isNotEmpty) {
           try {
             NetworkImage(_currentUser!.avatarUrl!).evict();
           } catch (e) {
             debugPrint('Error evicting old avatar: $e');
           }
         }
-        
+
         // Immediately update the current user with the new avatar URL
         _currentUser = _currentUser!.copyWith(avatarUrl: avatarUrl);
-        
+
         // Trigger immediate UI refresh
         notifyListeners();
-        
+
         // Also reload the user profile to ensure consistency
         await loadUserProfile();
       }
