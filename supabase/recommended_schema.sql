@@ -13,7 +13,7 @@ CREATE TABLE public.user_profiles (
   contact_number text,
   emergency_contact text,
   birth_date date,
-  gender text CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+  sex text CHECK (sex IN ('male', 'female', 'other', 'prefer_not_to_say')),
   role character varying NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'psychologist', 'admin')),
   assigned_psychologist_id uuid,
   is_email_verified boolean DEFAULT false,

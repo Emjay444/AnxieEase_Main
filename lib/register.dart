@@ -29,10 +29,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       TextEditingController();
 
   DateTime? _selectedBirthDate;
-  String? _selectedGender;
+  String? _selectedSex;
 
-  // List of gender options for dropdown
-  final List<String> _genderOptions = [
+  // List of sex options for dropdown
+  final List<String> _sexOptions = [
     'Male',
     'Female',
   ];
@@ -44,7 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'middleName': '',
     'lastName': '',
     'birthDate': '',
-    'gender': '',
+    'sex': '',
     'contactNumber': '',
     'emergencyContact': '',
     'email': '',
@@ -148,8 +148,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     passwordController.addListener(() {
       if (passwordController.text.isNotEmpty) {
         setState(() {
-          if (passwordController.text.length < 6) {
-            _fieldErrors['password'] = 'Password must be at least 6 characters';
+          if (!_isPasswordValid(passwordController.text)) {
+            final validation = _validatePassword(passwordController.text);
+            List<String> missingRequirements = [];
+            
+            if (!validation['length']!) missingRequirements.add('8+ characters');
+            if (!validation['uppercase']!) missingRequirements.add('uppercase letter');
+            if (!validation['lowercase']!) missingRequirements.add('lowercase letter');
+            if (!validation['number']!) missingRequirements.add('number');
+            if (!validation['special']!) missingRequirements.add('special character');
+            
+            _fieldErrors['password'] = 'Password must contain: ${missingRequirements.join(', ')}';
           } else {
             _fieldErrors['password'] = '';
           }
@@ -225,6 +234,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // Must be exactly 11 digits, no other characters allowed
     final RegExp phoneRegExp = RegExp(r'^[0-9]{11}$');
     return phoneRegExp.hasMatch(phone);
+  }
+
+  // Comprehensive password validation
+  Map<String, bool> _validatePassword(String password) {
+    return {
+      'length': password.length >= 8,
+      'uppercase': RegExp(r'[A-Z]').hasMatch(password),
+      'lowercase': RegExp(r'[a-z]').hasMatch(password),
+      'number': RegExp(r'[0-9]').hasMatch(password),
+      'special': RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password),
+    };
+  }
+
+  // Check if password meets all requirements
+  bool _isPasswordValid(String password) {
+    final validation = _validatePassword(password);
+    return validation.values.every((requirement) => requirement);
+  }
+
+  // Get password strength (0-3)
+  int _getPasswordStrength(String password) {
+    final validation = _validatePassword(password);
+    int score = 0;
+    
+    if (validation['length']!) score++;
+    if (validation['uppercase']! && validation['lowercase']!) score++;
+    if (validation['number']!) score++;
+    if (validation['special']!) score++;
+    
+    return score;
   }
 
   // Reset all field errors
@@ -335,9 +374,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       isValid = false;
     }
 
-    // Gender validation
-    if (_selectedGender == null) {
-      _fieldErrors['gender'] = 'Please select a gender';
+    // Sex validation
+    if (_selectedSex == null) {
+      _fieldErrors['sex'] = 'Please select a sex';
       isValid = false;
     }
 
@@ -368,8 +407,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (passwordController.text.isEmpty) {
       _fieldErrors['password'] = 'Password is required';
       isValid = false;
-    } else if (passwordController.text.length < 6) {
-      _fieldErrors['password'] = 'Password must be at least 6 characters';
+    } else if (!_isPasswordValid(passwordController.text)) {
+      final validation = _validatePassword(passwordController.text);
+      List<String> missingRequirements = [];
+      
+      if (!validation['length']!) missingRequirements.add('8+ characters');
+      if (!validation['uppercase']!) missingRequirements.add('uppercase letter');
+      if (!validation['lowercase']!) missingRequirements.add('lowercase letter');
+      if (!validation['number']!) missingRequirements.add('number');
+      if (!validation['special']!) missingRequirements.add('special character');
+      
+      _fieldErrors['password'] = 'Password must contain: ${missingRequirements.join(', ')}';
       isValid = false;
     }
 
@@ -390,6 +438,129 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() {});
     return isValid;
+  }
+
+  // Password strength indicator widget
+  Widget _buildPasswordStrengthIndicator(String password) {
+    if (password.isEmpty) return const SizedBox.shrink();
+    
+    final validation = _validatePassword(password);
+    final strength = _getPasswordStrength(password);
+    
+    Color strengthColor;
+    String strengthText;
+    
+    switch (strength) {
+      case 0:
+      case 1:
+        strengthColor = Colors.red;
+        strengthText = 'Weak';
+        break;
+      case 2:
+        strengthColor = Colors.orange;
+        strengthText = 'Medium';
+        break;
+      case 3:
+        strengthColor = Colors.lightGreen;
+        strengthText = 'Good';
+        break;
+      case 4:
+        strengthColor = Colors.green;
+        strengthText = 'Strong';
+        break;
+      default:
+        strengthColor = Colors.grey;
+        strengthText = 'Weak';
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Password Strength: ',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              Text(
+                strengthText,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: strengthColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Strength bar
+          Container(
+            height: 4,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              color: Colors.grey[300],
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: strength / 4,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  color: strengthColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Requirements list
+          Column(
+            children: [
+              _buildRequirementRow('At least 8 characters', validation['length']!),
+              _buildRequirementRow('Uppercase letter (A-Z)', validation['uppercase']!),
+              _buildRequirementRow('Lowercase letter (a-z)', validation['lowercase']!),
+              _buildRequirementRow('Number (0-9)', validation['number']!),
+              _buildRequirementRow('Special character (!@#\$%^&*)', validation['special']!),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildRequirementRow(String requirement, bool isMet) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isMet ? Icons.check_circle : Icons.cancel,
+            size: 16,
+            color: isMet ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              requirement,
+              style: TextStyle(
+                fontSize: 11,
+                color: isMet ? Colors.green : Colors.red[700],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Helper method to build input field
@@ -542,7 +713,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         birthDate: _selectedBirthDate,
         contactNumber: contactNumberController.text.trim(),
         emergencyContact: emergencyContactController.text.trim(),
-        gender: _selectedGender,
+        sex: _selectedSex,
       );
 
       print('authProvider.signUp completed successfully');
@@ -714,8 +885,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           isDatePicker: true,
                         ),
                         const SizedBox(height: 15),
-                        // Gender dropdown
-                        _buildGenderDropdown(),
+                        // Sex dropdown
+                        _buildSexDropdown(),
                         const SizedBox(height: 15),
                         buildInputField(
                           contactNumberController,
@@ -740,6 +911,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           "Password",
                           errorText: _fieldErrors['password'],
                         ),
+                        _buildPasswordStrengthIndicator(passwordController.text),
                         const SizedBox(height: 15),
                         buildInputField(
                           confirmPasswordController,
@@ -839,14 +1011,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildGenderDropdown() {
+  Widget _buildSexDropdown() {
     // Check if there's an error with this field
-    bool hasError = _fieldErrors['gender']?.isNotEmpty == true;
+    bool hasError = _fieldErrors['sex']?.isNotEmpty == true;
 
     // Only show error text if form has been submitted or if the field has been edited and has an error
     String? displayErrorText =
-        (_formSubmitted || (_selectedGender != null && hasError))
-            ? _fieldErrors['gender']
+        (_formSubmitted || (_selectedSex != null && hasError))
+            ? _fieldErrors['sex']
             : null;
 
     return Container(
@@ -863,9 +1035,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ],
       ),
       child: DropdownButtonFormField<String>(
-        value: _selectedGender,
+        value: _selectedSex,
         decoration: InputDecoration(
-          labelText: 'Gender',
+          labelText: 'Sex',
           errorText: displayErrorText,
           errorStyle: const TextStyle(color: Colors.red),
           border: OutlineInputBorder(
@@ -891,19 +1063,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         onChanged: (String? newValue) {
           setState(() {
-            _selectedGender = newValue;
-            if (_fieldErrors['gender']?.isNotEmpty == true) {
-              _fieldErrors['gender'] = '';
+            _selectedSex = newValue;
+            if (_fieldErrors['sex']?.isNotEmpty == true) {
+              _fieldErrors['sex'] = '';
             }
           });
         },
-        items: _genderOptions.map<DropdownMenuItem<String>>((String value) {
+        items: _sexOptions.map<DropdownMenuItem<String>>((String value) {
           return DropdownMenuItem<String>(
             value: value,
             child: Text(value),
           );
         }).toList(),
-        hint: const Text('Select Gender'),
+        hint: const Text('Select Sex'),
       ),
     );
   }

@@ -354,6 +354,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
               }
 
               Navigator.pop(context);
+              
+              // Show success message
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Log deleted successfully'),
+                  backgroundColor: Colors.red,
+                ),
+              );
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
@@ -486,6 +494,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             type: 'log',
             relatedScreen: 'calendar',
             relatedId: logToSync?.id,
+            severity: 'positive',
           );
         }
         notificationCreated = true;
@@ -632,6 +641,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Navigator.pop(context);
             // Close feelings dialog
             Navigator.pop(context);
+            
+            // Show success message for new log
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Log saved successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
           }).catchError((error) {
             // Close loading indicator
             Navigator.pop(context);
@@ -2215,6 +2232,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     TextEditingController journalController =
         TextEditingController(text: log.journal);
+    int charCount = log.journal?.length ?? 0;
+    int wordCount = log.journal?.trim().isEmpty ?? true 
+        ? 0 
+        : log.journal!.trim().split(RegExp(r'\s+')).length;
+
+    void updateCounts(String text) {
+      charCount = text.length;
+      wordCount = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2228,7 +2254,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.8,
+                height: MediaQuery.of(context).size.height * 0.85,
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -2242,47 +2268,104 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'How are you feeling today?',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: journalController,
-                                maxLines: null,
-                                expands: true,
-                                textAlignVertical: TextAlignVertical.top,
-                                decoration: InputDecoration(
-                                  hintText: 'Write your thoughts here...',
-                                  hintStyle: TextStyle(color: Colors.grey[400]),
-                                  filled: true,
-                                  fillColor: Colors.grey[50],
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide:
-                                        BorderSide(color: Colors.grey[200]!),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide:
-                                        BorderSide(color: Colors.grey[200]!),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide:
-                                        const BorderSide(color: Colors.purple),
-                                  ),
-                                  contentPadding: const EdgeInsets.all(16),
+                                  child: Icon(Icons.edit_rounded,
+                                      size: 18, color: Colors.purple.shade700),
                                 ),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black87,
-                                  height: 1.5,
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Update your thoughts',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.purple.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: Colors.purple.withOpacity(0.4),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Stack(
+                                  children: [
+                                    TextField(
+                                      controller: journalController,
+                                      maxLines: null,
+                                      expands: true,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          updateCounts(val);
+                                        });
+                                      },
+                                      textAlignVertical: TextAlignVertical.top,
+                                      decoration: InputDecoration(
+                                        hintText: 'Write your thoughts here...',
+                                        hintStyle: TextStyle(color: Colors.purple.shade200),
+                                        border: InputBorder.none,
+                                        contentPadding: const EdgeInsets.fromLTRB(18, 18, 18, 50),
+                                      ),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.black87,
+                                        height: 1.55,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: 14,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$wordCount words',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.blue.shade600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 14,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.purple.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$charCount chars',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.purple.shade600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -2317,14 +2400,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
+                                elevation: 2,
                               ),
-                              child: const Text(
-                                'Save Journal',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.save_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    wordCount > 0 
+                                      ? 'Save Journal ($wordCount words)'
+                                      : 'Save Journal',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -2400,11 +2497,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
           'Syncing updated journal with Supabase. ID: ${updatedLog.id ?? "None"}, Timestamp: ${updatedLog.timestamp}');
       await updatedLog.syncWithSupabase();
 
-      // Show success message
+      // Show success message based on whether journal was added, updated, or cleared
       if (mounted) {
+        String message;
+        if (updatedLog.journal == null || updatedLog.journal!.isEmpty) {
+          message = 'Journal cleared successfully';
+        } else {
+          message = 'Journal updated successfully';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Journal updated successfully'),
+          SnackBar(
+            content: Text(message),
             backgroundColor: Colors.green,
           ),
         );
@@ -2436,6 +2540,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     TextEditingController journalController = TextEditingController();
     int charCount = 0;
+    int wordCount = 0;
+    String selectedMood = '';
+    bool showPrompts = true;
+
+    // Writing prompts for inspiration
+    final List<String> writingPrompts = [
+      "What made me smile today?",
+      "What am I grateful for right now?",
+      "How am I feeling and why?",
+      "What challenged me today?",
+      "What did I learn about myself?",
+      "What would I tell my past self?",
+      "What are my hopes for tomorrow?",
+      "What brought me peace today?",
+    ];
+
+    void updateCounts(String text) {
+      charCount = text.length;
+      wordCount = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2449,7 +2573,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.8,
+                height: MediaQuery.of(context).size.height * 0.85,
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
@@ -2509,10 +2633,140 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     color: Colors.purple.shade700,
                                   ),
                                 ),
+                                const Spacer(),
+                                IconButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      showPrompts = !showPrompts;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    showPrompts ? Icons.lightbulb : Icons.lightbulb_outline,
+                                    color: Colors.purple.shade600,
+                                    size: 20,
+                                  ),
+                                  tooltip: 'Writing prompts',
+                                ),
                               ],
                             ),
+                            
+                            // Quick mood selector
+                            const SizedBox(height: 16),
+                            Text(
+                              'How are you feeling?',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  '😊 Happy', '😔 Sad', '😰 Anxious', '😌 Calm', 
+                                  '😴 Tired', '🤗 Grateful', '😤 Frustrated', '✨ Inspired'
+                                ].map((mood) {
+                                  final isSelected = selectedMood == mood;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          selectedMood = isSelected ? '' : mood;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isSelected 
+                                            ? Colors.purple.shade100 
+                                            : Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: isSelected 
+                                              ? Colors.purple.shade300 
+                                              : Colors.transparent,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          mood,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: isSelected 
+                                              ? FontWeight.w600 
+                                              : FontWeight.w500,
+                                            color: isSelected 
+                                              ? Colors.purple.shade700 
+                                              : Colors.grey[600],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+
+                            // Writing prompts
+                            if (showPrompts) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Need inspiration? Try one of these:',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: 35,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: writingPrompts.length,
+                                  itemBuilder: (context, index) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          if (journalController.text.isEmpty) {
+                                            journalController.text = writingPrompts[index] + '\n\n';
+                                            updateCounts(journalController.text);
+                                            setState(() {});
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 6
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.shade50,
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: Colors.orange.shade200,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            writingPrompts[index],
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.orange.shade700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+
                             const SizedBox(height: 18),
-                            const SizedBox(height: 10),
                             Expanded(
                               child: Container(
                                 decoration: BoxDecoration(
@@ -2529,8 +2783,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       controller: journalController,
                                       maxLines: null,
                                       expands: true,
-                                      onChanged: (val) => setState(
-                                          () => charCount = val.length),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          updateCounts(val);
+                                        });
+                                      },
                                       textAlignVertical: TextAlignVertical.top,
                                       decoration: InputDecoration(
                                         hintText: 'Write your thoughts here...',
@@ -2539,12 +2796,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         border: InputBorder.none,
                                         contentPadding:
                                             const EdgeInsets.fromLTRB(
-                                                18, 18, 18, 34),
+                                                18, 18, 18, 50),
                                       ),
                                       style: const TextStyle(
                                         fontSize: 16,
                                         color: Colors.black87,
                                         height: 1.55,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: 14,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$wordCount words',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.blue.shade600,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     Positioned(
@@ -2599,7 +2876,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () {
-                                _saveJournalEntry(journalController.text);
+                                String finalJournalText = journalController.text;
+                                if (selectedMood.isNotEmpty) {
+                                  finalJournalText = 'Mood: $selectedMood\n\n$finalJournalText';
+                                }
+                                _saveJournalEntry(finalJournalText);
                                 Navigator.pop(context);
                               },
                               style: ElevatedButton.styleFrom(
@@ -2609,14 +2890,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(18),
                                 ),
+                                elevation: 2,
                               ),
-                              child: const Text(
-                                'Save Journal Entry',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.save_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    wordCount > 0 
+                                      ? 'Save Journal Entry ($wordCount words)'
+                                      : 'Save Journal Entry',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

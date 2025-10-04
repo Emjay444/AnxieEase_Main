@@ -20,6 +20,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   PsychologistModel? _psychologist;
   List<AppointmentModel> _appointments = [];
   bool _isLoading = true;
+  bool _isLoadingAppointments = true;
   bool _showArchivedAppointments = false;
 
   // Filter state
@@ -152,6 +153,12 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
   }
 
   Future<void> _loadAppointmentsInBackground() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingAppointments = true;
+      });
+    }
+
     try {
       // Auto-archive old appointments first (maintenance task)
       try {
@@ -197,6 +204,12 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     } catch (e) {
       Logger.error('Error loading appointments', e);
       // Don't show error for appointments - they can load later via refresh
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingAppointments = false;
+        });
+      }
     }
   }
 
@@ -396,6 +409,26 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     return false;
   }
 
+  // Method to format harsh response messages into gentler ones
+  String _formatResponseMessage(String message) {
+    // Convert harsh messages to gentler alternatives
+    if (message.toLowerCase().contains('declined by psychologist')) {
+      return 'Unavailable date';
+    }
+    
+    // Add more message transformations as needed
+    if (message.toLowerCase().contains('rejected')) {
+      return 'Unavailable date';
+    }
+    
+    if (message.toLowerCase().contains('denied')) {
+      return 'Unavailable date';
+    }
+    
+    // Return original message if no transformation needed
+    return message;
+  }
+
   @override
   void dispose() {
     _dateController.dispose();
@@ -430,6 +463,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         onRefresh: () async {
           setState(() {
             _isLoading = true;
+            _isLoadingAppointments = true;
           });
           await _loadData();
         },
@@ -1004,6 +1038,30 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
   Widget _buildAppointmentsList() {
     try {
+      // Show loading animation while appointments are being loaded
+      if (_isLoadingAppointments) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40.0),
+            child: Column(
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xFF3AA772),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Loading appointments...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       if (_appointments.isEmpty) {
         return Center(
           child: Padding(
@@ -1117,7 +1175,18 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           .toList();
 
       final pendingAppointments = activeAppointments
-          .where((apt) => apt.status == AppointmentStatus.pending)
+          .where((apt) => 
+              apt.status == AppointmentStatus.pending &&
+              (apt.responseMessage == null || 
+               apt.responseMessage!.isEmpty))
+          .toList();
+
+      final acceptedAppointments = activeAppointments
+          .where((apt) => 
+              apt.status == AppointmentStatus.pending &&
+              apt.responseMessage != null &&
+              apt.responseMessage!.isNotEmpty &&
+              !apt.responseMessage!.toLowerCase().contains('declined'))
           .toList();
 
       final completedAppointments = activeAppointments
@@ -1139,7 +1208,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       final cancelledAppointments = activeAppointments
           .where((apt) =>
               apt.status == AppointmentStatus.cancelled ||
-              apt.status == AppointmentStatus.denied)
+              apt.status == AppointmentStatus.denied ||
+              (apt.status == AppointmentStatus.pending &&
+               apt.responseMessage != null &&
+               apt.responseMessage!.toLowerCase().contains('declined')))
           .toList();
 
       return Column(
@@ -1184,6 +1256,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               const SizedBox(height: 16),
             ],
 
+            // Accepted appointment requests
+            if (acceptedAppointments.isNotEmpty) ...[
+              _buildAppointmentCategory(
+                  'Accepted Requests', acceptedAppointments, Colors.green),
+              const SizedBox(height: 16),
+            ],
+
             // Expired appointment requests
             if (expiredAppointments.isNotEmpty) ...[
               _buildAppointmentCategory(
@@ -1194,7 +1273,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             // Completed appointments
             if (completedAppointments.isNotEmpty) ...[
               _buildAppointmentCategory(
-                  'Completed Appointments', completedAppointments, Colors.teal),
+                  'Completed Appointments', completedAppointments, Colors.grey),
               const SizedBox(height: 16),
             ],
 
@@ -1208,7 +1287,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             // Cancelled appointments
             if (cancelledAppointments.isNotEmpty) ...[
               _buildAppointmentCategory('Recent Cancelled/Unavailable',
-                  cancelledAppointments, Colors.grey[600]!),
+                  cancelledAppointments, Colors.grey),
               const SizedBox(height: 16),
             ],
           ],
@@ -1345,9 +1424,14 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       // Determine the correct status to display
       String displayStatus = appointment.statusText;
 
+      // Check if response message indicates decline/denial
+      if (appointment.responseMessage != null &&
+          appointment.responseMessage!.toLowerCase().contains('declined')) {
+        displayStatus = "Unavailable";
+      }
       // If the appointment has a response message but is still pending,
-      // display it as "Accepted" instead
-      if (appointment.status == AppointmentStatus.pending &&
+      // and it's not declined, display it as "Accepted" instead
+      else if (appointment.status == AppointmentStatus.pending &&
           appointment.responseMessage != null &&
           appointment.responseMessage!.isNotEmpty) {
         displayStatus = "Accepted";
@@ -1447,7 +1531,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          appointment.responseMessage!,
+                          _formatResponseMessage(appointment.responseMessage!),
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[800],

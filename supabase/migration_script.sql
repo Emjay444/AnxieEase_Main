@@ -20,7 +20,7 @@ BEGIN
             contact_number text,
             emergency_contact text,
             birth_date date,
-            gender text CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+            sex text CHECK (sex IN ('male', 'female', 'other', 'prefer_not_to_say')),
             role character varying NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'psychologist', 'admin')),
             assigned_psychologist_id uuid,
             is_email_verified boolean DEFAULT false,
@@ -250,12 +250,12 @@ BEGIN
         -- Only migrate users that exist in auth.users
         INSERT INTO public.user_profiles (
             id, first_name, middle_name, last_name, contact_number, 
-            emergency_contact, birth_date, gender, role, 
+            emergency_contact, birth_date, sex, role, 
             assigned_psychologist_id, is_email_verified, created_at, updated_at
         )
         SELECT 
             u.id, u.first_name, u.middle_name, u.last_name, u.contact_number,
-            u.emergency_contact, u.birth_date, u.gender, u.role,
+            u.emergency_contact, u.birth_date, u.sex, u.role,
             u.assigned_psychologist_id, u.is_email_verified, u.created_at, u.updated_at
         FROM public.users u
         INNER JOIN auth.users au ON u.id = au.id  -- Only users that exist in auth.users

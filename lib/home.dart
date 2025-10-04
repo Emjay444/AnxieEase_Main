@@ -1434,7 +1434,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       IconData icon;
                       String type;
 
-                      switch (notification['type']) {
+                      // First: detect positive mood notifications regardless of stored type
+                      final tLower =
+                          notification['title']?.toString().toLowerCase() ?? '';
+                      final mLower = notification['message']
+                              ?.toString()
+                              .toLowerCase() ??
+                          '';
+                      final isPositiveMood = tLower.contains('positive mood') ||
+                          mLower.contains('great to see you feeling') ||
+                          mLower.contains('good vibes');
+
+                      if (isPositiveMood) {
+                        icon = Icons.sentiment_very_satisfied;
+                        type = 'positive';
+                      } else
+                        switch (notification['type']) {
                         case 'alert':
                           icon = Icons.warning_amber;
                           type = 'alert';
@@ -1503,43 +1518,66 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required IconData icon,
     Map<String, dynamic>? notification, // Add notification parameter
   }) {
+    // Local overrides: detect positive mood from content to force green styling
+    final nTitle = (notification?['title']?.toString() ?? title).toLowerCase();
+    final nMessage =
+        (notification?['message']?.toString() ?? message).toLowerCase();
+    final isPositiveContent = nTitle.contains('positive mood') ||
+        nMessage.contains('great to see you feeling') ||
+        nMessage.contains('good vibes');
+
+    // Effective values used for rendering
+    IconData renderIcon = icon;
+    String effectiveType = type;
+    if (isPositiveContent) {
+      renderIcon = Icons.sentiment_very_satisfied;
+      effectiveType = 'positive';
+    }
     Color getTypeColor() {
-      switch (type) {
+      switch (effectiveType) {
         case 'warning':
           return Colors.orange;
         case 'alert':
           return Colors.red;
         case 'info':
           return Colors.blue;
+        case 'positive':
+          return Colors.green;
         default:
           return Colors.grey;
       }
     }
 
     Color getBackgroundColor() {
-      switch (type) {
+      switch (effectiveType) {
         case 'alert':
           return const Color(0xFFFFF3E0); // Light orange/red background
         case 'info':
           return const Color(0xFFE3F2FD); // Light blue background
         case 'warning':
           return const Color(0xFFFFF8E1); // Light yellow background
+        case 'positive':
+          return const Color(0xFFE8F5E8); // Light green background
         default:
           return const Color(0xFFF5F5F5); // Light grey background
       }
     }
 
     // Determine if this is an important notification
-    bool isHighPriority =
-        type == 'alert' || title.contains('🚨') || title.contains('Alert');
+  bool isHighPriority = effectiveType == 'alert' && effectiveType != 'positive' ||
+    title.contains('🚨') ||
+    title.contains('Alert');
 
-    // Check if this is a reminder notification (should not be clickable)
-    bool isReminder = type == 'reminder' ||
+    // Check if this is a reminder notification or positive mood (should not be clickable)
+    bool isReminder = effectiveType == 'reminder' ||
+        effectiveType == 'positive' ||
+        isPositiveContent ||
         title.contains('Anxiety Check-in') ||
         title.contains('Anxiety Prevention') ||
         title.contains('Wellness Reminder') ||
         title.contains('Mental Health Moment') ||
-        title.contains('Relaxation Reminder');
+        title.contains('Relaxation Reminder') ||
+        title.contains('Positive Mood');
 
     // Wrap in GestureDetector only if it's not a reminder
     Widget notificationCard = Container(
@@ -1570,7 +1608,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              icon,
+              renderIcon,
               color: getTypeColor(),
               size: 24,
             ),

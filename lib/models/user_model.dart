@@ -6,7 +6,7 @@ class UserModel {
   final String? middleName;
   final String? lastName;
   final DateTime? birthDate;
-  final String? gender;
+  final String? sex;
   final String? contactNumber;
   final String? emergencyContact;
   final String? avatarUrl;
@@ -21,7 +21,7 @@ class UserModel {
     this.middleName,
     this.lastName,
     this.birthDate,
-    this.gender,
+    this.sex,
     this.contactNumber,
     this.emergencyContact,
     this.avatarUrl,
@@ -56,7 +56,7 @@ class UserModel {
       birthDate: json['birth_date'] != null
           ? DateTime.parse(json['birth_date'])
           : null,
-      gender: json['gender'],
+      sex: json['sex'],
       contactNumber: json['contact_number'],
       emergencyContact: json['emergency_contact'],
       avatarUrl: json['avatar_url'],
@@ -74,7 +74,7 @@ class UserModel {
       'middle_name': middleName,
       'last_name': lastName,
       'birth_date': birthDate?.toIso8601String(),
-      'gender': gender,
+      'sex': sex,
       'contact_number': contactNumber,
       'emergency_contact': emergencyContact,
       'avatar_url': avatarUrl,
@@ -91,7 +91,7 @@ class UserModel {
     String? middleName,
     String? lastName,
     DateTime? birthDate,
-    String? gender,
+    String? sex,
     String? contactNumber,
     String? emergencyContact,
     String? avatarUrl,
@@ -106,7 +106,7 @@ class UserModel {
       middleName: middleName ?? this.middleName,
       lastName: lastName ?? this.lastName,
       birthDate: birthDate ?? this.birthDate,
-      gender: gender ?? this.gender,
+      sex: sex ?? this.sex,
       contactNumber: contactNumber ?? this.contactNumber,
       emergencyContact: emergencyContact ?? this.emergencyContact,
       avatarUrl: avatarUrl ?? this.avatarUrl,

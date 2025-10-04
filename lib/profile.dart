@@ -31,7 +31,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isEditing = false;
   File? _profileImage;
   DateTime? _selectedBirthDate;
-  String? _selectedGender;
+  String? _selectedSex;
   int _editSectionIndex = 0; // 0 = Personal, 1 = Contact
 
   // Dropdown options removed; page is view-only by default.
@@ -56,7 +56,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _emailController.text = user.email;
       _contactNumberController.text = user.contactNumber ?? '';
       _emergencyContactController.text = user.emergencyContact ?? '';
-      _selectedGender = user.gender;
+      _selectedSex = user.sex;
 
       // Set birth date
       if (user.birthDate != null) {
@@ -72,8 +72,8 @@ class _ProfilePageState extends State<ProfilePage> {
       if (user.lastName == null || user.lastName!.trim().isEmpty)
         missingFields.add('Last Name');
       if (user.birthDate == null) missingFields.add('Birth Date');
-      if (user.gender == null || user.gender!.trim().isEmpty)
-        missingFields.add('Gender');
+      if (user.sex == null || user.sex!.trim().isEmpty)
+        missingFields.add('Sex');
       if (user.contactNumber == null || user.contactNumber!.trim().isEmpty)
         missingFields.add('Contact Number');
       if (user.emergencyContact == null ||
@@ -651,7 +651,7 @@ class _ProfilePageState extends State<ProfilePage> {
               lastName: user.lastName,
               contactNumber: user.contactNumber,
               emergencyContact: user.emergencyContact,
-              gender: user.gender,
+              sex: user.sex,
               avatarUrl: null,
               removeAvatar: true, // ensure column is set to NULL
             );
@@ -1090,8 +1090,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             _infoTile(
                               icon: Icons.wc_outlined,
-                              label: 'Gender',
-                              value: _selectedGender ?? 'Not specified',
+                              label: 'Sex',
+                              value: _selectedSex ?? 'Not specified',
                             ),
                           ],
                         )
@@ -1129,9 +1129,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                       : _birthDateController.text,
                                 ),
                                 _fixedInfoRow(
-                                  label: 'Gender',
+                                  label: 'Sex',
                                   icon: Icons.wc_outlined,
-                                  value: _selectedGender ?? 'Not specified',
+                                  value: _selectedSex ?? 'Not specified',
                                 ),
                               ],
                             )
@@ -1239,7 +1239,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                         _contactNumberController.text.trim(),
                                     emergencyContact:
                                         _emergencyContactController.text.trim(),
-                                    gender: _selectedGender,
+                                    sex: _selectedSex,
                                   );
                               if (mounted) {
                                 setState(() => _isEditing = false);
@@ -1476,7 +1476,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Fixed info row used in edit mode for non-editable fields (e.g., Birth Date, Gender, Email)
+  // Fixed info row used in edit mode for non-editable fields (e.g., Birth Date, Sex, Email)
   Widget _fixedInfoRow(
       {required String label, required IconData icon, required String value}) {
     return Row(

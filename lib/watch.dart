@@ -46,6 +46,8 @@ class _WatchScreenState extends State<WatchScreen>
   bool isConnected = false; // Start disconnected
   bool _hasRealtimeData = false;
   bool _isDeviceSetup = false;
+  bool _isStale = false; // Mark when device data is stale (>5 min)
+  DateTime? _lastSeenAt; // Track last seen from Supabase/Firebase
 
   // Connection states - start as disconnected
 
@@ -166,23 +168,64 @@ class _WatchScreenState extends State<WatchScreen>
                 isDeviceWorn = wornParsed;
               }
 
+              // Determine payload timestamp freshness if available
+              final ts = data['timestamp'];
+              DateTime? payloadTime;
+              if (ts is int) {
+                payloadTime = DateTime.fromMillisecondsSinceEpoch(ts);
+              } else if (ts is String) {
+                final parsed = int.tryParse(ts);
+                if (parsed != null) {
+                  payloadTime =
+                      DateTime.fromMillisecondsSinceEpoch(parsed);
+                }
+              }
+              if (payloadTime != null) {
+                _lastSeenAt = payloadTime;
+                final diffMin =
+                    DateTime.now().difference(payloadTime).inMinutes;
+                _isStale = diffMin > 5;
+              }
+
               // Mark that we have received live data
               final wasFirstData = !_hasRealtimeData;
               _hasRealtimeData = (hrParsed != null) ||
                   (bodyTempParsed != null) ||
                   (battParsed != null);
 
-              // Update connection status - prioritize Firebase data reception
+              // Update connection status with freshness guard
               if (_hasRealtimeData) {
-                // If we're receiving Firebase data, we're connected
-                isConnected = true;
-                if (wasFirstData) {
+                // If payload is stale, treat as disconnected and clear vitals
+                if (_isStale) {
+                  isConnected = false;
+                  isDeviceWorn = false;
+                  heartRateValue = null;
+                  bodyTempValue = null;
+                  ambientTempValue = null;
+                  // Keep ambient/battery optional, but avoid implying live data
                   debugPrint(
-                      '📱 WatchScreen: Auto-connected - Firebase data received');
+                      '📱 WatchScreen: Stale Firebase payload - marking disconnected');
+                } else {
+                  // Freshness unknown or recent by payload; verify with Supabase last_seen_at as well
+                  // Use safe default as disconnected until verified fresh to avoid showing stale vitals
+                  if (_lastSeenAt == null) {
+                    isConnected = false;
+                    isDeviceWorn = false;
+                    heartRateValue = null;
+                    bodyTempValue = null;
+                    ambientTempValue = null;
+                  }
+                  _checkDeviceFreshness();
+                  if (wasFirstData) {
+                    debugPrint(
+                        '📱 WatchScreen: Firebase data received - checking device freshness');
+                  }
                 }
               } else {
-                // Fallback to IoT service connection status
-                isConnected = _iotSensorService.isConnected;
+                // Fallback to IoT service connection status only if not stale
+                isConnected = _isStale
+                    ? false
+                    : _iotSensorService.isConnected;
               }
 
               // If not worn, clear vitals to avoid misleading UI
@@ -231,6 +274,44 @@ class _WatchScreenState extends State<WatchScreen>
 
       if (assignmentStatus.canUseDevice) {
         _isDeviceSetup = true;
+        
+        // Check device freshness - get device info to check last_seen_at
+        final deviceInfo = await adminDeviceService.getCurrentAssignmentInfo();
+        if (deviceInfo != null) {
+          final lastSeenStr = deviceInfo['last_seen_at'] as String?;
+          final batteryLevel = deviceInfo['battery_level'] as num?;
+          
+          if (lastSeenStr != null) {
+            final lastSeen = DateTime.parse(lastSeenStr);
+            final minutesSinceLastSeen = DateTime.now().difference(lastSeen).inMinutes;
+            
+            // If device hasn't been seen in over 5 minutes, mark as disconnected
+            if (minutesSinceLastSeen > 5) {
+              setState(() {
+                isConnected = false;
+                _hasRealtimeData = false;
+              });
+              debugPrint('Device setup check: Device stale - last seen $minutesSinceLastSeen minutes ago');
+            } else {
+              debugPrint('Device setup check: Device recently active');
+            }
+          } else {
+            // No last_seen_at data, assume disconnected
+            setState(() {
+              isConnected = false;
+              _hasRealtimeData = false;
+            });
+            debugPrint('Device setup check: No last seen data - assuming disconnected');
+          }
+          
+          // Update battery from actual device data
+          if (batteryLevel != null) {
+            setState(() {
+              batteryPercentage = batteryLevel.toDouble();
+            });
+          }
+        }
+        
         debugPrint('Device setup check: Admin assigned device available');
         return;
       }
@@ -259,6 +340,68 @@ class _WatchScreenState extends State<WatchScreen>
       _isDeviceSetup = false;
       debugPrint('Device setup check: No assigned device (error: $e)');
     }
+  }
+
+  /// Check if assigned device data is fresh (has been seen recently)
+  void _checkDeviceFreshness() {
+    final adminDeviceService = AdminDeviceManagementService();
+    
+    adminDeviceService.getCurrentAssignmentInfo().then((deviceInfo) {
+      if (deviceInfo != null) {
+        final lastSeenStr = deviceInfo['last_seen_at'] as String?;
+        
+        if (lastSeenStr != null) {
+          final lastSeen = DateTime.parse(lastSeenStr);
+          final minutesSinceLastSeen = DateTime.now().difference(lastSeen).inMinutes;
+          
+          if (mounted) {
+            setState(() {
+              // If device hasn't been seen in over 5 minutes, mark as disconnected
+              if (minutesSinceLastSeen > 5) {
+                isConnected = false;
+                _hasRealtimeData = false;
+                _isStale = true;
+                _lastSeenAt = lastSeen;
+                // Clear vitals and worn state to avoid misleading UI
+                isDeviceWorn = false;
+                heartRateValue = null;
+                debugPrint('Device freshness check: Device stale - last seen $minutesSinceLastSeen minutes ago');
+              } else {
+                isConnected = true;
+                _isStale = false;
+                _lastSeenAt = lastSeen;
+                debugPrint('Device freshness check: Device recently active');
+              }
+            });
+          }
+        } else {
+          // No last_seen_at data, assume disconnected
+          if (mounted) {
+            setState(() {
+              isConnected = false;
+              _hasRealtimeData = false;
+              _isStale = true;
+              // Clear vitals and worn state to avoid misleading UI
+              isDeviceWorn = false;
+              heartRateValue = null;
+            });
+            debugPrint('Device freshness check: No last seen data - assuming disconnected');
+          }
+        }
+      }
+    }).catchError((error) {
+      debugPrint('Device freshness check error: $error');
+      if (mounted) {
+        setState(() {
+          isConnected = false;
+          _hasRealtimeData = false;
+          _isStale = true;
+          // Clear vitals and worn state to avoid misleading UI
+          isDeviceWorn = false;
+          heartRateValue = null;
+        });
+      }
+    });
   }
 
   void _startPeriodicRefresh() {
@@ -466,9 +609,10 @@ class _WatchScreenState extends State<WatchScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Low battery warning banner
-            if (batteryPercentage != null &&
-                batteryPercentage! <= 10 &&
-                batteryPercentage! > 0)
+      if (isConnected && !_isStale &&
+        batteryPercentage != null &&
+        batteryPercentage! <= 10 &&
+        batteryPercentage! > 0)
               _buildLowBatteryWarning(),
 
             // Device status card
@@ -743,6 +887,7 @@ class _WatchScreenState extends State<WatchScreen>
                         ),
                       ],
                     ),
+                    // Removed 'Last seen' per request
                   ],
                 ),
               ),
@@ -800,10 +945,11 @@ class _WatchScreenState extends State<WatchScreen>
 
   Widget _buildBatteryStatusItem() {
     final battery = batteryPercentage ?? 0;
+    final isDisconnected = !isConnected || _isStale;
     final isLowBattery = battery <= 10;
     final isCriticalBattery = battery <= 5;
-    // Separate battery offline status from general connection status
-    final isBatteryOffline = batteryPercentage == null || battery <= 0;
+    // Treat disconnected or stale as offline for battery display
+    final isBatteryOffline = isDisconnected || batteryPercentage == null || battery <= 0;
 
     // Choose appropriate icon and color
     IconData batteryIcon;
@@ -866,7 +1012,7 @@ class _WatchScreenState extends State<WatchScreen>
         const SizedBox(height: 8),
         Text(
           isBatteryOffline
-              ? 'N/A'
+              ? '--'
               : batteryPercentage == null
                   ? '--'
                   : '${battery.toStringAsFixed(0)}%',
@@ -1195,15 +1341,19 @@ class _WatchScreenState extends State<WatchScreen>
 
   Color _getConnectionStatusColor() {
     if (!isConnected) return Colors.red;
+    if (_isStale) return Colors.orange;
     if (!isDeviceWorn) return Colors.orange;
     return Colors.green;
   }
 
   String _getConnectionStatusText() {
     if (!isConnected) return 'Disconnected';
+    if (_isStale) return 'Stale Data';
     if (!isDeviceWorn) return 'Not Worn';
     return 'Active';
   }
+
+  // Last seen formatter removed because the label was removed from UI
 
   String _getHeartRateStatus(double hr) {
     if (hr >= 120) return 'Very High';

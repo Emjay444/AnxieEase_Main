@@ -506,7 +506,7 @@ export const adminService = {
             patient.last_name?.toLowerCase() || patient.id.substring(0, 8)
           }@anxieease.com`,
         contact_number: patient.contact_number || "No contact number",
-        gender: patient.gender || "Not specified",
+        sex: patient.sex || "Not specified",
         birth_date: patient.birth_date || "Not specified",
         name:
           [patient.first_name, patient.middle_name, patient.last_name]
@@ -645,14 +645,14 @@ export const adminService = {
   // Get analytics data for dashboard charts
   async getAnalyticsData(year = new Date().getFullYear()) {
     try {
-      // Get gender distribution
-      const { data: genderData, error: genderError } = await supabase
+      // Get sex distribution
+      const { data: sexData, error: sexError } = await supabase
         .from("user_profiles")
-        .select("gender")
+        .select("sex")
         .eq("role", "patient");
 
-      if (genderError) {
-        console.error("Error fetching gender data:", genderError.message);
+      if (sexError) {
+        console.error("Error fetching sex data:", sexError.message);
       }
 
       // Get age distribution (calculate from birth_date)
@@ -682,22 +682,22 @@ export const adminService = {
         );
       }
 
-      // Process gender distribution
-      const genderStats = {
+      // Process sex distribution
+      const sexStats = {
         male: 0,
         female: 0,
         other: 0,
       };
 
-      if (genderData) {
-        genderData.forEach((user) => {
-          const gender = user.gender?.toLowerCase();
-          if (gender === "male" || gender === "m") {
-            genderStats.male++;
-          } else if (gender === "female" || gender === "f") {
-            genderStats.female++;
+      if (sexData) {
+        sexData.forEach((user) => {
+          const sex = user.sex?.toLowerCase();
+          if (sex === "male" || sex === "m") {
+            sexStats.male++;
+          } else if (sex === "female" || sex === "f") {
+            sexStats.female++;
           } else {
-            genderStats.other++;
+            sexStats.other++;
           }
         });
       }
@@ -773,16 +773,16 @@ export const adminService = {
       }
 
       return {
-        genderDistribution: genderStats,
+        sexDistribution: sexStats,
         ageDistribution: ageStats,
         ageHistogram,
         monthlyRegistrations: monthlyStats,
-        totalPatients: genderData?.length || 0,
+        totalPatients: sexData?.length || 0,
       };
     } catch (error) {
       console.error("Error fetching analytics data:", error.message);
       return {
-        genderDistribution: { male: 0, female: 0, other: 0 },
+        sexDistribution: { male: 0, female: 0, other: 0 },
         ageDistribution: { "18-25": 0, "26-35": 0, "36-45": 0, "46+": 0 },
         ageHistogram: {},
         monthlyRegistrations: {

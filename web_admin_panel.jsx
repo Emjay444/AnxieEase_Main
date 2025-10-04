@@ -167,7 +167,7 @@ const AdminPanelNew = () => {
   const [unassignedPatients, setUnassignedPatients] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [analyticsData, setAnalyticsData] = useState({
-    genderDistribution: { male: 0, female: 0, other: 0 },
+    sexDistribution: { male: 0, female: 0, other: 0 },
     ageDistribution: { "18-25": 0, "26-35": 0, "36-45": 0, "46+": 0 },
     monthlyRegistrations: {
       Jan: 0,
@@ -881,12 +881,12 @@ const AdminPanelNew = () => {
 
             {/* Analytics Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Gender Distribution */}
+              {/* Sex Distribution */}
               <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
                 <div className="flex items-center mb-4">
                   <User className="h-5 w-5 text-emerald-600 mr-2" />
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Gender Distribution
+                    Sex Distribution
                   </h3>
                 </div>
                 <div className="space-y-4">
@@ -897,8 +897,8 @@ const AdminPanelNew = () => {
                         datasets: [
                           {
                             data: [
-                              analyticsData.genderDistribution.male || 0,
-                              analyticsData.genderDistribution.female || 0,
+                              analyticsData.sexDistribution.male || 0,
+                              analyticsData.sexDistribution.female || 0,
                             ],
                             backgroundColor: ["#22c55e", "#ef4444"], // green, red
                             borderColor: "#ffffff",
@@ -2285,17 +2285,17 @@ const AdminPanelNew = () => {
 
                 {/* Personal Information Row */}
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Gender */}
+                  {/* Sex */}
                   <div className="flex items-start space-x-2 p-3 bg-purple-50 rounded-lg">
                     <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Users className="h-4 w-4 text-purple-600" />
                     </div>
                     <div className="flex-1">
                       <label className="block text-sm font-medium text-purple-900 mb-1">
-                        Gender
+                        Sex
                       </label>
                       <p className="text-purple-800">
-                        {selectedPatient.gender || "Not specified"}
+                        {selectedPatient.sex || "Not specified"}
                       </p>
                     </div>
                   </div>

@@ -521,7 +521,7 @@ class AuthProvider extends ChangeNotifier {
     DateTime? birthDate,
     String? contactNumber,
     String? emergencyContact,
-    String? gender,
+    String? sex,
   }) async {
     try {
       _setLoading(true);
@@ -533,7 +533,7 @@ class AuthProvider extends ChangeNotifier {
         'birth_date': birthDate?.toIso8601String(),
         'contact_number': contactNumber,
         'emergency_contact': emergencyContact,
-        'gender': gender,
+        'sex': sex,
       };
 
       await _supabaseService.signUp(
@@ -628,7 +628,7 @@ class AuthProvider extends ChangeNotifier {
     DateTime? birthDate,
     String? contactNumber,
     String? emergencyContact,
-    String? gender,
+    String? sex,
     String? avatarUrl,
     bool removeAvatar = false,
   }) async {
@@ -655,7 +655,7 @@ class AuthProvider extends ChangeNotifier {
         if (birthDate != null) 'birth_date': birthDate.toIso8601String(),
         if (contactNumber != null) 'contact_number': contactNumber,
         if (emergencyContact != null) 'emergency_contact': emergencyContact,
-        if (gender != null) 'gender': gender,
+        if (sex != null) 'sex': sex,
         // If a new avatarUrl is provided, set it; if explicitly removing, set to null
         if (avatarUrl != null) 'avatar_url': avatarUrl,
         if (avatarUrl == null && removeAvatar) 'avatar_url': null,

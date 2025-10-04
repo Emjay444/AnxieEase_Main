@@ -38,7 +38,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'gender': userData['gender'] ?? '',
+        'sex': userData['sex'] ?? '',
         'role': 'patient',
         'created_at': timestamp,
         'updated_at': timestamp,
@@ -61,7 +61,7 @@ class SupabaseService {
           'birth_date': userData['birth_date'],
           'contact_number': userData['contact_number'] ?? '',
           'emergency_contact': userData['emergency_contact'] ?? '',
-          'gender': userData['gender'] ?? '',
+          'sex': userData['sex'] ?? '',
         });
         print('✅ Profile created successfully via database function');
 
@@ -114,7 +114,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'gender': userData['gender'] ?? '',
+        'sex': userData['sex'] ?? '',
         'timestamp': timestamp,
       };
 
@@ -128,7 +128,7 @@ class SupabaseService {
             'birth_date': userData['birth_date'],
             'contact_number': userData['contact_number'] ?? '',
             'emergency_contact': userData['emergency_contact'] ?? '',
-            'gender': userData['gender'] ?? '',
+            'sex': userData['sex'] ?? '',
             'profile_creation_failed':
                 true, // Flag to indicate profile needs creation
             'profile_data_stored': timestamp,
@@ -155,7 +155,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'gender': userData['gender'] ?? '',
+        'sex': userData['sex'] ?? '',
         'timestamp': timestamp,
       };
       print('🔄 Fallback: Stored data for profile creation during sign-in');
@@ -209,7 +209,7 @@ class SupabaseService {
           'birth_date': metadata['birth_date'],
           'contact_number': metadata['contact_number'] ?? '',
           'emergency_contact': metadata['emergency_contact'] ?? '',
-          'gender': metadata['gender'] ?? '',
+          'sex': metadata['sex'] ?? '',
           'timestamp': metadata['profile_data_stored'] ??
               DateTime.now().toIso8601String(),
         };
@@ -260,7 +260,7 @@ class SupabaseService {
         'birth_date': pendingData['birth_date'],
         'contact_number': pendingData['contact_number'] ?? '',
         'emergency_contact': pendingData['emergency_contact'] ?? '',
-        'gender': pendingData['gender'] ?? '',
+        'sex': pendingData['sex'] ?? '',
         'role': 'patient',
         'created_at': timestamp,
         'updated_at': timestamp,
@@ -544,7 +544,7 @@ class SupabaseService {
               'birth_date': _pendingUserData!['birth_date'],
               'contact_number': _pendingUserData!['contact_number'] ?? '',
               'emergency_contact': _pendingUserData!['emergency_contact'] ?? '',
-              'gender': _pendingUserData!['gender'] ?? '',
+              'sex': _pendingUserData!['sex'] ?? '',
               'role': 'patient',
               'created_at': DateTime.now().toIso8601String(),
               'updated_at': DateTime.now().toIso8601String(),

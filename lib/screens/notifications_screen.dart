@@ -30,6 +30,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   int _lastRefreshCounter = 0;
   bool _handledInitialRouteArgs = false; // prevent double handling
 
+  // Pagination and sorting
+  String _sortBy = 'newest'; // 'newest', 'oldest', 'type', 'priority', 'status'
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
+  int _totalNotifications = 0;
+  List<Map<String, dynamic>> _allNotifications = []; // Store all notifications
+  List<Map<String, dynamic>> _paginatedNotifications = []; // Current page notifications
+
   @override
   void initState() {
     super.initState();
@@ -156,6 +164,70 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return hslDark.toColor();
   }
 
+  // Sorting and pagination methods
+  void _sortNotifications(List<Map<String, dynamic>> notifications) {
+    switch (_sortBy) {
+      case 'newest':
+        notifications.sort((a, b) {
+          final aDate = DateTime.parse(a['created_at']);
+          final bDate = DateTime.parse(b['created_at']);
+          return bDate.compareTo(aDate);
+        });
+        break;
+      case 'oldest':
+        notifications.sort((a, b) {
+          final aDate = DateTime.parse(a['created_at']);
+          final bDate = DateTime.parse(b['created_at']);
+          return aDate.compareTo(bDate);
+        });
+        break;
+      default:
+        // Default to newest first
+        notifications.sort((a, b) {
+          final aDate = DateTime.parse(a['created_at']);
+          final bDate = DateTime.parse(b['created_at']);
+          return bDate.compareTo(aDate);
+        });
+        break;
+    }
+  }
+
+  void _updatePagination() {
+    _totalNotifications = _allNotifications.length;
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = (startIndex + _itemsPerPage).clamp(0, _totalNotifications);
+    
+    if (startIndex < _totalNotifications) {
+      _paginatedNotifications = _allNotifications.sublist(startIndex, endIndex);
+    } else {
+      _paginatedNotifications = [];
+      _currentPage = 1; // Reset to first page if no items
+    }
+    
+    // Update the display notifications
+    setState(() {
+      _notifications = _paginatedNotifications;
+    });
+  }
+
+  void _goToPage(int page) {
+    final maxPage = (_totalNotifications / _itemsPerPage).ceil();
+    if (page >= 1 && page <= maxPage) {
+      setState(() {
+        _currentPage = page;
+      });
+      _updatePagination();
+    }
+  }
+
+  void _changeItemsPerPage(int newItemsPerPage) {
+    setState(() {
+      _itemsPerPage = newItemsPerPage;
+      _currentPage = 1; // Reset to first page
+    });
+    _updatePagination();
+  }
+
   // Derive a severity color from the notification title markers/keywords
   Color _severityColorFromTitle(String title) {
     final t = title.toLowerCase();
@@ -196,33 +268,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       }
 
-      // Sort notifications: unanswered alerts first, then by creation date
-      notifications.sort((a, b) {
-        final aIsAnswered = _isNotificationAnswered(a);
-        final bIsAnswered = _isNotificationAnswered(b);
-        final aIsAlert = (a['type'] ?? '') == 'alert';
-        final bIsAlert = (b['type'] ?? '') == 'alert';
+      // Store all notifications
+      _allNotifications = List.from(notifications);
 
-        // Priority: unanswered alerts > answered alerts > other notifications
-        if (aIsAlert && !aIsAnswered && (!bIsAlert || bIsAnswered)) {
-          return -1; // a comes first
-        }
-        if (bIsAlert && !bIsAnswered && (!aIsAlert || aIsAnswered)) {
-          return 1; // b comes first
-        }
+      // Apply sorting
+      _sortNotifications(_allNotifications);
 
-        // If both are same type (both unanswered alerts, both answered alerts, or both non-alerts)
-        // Sort by creation date (newest first)
-        final aDate = DateTime.parse(a['created_at']);
-        final bDate = DateTime.parse(b['created_at']);
-        return bDate.compareTo(aDate);
-      });
+      // Update pagination
+      _updatePagination();
 
       // Calculate unread count
-      final unreadCount = notifications.where((n) => !n['read']).length;
+      final unreadCount = _allNotifications.where((n) => !n['read']).length;
 
       setState(() {
-        _notifications = notifications;
+        _notifications = _paginatedNotifications; // Use paginated notifications for display
         _unreadCount = unreadCount;
         _isLoading = false;
       });
@@ -260,8 +319,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final title = notification['title'] ?? '';
     final message = notification['message'] ?? '';
 
+    // Skip confirmation for positive mood notifications
+    final isPositiveMood = title.toLowerCase().contains('positive mood') ||
+        message.toLowerCase().contains('great to see you feeling') ||
+        message.toLowerCase().contains('good vibes');
+
     // Check for confirmation requirements - either from FCM data or title patterns
-    final shouldShowConfirmation =
+    final shouldShowConfirmation = !isPositiveMood && (
         // Check for caring message patterns
         title.toLowerCase().contains('gentle check-in') ||
             title.toLowerCase().contains('are you okay') ||
@@ -273,7 +337,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             // Legacy patterns
             title.contains('Anxiety Detection - Confirmation Needed') ||
             title.contains('Anxiety Alert') ||
-            title.contains('anxiety detected');
+            title.contains('anxiety detected'));
 
     if (shouldShowConfirmation) {
       // Show anxiety confirmation dialog
@@ -1628,7 +1692,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title.contains('Mental Health Moment') ||
         title.contains('Relaxation Reminder');
 
+    // Detect positive mood from content
+    final tLower = title.toLowerCase();
+    final mLower = (notification['message']?.toString() ?? '').toLowerCase();
+    final isPositiveMood = tLower.contains('positive mood') ||
+        mLower.contains('great to see you feeling') ||
+        mLower.contains('good vibes');
+
     final Color accent = () {
+      if (isPositiveMood) return Colors.green;
       switch (type) {
         case 'alert':
           return _severityColorFromTitle(title);
@@ -1644,12 +1716,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Dismissible(
       key: Key(notification['id']),
       background: Container(
-        color: Colors.red,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(16),
+        ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
+        child: Container(
+          width: 80, // Limit the width of the delete area
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.delete, color: Colors.white, size: 20),
+              SizedBox(height: 2),
+              Text(
+                'Delete',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       direction: DismissDirection.endToStart,
+      dismissThresholds: const {
+        DismissDirection.endToStart: 0.3, // Only need to swipe 30% instead of 50%
+      },
+      movementDuration: const Duration(milliseconds: 200), // Faster movement
+      resizeDuration: const Duration(milliseconds: 300), // Smoother resize
       onDismissed: (_) => _deleteNotification(notification['id']),
       confirmDismiss: (direction) async {
         return await showDialog(
@@ -1717,9 +1816,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Center(
-                        child: _getNotificationIcon(
-                            type, isAnswered ? Colors.grey : accent)),
+          Center(
+            child: _getNotificationIcon(
+              isPositiveMood ? 'positive' : type,
+              isAnswered ? Colors.grey : accent)),
                     if (!isRead)
                       Positioned(
                         right: -2,
@@ -1831,6 +1931,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icon(Icons.notifications_active, color: accent, size: 24);
       case 'log':
         return Icon(Icons.check_circle, color: accent, size: 24);
+      case 'positive':
+        return Icon(Icons.sentiment_very_satisfied, color: accent, size: 24);
       default:
         return Icon(Icons.notifications, color: accent, size: 24);
     }
@@ -1877,6 +1979,176 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return groups;
   }
 
+  Widget _buildPaginationControls() {
+    // Show pagination if there are more items than the current page size OR if user changed page size
+    if (_totalNotifications == 0 || (_totalNotifications <= 10 && _itemsPerPage == 10)) {
+      return const SizedBox.shrink();
+    }
+
+    final maxPage = (_totalNotifications / _itemsPerPage).ceil().clamp(1, double.infinity).toInt();
+    final startItem = (_currentPage - 1) * _itemsPerPage + 1;
+    final endItem = (_currentPage * _itemsPerPage).clamp(0, _totalNotifications);
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white, // Keep white background
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: 0,
+          ),
+        ],
+        // Remove border to make it look floating
+      ),
+      child: Column(
+        children: [
+          // Items per page selector
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Items per page:',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _itemsPerPage,
+                    isDense: true,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    icon: Icon(Icons.arrow_drop_down, 
+                             color: Colors.grey[600], 
+                             size: 18),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        _changeItemsPerPage(newValue);
+                        setState(() {});
+                      }
+                    },
+                    items: const [
+                      DropdownMenuItem(value: 5, child: Text('5')),
+                      DropdownMenuItem(value: 10, child: Text('10')),
+                      DropdownMenuItem(value: 20, child: Text('20')),
+                      DropdownMenuItem(value: 50, child: Text('50')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Page info and navigation
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Showing $startItem-$endItem of $_totalNotifications',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // First page button
+                  _buildPageButton(
+                    icon: Icons.first_page,
+                    enabled: _currentPage > 1,
+                    onPressed: () => _goToPage(1),
+                  ),
+                  
+                  // Previous page button
+                  _buildPageButton(
+                    icon: Icons.chevron_left,
+                    enabled: _currentPage > 1,
+                    onPressed: () => _goToPage(_currentPage - 1),
+                  ),
+                  
+                  // Page indicator
+                  Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.teal[600],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$_currentPage of $maxPage',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    
+                    // Next page button
+                    _buildPageButton(
+                      icon: Icons.chevron_right,
+                      enabled: _currentPage < maxPage,
+                      onPressed: () => _goToPage(_currentPage + 1),
+                    ),
+                    
+                    // Last page button
+                    _buildPageButton(
+                      icon: Icons.last_page,
+                      enabled: _currentPage < maxPage,
+                      onPressed: () => _goToPage(maxPage),
+                    ),
+                  ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled ? Colors.grey[700] : Colors.grey[400],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterChips() {
     return Column(
       children: [
@@ -1914,7 +2186,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                     selected: selected,
                     onSelected: (_) {
-                      setState(() => _selectedFilter = f == 'all' ? null : f);
+                      setState(() {
+                        _selectedFilter = f == 'all' ? null : f;
+                        _currentPage = 1; // Reset to first page
+                      });
                       _loadNotifications();
                       HapticFeedback.selectionClick();
                     },
@@ -1988,7 +2263,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                       selected: selected,
                       onSelected: (_) {
-                        setState(() => _answerFilter = f);
+                        setState(() {
+                          _answerFilter = f;
+                          _currentPage = 1; // Reset to first page
+                        });
                         _loadNotifications();
                         HapticFeedback.selectionClick();
                       },
@@ -2015,6 +2293,65 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ],
             ),
           ),
+        
+        // Sorting dropdown (below status filters)
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                'Sort by: ',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _sortBy,
+                    icon: Icon(Icons.arrow_drop_down, color: Colors.grey[600], size: 18),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _sortBy = newValue;
+                          _currentPage = 1; // Reset to first page
+                        });
+                        _loadNotifications();
+                        HapticFeedback.selectionClick();
+                      }
+                    },
+                    items: const [
+                      DropdownMenuItem(value: 'newest', child: Text('Newest First')),
+                      DropdownMenuItem(value: 'oldest', child: Text('Oldest First')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -2089,36 +2426,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : _notifications.isEmpty
                           ? _buildEmptyState()
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: grouped.entries.length,
-                              itemBuilder: (context, groupIndex) {
-                                final entry =
-                                    grouped.entries.elementAt(groupIndex);
-                                final groupLabel = entry.key;
-                                final items = entry.value;
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                          20, 20, 20, 4),
-                                      child: Text(
-                                        groupLabel,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.5,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ),
-                                    ...items
-                                        .map(_buildNotificationItem)
-                                        .toList(),
-                                  ],
-                                );
-                              },
+                          : Column(
+                              children: [
+                                Expanded(
+                                  child: ListView.builder(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    itemCount: grouped.entries.length,
+                                    itemBuilder: (context, groupIndex) {
+                                      final entry =
+                                          grouped.entries.elementAt(groupIndex);
+                                      final groupLabel = entry.key;
+                                      final items = entry.value;
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                20, 20, 20, 4),
+                                            child: Text(
+                                              groupLabel,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: 0.5,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ),
+                                          ...items
+                                              .map(_buildNotificationItem)
+                                              .toList(),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                                _buildPaginationControls(),
+                              ],
                             ),
                 ),
               ),
@@ -2163,6 +2507,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 setState(() {
                   _selectedFilter = null;
                   _answerFilter = 'all';
+                  _currentPage = 1; // Reset pagination
                 });
                 _loadNotifications();
               },
