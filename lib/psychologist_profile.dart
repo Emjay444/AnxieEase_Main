@@ -415,16 +415,16 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     if (message.toLowerCase().contains('declined by psychologist')) {
       return 'Unavailable date';
     }
-    
+
     // Add more message transformations as needed
     if (message.toLowerCase().contains('rejected')) {
       return 'Unavailable date';
     }
-    
+
     if (message.toLowerCase().contains('denied')) {
       return 'Unavailable date';
     }
-    
+
     // Return original message if no transformation needed
     return message;
   }
@@ -1175,14 +1175,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           .toList();
 
       final pendingAppointments = activeAppointments
-          .where((apt) => 
+          .where((apt) =>
               apt.status == AppointmentStatus.pending &&
-              (apt.responseMessage == null || 
-               apt.responseMessage!.isEmpty))
+              (apt.responseMessage == null || apt.responseMessage!.isEmpty))
           .toList();
 
       final acceptedAppointments = activeAppointments
-          .where((apt) => 
+          .where((apt) =>
               apt.status == AppointmentStatus.pending &&
               apt.responseMessage != null &&
               apt.responseMessage!.isNotEmpty &&
@@ -1210,8 +1209,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               apt.status == AppointmentStatus.cancelled ||
               apt.status == AppointmentStatus.denied ||
               (apt.status == AppointmentStatus.pending &&
-               apt.responseMessage != null &&
-               apt.responseMessage!.toLowerCase().contains('declined')))
+                  apt.responseMessage != null &&
+                  apt.responseMessage!.toLowerCase().contains('declined')))
           .toList();
 
       return Column(

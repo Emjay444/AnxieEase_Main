@@ -354,7 +354,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               }
 
               Navigator.pop(context);
-              
+
               // Show success message
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -641,7 +641,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Navigator.pop(context);
             // Close feelings dialog
             Navigator.pop(context);
-            
+
             // Show success message for new log
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -2233,13 +2233,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     TextEditingController journalController =
         TextEditingController(text: log.journal);
     int charCount = log.journal?.length ?? 0;
-    int wordCount = log.journal?.trim().isEmpty ?? true 
-        ? 0 
+    int wordCount = log.journal?.trim().isEmpty ?? true
+        ? 0
         : log.journal!.trim().split(RegExp(r'\s+')).length;
 
     void updateCounts(String text) {
       charCount = text.length;
-      wordCount = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
+      wordCount =
+          text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
     }
 
     showModalBottomSheet(
@@ -2315,9 +2316,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       textAlignVertical: TextAlignVertical.top,
                                       decoration: InputDecoration(
                                         hintText: 'Write your thoughts here...',
-                                        hintStyle: TextStyle(color: Colors.purple.shade200),
+                                        hintStyle: TextStyle(
+                                            color: Colors.purple.shade200),
                                         border: InputBorder.none,
-                                        contentPadding: const EdgeInsets.fromLTRB(18, 18, 18, 50),
+                                        contentPadding:
+                                            const EdgeInsets.fromLTRB(
+                                                18, 18, 18, 50),
                                       ),
                                       style: const TextStyle(
                                         fontSize: 16,
@@ -2333,7 +2337,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                             horizontal: 10, vertical: 6),
                                         decoration: BoxDecoration(
                                           color: Colors.blue.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                         ),
                                         child: Text(
                                           '$wordCount words',
@@ -2352,8 +2357,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 10, vertical: 6),
                                         decoration: BoxDecoration(
-                                          color: Colors.purple.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(12),
+                                          color:
+                                              Colors.purple.withOpacity(0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                         ),
                                         child: Text(
                                           '$charCount chars',
@@ -2412,9 +2419,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    wordCount > 0 
-                                      ? 'Save Journal ($wordCount words)'
-                                      : 'Save Journal',
+                                    wordCount > 0
+                                        ? 'Save Journal ($wordCount words)'
+                                        : 'Save Journal',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
@@ -2505,7 +2512,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         } else {
           message = 'Journal updated successfully';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -2558,7 +2565,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     void updateCounts(String text) {
       charCount = text.length;
-      wordCount = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
+      wordCount =
+          text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
     }
 
     showModalBottomSheet(
@@ -2641,7 +2649,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     });
                                   },
                                   icon: Icon(
-                                    showPrompts ? Icons.lightbulb : Icons.lightbulb_outline,
+                                    showPrompts
+                                        ? Icons.lightbulb
+                                        : Icons.lightbulb_outline,
                                     color: Colors.purple.shade600,
                                     size: 20,
                                   ),
@@ -2649,7 +2659,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 ),
                               ],
                             ),
-                            
+
                             // Quick mood selector
                             const SizedBox(height: 16),
                             Text(
@@ -2665,8 +2675,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               scrollDirection: Axis.horizontal,
                               child: Row(
                                 children: [
-                                  '😊 Happy', '😔 Sad', '😰 Anxious', '😌 Calm', 
-                                  '😴 Tired', '🤗 Grateful', '😤 Frustrated', '✨ Inspired'
+                                  '😊 Happy',
+                                  '😔 Sad',
+                                  '😰 Anxious',
+                                  '😌 Calm',
+                                  '😴 Tired',
+                                  '🤗 Grateful',
+                                  '😤 Frustrated',
+                                  '✨ Inspired'
                                 ].map((mood) {
                                   final isSelected = selectedMood == mood;
                                   return Padding(
@@ -2679,29 +2695,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       },
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 8
-                                        ),
+                                            horizontal: 12, vertical: 8),
                                         decoration: BoxDecoration(
-                                          color: isSelected 
-                                            ? Colors.purple.shade100 
-                                            : Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(20),
+                                          color: isSelected
+                                              ? Colors.purple.shade100
+                                              : Colors.grey.shade100,
+                                          borderRadius:
+                                              BorderRadius.circular(20),
                                           border: Border.all(
-                                            color: isSelected 
-                                              ? Colors.purple.shade300 
-                                              : Colors.transparent,
+                                            color: isSelected
+                                                ? Colors.purple.shade300
+                                                : Colors.transparent,
                                           ),
                                         ),
                                         child: Text(
                                           mood,
                                           style: TextStyle(
                                             fontSize: 12,
-                                            fontWeight: isSelected 
-                                              ? FontWeight.w600 
-                                              : FontWeight.w500,
-                                            color: isSelected 
-                                              ? Colors.purple.shade700 
-                                              : Colors.grey[600],
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: isSelected
+                                                ? Colors.purple.shade700
+                                                : Colors.grey[600],
                                           ),
                                         ),
                                       ),
@@ -2734,18 +2750,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       child: GestureDetector(
                                         onTap: () {
                                           if (journalController.text.isEmpty) {
-                                            journalController.text = writingPrompts[index] + '\n\n';
-                                            updateCounts(journalController.text);
+                                            journalController.text =
+                                                writingPrompts[index] + '\n\n';
+                                            updateCounts(
+                                                journalController.text);
                                             setState(() {});
                                           }
                                         },
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 6
-                                          ),
+                                              horizontal: 12, vertical: 6),
                                           decoration: BoxDecoration(
                                             color: Colors.orange.shade50,
-                                            borderRadius: BorderRadius.circular(16),
+                                            borderRadius:
+                                                BorderRadius.circular(16),
                                             border: Border.all(
                                               color: Colors.orange.shade200,
                                             ),
@@ -2812,7 +2830,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                             horizontal: 10, vertical: 6),
                                         decoration: BoxDecoration(
                                           color: Colors.blue.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                         ),
                                         child: Text(
                                           '$wordCount words',
@@ -2876,9 +2895,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () {
-                                String finalJournalText = journalController.text;
+                                String finalJournalText =
+                                    journalController.text;
                                 if (selectedMood.isNotEmpty) {
-                                  finalJournalText = 'Mood: $selectedMood\n\n$finalJournalText';
+                                  finalJournalText =
+                                      'Mood: $selectedMood\n\n$finalJournalText';
                                 }
                                 _saveJournalEntry(finalJournalText);
                                 Navigator.pop(context);
@@ -2902,9 +2923,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    wordCount > 0 
-                                      ? 'Save Journal Entry ($wordCount words)'
-                                      : 'Save Journal Entry',
+                                    wordCount > 0
+                                        ? 'Save Journal Entry ($wordCount words)'
+                                        : 'Save Journal Entry',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,

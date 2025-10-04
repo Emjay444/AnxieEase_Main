@@ -1437,10 +1437,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       // First: detect positive mood notifications regardless of stored type
                       final tLower =
                           notification['title']?.toString().toLowerCase() ?? '';
-                      final mLower = notification['message']
-                              ?.toString()
-                              .toLowerCase() ??
-                          '';
+                      final mLower =
+                          notification['message']?.toString().toLowerCase() ??
+                              '';
                       final isPositiveMood = tLower.contains('positive mood') ||
                           mLower.contains('great to see you feeling') ||
                           mLower.contains('good vibes');
@@ -1450,22 +1449,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         type = 'positive';
                       } else
                         switch (notification['type']) {
-                        case 'alert':
-                          icon = Icons.warning_amber;
-                          type = 'alert';
-                          break;
-                        case 'reminder':
-                          icon = Icons.notifications_active;
-                          type = 'info';
-                          break;
-                        case 'log':
-                          icon = Icons.check_circle;
-                          type = 'warning';
-                          break;
-                        default:
-                          icon = Icons.notifications;
-                          type = 'info';
-                      }
+                          case 'alert':
+                            icon = Icons.warning_amber;
+                            type = 'alert';
+                            break;
+                          case 'reminder':
+                            icon = Icons.notifications_active;
+                            type = 'info';
+                            break;
+                          case 'log':
+                            icon = Icons.check_circle;
+                            type = 'warning';
+                            break;
+                          default:
+                            icon = Icons.notifications;
+                            type = 'info';
+                        }
 
                       return _buildNotificationCard(
                         title: notification['title'],
@@ -1564,9 +1563,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     // Determine if this is an important notification
-  bool isHighPriority = effectiveType == 'alert' && effectiveType != 'positive' ||
-    title.contains('🚨') ||
-    title.contains('Alert');
+    bool isHighPriority =
+        effectiveType == 'alert' && effectiveType != 'positive' ||
+            title.contains('🚨') ||
+            title.contains('Alert');
 
     // Check if this is a reminder notification or positive mood (should not be clickable)
     bool isReminder = effectiveType == 'reminder' ||

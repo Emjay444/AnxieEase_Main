@@ -36,7 +36,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   int _itemsPerPage = 10;
   int _totalNotifications = 0;
   List<Map<String, dynamic>> _allNotifications = []; // Store all notifications
-  List<Map<String, dynamic>> _paginatedNotifications = []; // Current page notifications
+  List<Map<String, dynamic>> _paginatedNotifications =
+      []; // Current page notifications
 
   @override
   void initState() {
@@ -196,14 +197,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _totalNotifications = _allNotifications.length;
     final startIndex = (_currentPage - 1) * _itemsPerPage;
     final endIndex = (startIndex + _itemsPerPage).clamp(0, _totalNotifications);
-    
+
     if (startIndex < _totalNotifications) {
       _paginatedNotifications = _allNotifications.sublist(startIndex, endIndex);
     } else {
       _paginatedNotifications = [];
       _currentPage = 1; // Reset to first page if no items
     }
-    
+
     // Update the display notifications
     setState(() {
       _notifications = _paginatedNotifications;
@@ -281,7 +282,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final unreadCount = _allNotifications.where((n) => !n['read']).length;
 
       setState(() {
-        _notifications = _paginatedNotifications; // Use paginated notifications for display
+        _notifications =
+            _paginatedNotifications; // Use paginated notifications for display
         _unreadCount = unreadCount;
         _isLoading = false;
       });
@@ -325,19 +327,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         message.toLowerCase().contains('good vibes');
 
     // Check for confirmation requirements - either from FCM data or title patterns
-    final shouldShowConfirmation = !isPositiveMood && (
-        // Check for caring message patterns
-        title.toLowerCase().contains('gentle check-in') ||
-            title.toLowerCase().contains('are you okay') ||
-            title.toLowerCase().contains('just checking in') ||
-            message
-                .toLowerCase()
-                .contains('are you experiencing any anxiety') ||
-            message.toLowerCase().contains('how are you feeling') ||
-            // Legacy patterns
-            title.contains('Anxiety Detection - Confirmation Needed') ||
-            title.contains('Anxiety Alert') ||
-            title.contains('anxiety detected'));
+    final shouldShowConfirmation = !isPositiveMood &&
+        (
+            // Check for caring message patterns
+            title.toLowerCase().contains('gentle check-in') ||
+                title.toLowerCase().contains('are you okay') ||
+                title.toLowerCase().contains('just checking in') ||
+                message
+                    .toLowerCase()
+                    .contains('are you experiencing any anxiety') ||
+                message.toLowerCase().contains('how are you feeling') ||
+                // Legacy patterns
+                title.contains('Anxiety Detection - Confirmation Needed') ||
+                title.contains('Anxiety Alert') ||
+                title.contains('anxiety detected'));
 
     if (shouldShowConfirmation) {
       // Show anxiety confirmation dialog
@@ -1745,7 +1748,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ),
       direction: DismissDirection.endToStart,
       dismissThresholds: const {
-        DismissDirection.endToStart: 0.3, // Only need to swipe 30% instead of 50%
+        DismissDirection.endToStart:
+            0.3, // Only need to swipe 30% instead of 50%
       },
       movementDuration: const Duration(milliseconds: 200), // Faster movement
       resizeDuration: const Duration(milliseconds: 300), // Smoother resize
@@ -1816,10 +1820,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-          Center(
-            child: _getNotificationIcon(
-              isPositiveMood ? 'positive' : type,
-              isAnswered ? Colors.grey : accent)),
+                    Center(
+                        child: _getNotificationIcon(
+                            isPositiveMood ? 'positive' : type,
+                            isAnswered ? Colors.grey : accent)),
                     if (!isRead)
                       Positioned(
                         right: -2,
@@ -1981,13 +1985,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Widget _buildPaginationControls() {
     // Show pagination if there are more items than the current page size OR if user changed page size
-    if (_totalNotifications == 0 || (_totalNotifications <= 10 && _itemsPerPage == 10)) {
+    if (_totalNotifications == 0 ||
+        (_totalNotifications <= 10 && _itemsPerPage == 10)) {
       return const SizedBox.shrink();
     }
 
-    final maxPage = (_totalNotifications / _itemsPerPage).ceil().clamp(1, double.infinity).toInt();
+    final maxPage = (_totalNotifications / _itemsPerPage)
+        .ceil()
+        .clamp(1, double.infinity)
+        .toInt();
     final startItem = (_currentPage - 1) * _itemsPerPage + 1;
-    final endItem = (_currentPage * _itemsPerPage).clamp(0, _totalNotifications);
+    final endItem =
+        (_currentPage * _itemsPerPage).clamp(0, _totalNotifications);
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -2020,7 +2029,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
                   border: Border.all(color: Colors.grey[300]!),
@@ -2035,9 +2045,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       color: Colors.grey[800],
                       fontWeight: FontWeight.w500,
                     ),
-                    icon: Icon(Icons.arrow_drop_down, 
-                             color: Colors.grey[600], 
-                             size: 18),
+                    icon: Icon(Icons.arrow_drop_down,
+                        color: Colors.grey[600], size: 18),
                     onChanged: (int? newValue) {
                       if (newValue != null) {
                         _changeItemsPerPage(newValue);
@@ -2056,7 +2065,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Page info and navigation
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2080,45 +2089,46 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     enabled: _currentPage > 1,
                     onPressed: () => _goToPage(1),
                   ),
-                  
+
                   // Previous page button
                   _buildPageButton(
                     icon: Icons.chevron_left,
                     enabled: _currentPage > 1,
                     onPressed: () => _goToPage(_currentPage - 1),
                   ),
-                  
+
                   // Page indicator
                   Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.teal[600],
-                        borderRadius: BorderRadius.circular(8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.teal[600],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$_currentPage of $maxPage',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
-                      child: Text(
-                        '$_currentPage of $maxPage',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                     ),
-                    
-                    // Next page button
-                    _buildPageButton(
-                      icon: Icons.chevron_right,
-                      enabled: _currentPage < maxPage,
-                      onPressed: () => _goToPage(_currentPage + 1),
-                    ),
-                    
-                    // Last page button
-                    _buildPageButton(
-                      icon: Icons.last_page,
-                      enabled: _currentPage < maxPage,
-                      onPressed: () => _goToPage(maxPage),
-                    ),
-                  ],
+                  ),
+
+                  // Next page button
+                  _buildPageButton(
+                    icon: Icons.chevron_right,
+                    enabled: _currentPage < maxPage,
+                    onPressed: () => _goToPage(_currentPage + 1),
+                  ),
+
+                  // Last page button
+                  _buildPageButton(
+                    icon: Icons.last_page,
+                    enabled: _currentPage < maxPage,
+                    onPressed: () => _goToPage(maxPage),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2293,7 +2303,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ],
             ),
           ),
-        
+
         // Sorting dropdown (below status filters)
         const SizedBox(height: 12),
         Padding(
@@ -2310,7 +2320,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -2326,7 +2337,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: _sortBy,
-                    icon: Icon(Icons.arrow_drop_down, color: Colors.grey[600], size: 18),
+                    icon: Icon(Icons.arrow_drop_down,
+                        color: Colors.grey[600], size: 18),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[800],
@@ -2343,8 +2355,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       }
                     },
                     items: const [
-                      DropdownMenuItem(value: 'newest', child: Text('Newest First')),
-                      DropdownMenuItem(value: 'oldest', child: Text('Oldest First')),
+                      DropdownMenuItem(
+                          value: 'newest', child: Text('Newest First')),
+                      DropdownMenuItem(
+                          value: 'oldest', child: Text('Oldest First')),
                     ],
                   ),
                 ),
@@ -2430,7 +2444,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               children: [
                                 Expanded(
                                   child: ListView.builder(
-                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
                                     itemCount: grouped.entries.length,
                                     itemBuilder: (context, groupIndex) {
                                       final entry =
@@ -2438,7 +2453,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       final groupLabel = entry.key;
                                       final items = entry.value;
                                       return Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Padding(
                                             padding: const EdgeInsets.fromLTRB(

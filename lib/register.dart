@@ -151,14 +151,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
           if (!_isPasswordValid(passwordController.text)) {
             final validation = _validatePassword(passwordController.text);
             List<String> missingRequirements = [];
-            
-            if (!validation['length']!) missingRequirements.add('8+ characters');
-            if (!validation['uppercase']!) missingRequirements.add('uppercase letter');
-            if (!validation['lowercase']!) missingRequirements.add('lowercase letter');
+
+            if (!validation['length']!)
+              missingRequirements.add('8+ characters');
+            if (!validation['uppercase']!)
+              missingRequirements.add('uppercase letter');
+            if (!validation['lowercase']!)
+              missingRequirements.add('lowercase letter');
             if (!validation['number']!) missingRequirements.add('number');
-            if (!validation['special']!) missingRequirements.add('special character');
-            
-            _fieldErrors['password'] = 'Password must contain: ${missingRequirements.join(', ')}';
+            if (!validation['special']!)
+              missingRequirements.add('special character');
+
+            _fieldErrors['password'] =
+                'Password must contain: ${missingRequirements.join(', ')}';
           } else {
             _fieldErrors['password'] = '';
           }
@@ -257,12 +262,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   int _getPasswordStrength(String password) {
     final validation = _validatePassword(password);
     int score = 0;
-    
+
     if (validation['length']!) score++;
     if (validation['uppercase']! && validation['lowercase']!) score++;
     if (validation['number']!) score++;
     if (validation['special']!) score++;
-    
+
     return score;
   }
 
@@ -410,14 +415,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } else if (!_isPasswordValid(passwordController.text)) {
       final validation = _validatePassword(passwordController.text);
       List<String> missingRequirements = [];
-      
+
       if (!validation['length']!) missingRequirements.add('8+ characters');
-      if (!validation['uppercase']!) missingRequirements.add('uppercase letter');
-      if (!validation['lowercase']!) missingRequirements.add('lowercase letter');
+      if (!validation['uppercase']!)
+        missingRequirements.add('uppercase letter');
+      if (!validation['lowercase']!)
+        missingRequirements.add('lowercase letter');
       if (!validation['number']!) missingRequirements.add('number');
       if (!validation['special']!) missingRequirements.add('special character');
-      
-      _fieldErrors['password'] = 'Password must contain: ${missingRequirements.join(', ')}';
+
+      _fieldErrors['password'] =
+          'Password must contain: ${missingRequirements.join(', ')}';
       isValid = false;
     }
 
@@ -443,13 +451,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Password strength indicator widget
   Widget _buildPasswordStrengthIndicator(String password) {
     if (password.isEmpty) return const SizedBox.shrink();
-    
+
     final validation = _validatePassword(password);
     final strength = _getPasswordStrength(password);
-    
+
     Color strengthColor;
     String strengthText;
-    
+
     switch (strength) {
       case 0:
       case 1:
@@ -472,7 +480,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         strengthColor = Colors.grey;
         strengthText = 'Weak';
     }
-    
+
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(12),
@@ -526,18 +534,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // Requirements list
           Column(
             children: [
-              _buildRequirementRow('At least 8 characters', validation['length']!),
-              _buildRequirementRow('Uppercase letter (A-Z)', validation['uppercase']!),
-              _buildRequirementRow('Lowercase letter (a-z)', validation['lowercase']!),
+              _buildRequirementRow(
+                  'At least 8 characters', validation['length']!),
+              _buildRequirementRow(
+                  'Uppercase letter (A-Z)', validation['uppercase']!),
+              _buildRequirementRow(
+                  'Lowercase letter (a-z)', validation['lowercase']!),
               _buildRequirementRow('Number (0-9)', validation['number']!),
-              _buildRequirementRow('Special character (!@#\$%^&*)', validation['special']!),
+              _buildRequirementRow(
+                  'Special character (!@#\$%^&*)', validation['special']!),
             ],
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildRequirementRow(String requirement, bool isMet) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -911,7 +923,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           "Password",
                           errorText: _fieldErrors['password'],
                         ),
-                        _buildPasswordStrengthIndicator(passwordController.text),
+                        _buildPasswordStrengthIndicator(
+                            passwordController.text),
                         const SizedBox(height: 15),
                         buildInputField(
                           confirmPasswordController,
