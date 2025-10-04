@@ -55,12 +55,14 @@ async function setupDeviceAssignment() {
       [`/devices/${TEST_DEVICE_ID}/assignment/activeSessionId`]:
         TEST_SESSION_ID,
       [`/devices/${TEST_DEVICE_ID}/assignment/assignedAt`]: Date.now(),
-      [`/devices/${TEST_DEVICE_ID}/assignment/assignedBy`]: 'test_script',
+      [`/devices/${TEST_DEVICE_ID}/assignment/assignedBy`]: "test_script",
       [`/devices/${TEST_DEVICE_ID}/assignment/status`]: "active",
       [`/devices/${TEST_DEVICE_ID}/assignment/deviceId`]: TEST_DEVICE_ID,
       // Store baseline in the assignment/supabaseSync location like your real data
-      [`/devices/${TEST_DEVICE_ID}/assignment/supabaseSync/baselineHR`]: BASELINE_BPM,
-      [`/devices/${TEST_DEVICE_ID}/assignment/supabaseSync/syncedAt`]: Date.now(),
+      [`/devices/${TEST_DEVICE_ID}/assignment/supabaseSync/baselineHR`]:
+        BASELINE_BPM,
+      [`/devices/${TEST_DEVICE_ID}/assignment/supabaseSync/syncedAt`]:
+        Date.now(),
     };
 
     // Write assignment data (no separate user baseline needed)
@@ -69,7 +71,9 @@ async function setupDeviceAssignment() {
     console.log("✅ Device assignment configured with real user");
     console.log(`� User: ${TEST_USER_ID}`);
     console.log(`🔗 Device: ${TEST_DEVICE_ID}`);
-    console.log(`💓 Baseline: ${BASELINE_BPM} BPM (stored in assignment/supabaseSync)`);
+    console.log(
+      `💓 Baseline: ${BASELINE_BPM} BPM (stored in assignment/supabaseSync)`
+    );
     console.log(`📱 Session: ${TEST_SESSION_ID}\n`);
   } catch (error) {
     console.error("❌ Error setting up device assignment:", error);
