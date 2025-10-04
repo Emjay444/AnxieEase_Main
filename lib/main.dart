@@ -492,15 +492,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.resumed:
-        // App became active/foreground - sync notifications
-        debugPrint('🔄 App resumed - triggering notification sync...');
+        // App became active/foreground - refresh FCM token and sync notifications
+        debugPrint('🔄 App resumed - refreshing FCM token and syncing notifications...');
         Future.delayed(const Duration(milliseconds: 500), () async {
+          // CRITICAL FIX: Refresh and store FCM token when app resumes
+          // This ensures the assignment node always has a valid token
+          await _refreshAndStoreToken();
+          
           await _debugLocalNotifications(); // Debug what's in local storage
           _syncPendingNotifications();
         });
         break;
       case AppLifecycleState.paused:
-        debugPrint('⏸️ App paused');
+        debugPrint('⏸️ App paused - ensuring FCM token is stored');
+        // CRITICAL FIX: Store FCM token when app goes to background
+        // This ensures the token persists even if the app is killed
+        _ensureTokenPersistence();
         break;
       case AppLifecycleState.inactive:
         debugPrint('😴 App inactive');
@@ -563,6 +570,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               '✅ Strategy 1: Auth ready after launch → syncing pending notifications');
           await _debugLocalNotifications(); // Debug what's in local storage
           await _syncPendingNotifications();
+          
+          // CRITICAL FIX: Validate and refresh FCM token after auth is ready
+          await _validateAndRefreshAssignmentToken();
         }
       });
     } catch (e) {
@@ -581,6 +591,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('🔄 Strategy 3: Standard sync attempt after 3 seconds...');
       await _debugLocalNotifications(); // Debug what's in local storage
       await _syncPendingNotifications();
+      
+      // Validate FCM token after initial setup
+      await _validateAndRefreshAssignmentToken();
     });
 
     // Strategy 4: Extended retry (8 seconds)
@@ -603,6 +616,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         debugPrint('🔄 Strategy 6.$i: Periodic sync at ${30 * i} seconds...');
         await _debugLocalNotifications();
         await _syncPendingNotifications();
+      });
+    }
+    
+    // CRITICAL FIX: Set up periodic FCM token refresh to prevent token loss
+    _setupPeriodicTokenRefresh();
+  }
+
+  // NEW: Set up periodic FCM token refresh
+  void _setupPeriodicTokenRefresh() {
+    debugPrint('🔄 Setting up periodic FCM token refresh...');
+    
+    // Refresh token every 5 minutes to ensure it's always available
+    Timer.periodic(const Duration(minutes: 5), (timer) async {
+      try {
+        debugPrint('🔄 Periodic FCM token refresh...');
+        await _validateAndRefreshAssignmentToken();
+      } catch (e) {
+        debugPrint('❌ Error in periodic token refresh: $e');
+      }
+    });
+    
+    // Also refresh token every 30 seconds for the first 5 minutes (during critical startup period)
+    for (int i = 1; i <= 10; i++) {
+      Future.delayed(Duration(seconds: 30 * i), () async {
+        try {
+          debugPrint('🔄 Early periodic token refresh ${i}/10...');
+          await _validateAndRefreshAssignmentToken();
+        } catch (e) {
+          debugPrint('❌ Error in early token refresh: $e');
+        }
       });
     }
   }
@@ -2198,6 +2241,7 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
           'tokenAssignedAt': DateTime.now().toIso8601String(),
           'assignedUser': currentUser
               .id, // Ensure we track which user this token belongs to
+          'lastTokenRefresh': DateTime.now().toIso8601String(), // Add refresh timestamp
         });
         debugPrint(
             '✅ FCM token stored in assignment node: $deviceId (User: ${currentUser.id})');
@@ -2210,6 +2254,7 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
               currentUser.id, // Track which user this token belongs to
           'status': 'inactive',
           'assignedAt': DateTime.now().toIso8601String(),
+          'lastTokenRefresh': DateTime.now().toIso8601String(),
         });
         debugPrint(
             '✅ Created assignment with FCM token: $deviceId (User: ${currentUser.id})');
@@ -2235,6 +2280,7 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
             await assignmentRef.update({
               'fcmToken': null,
               'tokenAssignedAt': null,
+              'lastTokenRefresh': null,
             });
             debugPrint(
                 '🧹 Removed assignment FCM token for unassigned user: ${currentUser.id}');
@@ -2256,6 +2302,66 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
     }
   } catch (e) {
     debugPrint('❌ Failed to store FCM tokens: $e');
+  }
+}
+
+// NEW: Ensure FCM token persistence when app goes to background
+Future<void> _ensureTokenPersistence() async {
+  try {
+    debugPrint('🔒 Ensuring FCM token persistence...');
+    
+    // Get current token and store it
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      await _storeTokenAtAssignmentLevel(token);
+      debugPrint('✅ FCM token persisted before app backgrounding');
+    } else {
+      debugPrint('⚠️ No FCM token available for persistence');
+    }
+  } catch (e) {
+    debugPrint('❌ Error ensuring token persistence: $e');
+  }
+}
+
+// NEW: Validate and refresh FCM token if missing from assignment
+Future<void> _validateAndRefreshAssignmentToken() async {
+  try {
+    const deviceId = 'AnxieEase001';
+    debugPrint('🔍 Validating assignment FCM token...');
+    
+    final adminDeviceService = AdminDeviceManagementService();
+    final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
+    
+    if (!assignmentStatus.canUseDevice) {
+      debugPrint('ℹ️ User has no device assigned - skipping token validation');
+      return;
+    }
+    
+    final supabaseService = SupabaseService();
+    final currentUser = supabaseService.client.auth.currentUser;
+    
+    if (currentUser == null) {
+      debugPrint('❌ No authenticated user for token validation');
+      return;
+    }
+    
+    // Check if assignment has FCM token
+    final assignmentRef = FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
+    final assignmentSnapshot = await assignmentRef.once();
+    final assignmentData = assignmentSnapshot.snapshot.value as Map?;
+    
+    final fcmToken = assignmentData?['fcmToken'] as String?;
+    final assignedUserId = assignmentData?['assignedUser'] as String?;
+    
+    // If no token exists or token belongs to different user, refresh it
+    if (fcmToken == null || assignedUserId != currentUser.id) {
+      debugPrint('🔄 Assignment missing FCM token or belongs to different user - refreshing...');
+      await _refreshAndStoreToken();
+    } else {
+      debugPrint('✅ Assignment FCM token validation passed');
+    }
+  } catch (e) {
+    debugPrint('❌ Error validating assignment token: $e');
   }
 }
 
@@ -2515,28 +2621,5 @@ Future<void> _debugCheckBackgroundMarkers() async {
     }
   } catch (e) {
     debugPrint('❌ Error checking background markers: $e');
-  }
-}
-
-/// Clear old background notification markers (for cleanup)
-Future<void> _clearOldBackgroundMarkers() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final allKeys = prefs.getKeys();
-    final backgroundKeys = allKeys
-        .where((key) => key.startsWith('last_background_notification_'))
-        .toList();
-
-    debugPrint(
-        '🧹 Clearing ${backgroundKeys.length} old background notification markers');
-
-    for (final key in backgroundKeys) {
-      await prefs.remove(key);
-      debugPrint('   ✅ Cleared: $key');
-    }
-
-    debugPrint('✅ All old background markers cleared');
-  } catch (e) {
-    debugPrint('❌ Error clearing background markers: $e');
   }
 }

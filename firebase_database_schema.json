@@ -5,7 +5,10 @@
         "assignedUser": "user_123",
         "activeSessionId": "session_456", 
         "assignedAt": 1695369600000,
-        "assignedBy": "admin_user_id"
+        "assignedBy": "admin_user_id",
+        "fcmToken": "fcm_token_for_notifications",
+        "tokenAssignedAt": "2025-10-04T02:23:13.137Z",
+        "lastTokenRefresh": "2025-10-04T02:23:13.137Z"
       },
       "metadata": {
         "deviceType": "AnxieEase_Wearable",

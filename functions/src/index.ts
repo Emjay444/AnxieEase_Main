@@ -60,6 +60,13 @@ export {
   testDeviceSync,
 } from "./deviceAssignmentSync";
 
+// Import appointment expiration functions
+export {
+  checkExpiredAppointments,
+  expireAppointmentsNow,
+  triggerAppointmentExpiration,
+} from "./appointmentExpiration";
+
 // Cloud Function to send FCM notifications when anxiety severity changes
 export const onAnxietySeverityChangeV2 = functions.database
   .ref("/devices/AnxieEase001/current")

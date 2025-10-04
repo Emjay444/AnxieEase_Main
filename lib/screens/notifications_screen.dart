@@ -431,20 +431,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.85,
-              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            constraints: const BoxConstraints(
+              maxHeight: 500, // Much smaller height
+              maxWidth: 340,  // Smaller width
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.red.withOpacity(0.05),
-                  Colors.white,
-                ],
-              ),
+              color: Colors.white, // Pure white background
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -452,9 +452,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 // Header
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16), // Smaller padding
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.grey[50], // Light grey instead of red
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(20),
                       topRight: Radius.circular(20),
@@ -464,25 +464,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       Icon(
                         Icons.favorite,
-                        color: Colors.red[700],
-                        size: 32,
+                        color: Colors.red[600], // Beautiful red heart
+                        size: 24, // Smaller icon
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6), // Smaller spacing
                       Text(
                         'We\'re Here to Help',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 16, // Smaller font
                           fontWeight: FontWeight.bold,
-                          color: Colors.red[700],
+                          color: Colors.grey[800], // Dark grey text
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
-                        'Thank you for confirming. Here are some resources that can help:',
+                        'You\'re not alone. We care about you and want to help you feel better. These trusted resources are here 24/7.',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.red[600],
+                          fontSize: 12, // Smaller font
+                          color: Colors.grey[600], // Medium grey text
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -493,21 +493,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 // Scrollable content section
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 16), // Smaller padding
                     child: Column(
                       children: [
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12), // Smaller spacing
 
                         // Emergency Contact Section
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12), // Smaller padding
+                          margin: const EdgeInsets.only(bottom: 12), // Smaller margin
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.05),
+                            color: Colors.grey[50], // Light grey background
                             borderRadius: BorderRadius.circular(12),
                             border:
-                                Border.all(color: Colors.red.withOpacity(0.2)),
+                                Border.all(color: Colors.grey[200]!), // Grey border
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,18 +515,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               Row(
                                 children: [
                                   Icon(Icons.phone_in_talk,
-                                      color: Colors.red[700], size: 20),
-                                  const SizedBox(width: 8),
+                                      color: Colors.grey[700], size: 16), // Grey icon
+                                  const SizedBox(width: 6),
                                   Text(
                                     'Emergency Contacts',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.red[700],
+                                      color: Colors.grey[800], // Dark grey text
+                                      fontSize: 13, // Smaller font
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 8), // Smaller spacing
 
                               // User's Personal Emergency Contact (if available)
                               if (emergencyContact != null &&
@@ -544,7 +545,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 'NCMH (National Center for Mental Health) Crisis Hotline',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.red[700],
+                                  color: Colors.grey[800], // Dark grey instead of red
                                   fontSize: 13,
                                 ),
                               ),
@@ -642,18 +643,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     color: Colors.white, size: 20),
                                 label: const Text('Emergency Call 911'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
+                                  backgroundColor: Colors.grey[700], // Dark grey instead of red
                                   foregroundColor: Colors.white,
                                   padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
+                                      const EdgeInsets.symmetric(vertical: 10), // Smaller padding
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(10), // Smaller radius
                                   ),
-                                  elevation: 4,
+                                  elevation: 2, // Smaller elevation
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8), // Smaller spacing
 
                             // Breathing Exercise Button
                             SizedBox(
@@ -664,46 +665,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   Navigator.pushNamed(context, '/breathing');
                                 },
                                 icon:
-                                    const Icon(Icons.air, color: Colors.white),
-                                label: const Text('Breathing Exercise'),
+                                    const Icon(Icons.air, color: Colors.white, size: 16), // Smaller icon
+                                label: const Text('Breathing Exercise', style: TextStyle(fontSize: 12)), // Smaller text
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.teal,
                                   foregroundColor: Colors.white,
                                   padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                      const EdgeInsets.symmetric(vertical: 8), // Smaller padding
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8), // Smaller spacing
 
-                            // Grounding Technique Button
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  Navigator.pushNamed(context, '/grounding');
-                                },
-                                icon: const Icon(Icons.self_improvement,
-                                    color: Colors.white),
-                                label: const Text('Grounding Technique'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Find Nearest Clinic Button
+                            // Find Nearest Clinic Button  
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
@@ -718,33 +695,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   );
                                 },
                                 icon: Icon(Icons.local_hospital,
-                                    color: Colors.red[700]),
-                                label: const Text('Find Nearest Clinic'),
+                                    color: Colors.grey[700], size: 16), // Grey icon
+                                label: const Text('Find Nearest Clinic', style: TextStyle(fontSize: 12)), // Smaller text
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red[700],
-                                  side: BorderSide(color: Colors.red[700]!),
+                                  foregroundColor: Colors.grey[700], // Grey instead of red
+                                  side: BorderSide(color: Colors.grey[700]!), // Grey border
                                   padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                      const EdgeInsets.symmetric(vertical: 8), // Smaller padding
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 8), // Smaller spacing
 
                             // Not Now Button
                             TextButton(
                               onPressed: () => Navigator.pop(context),
                               child: Text(
-                                'Not Now',
+                                'Close',
                                 style: TextStyle(
                                   color: Colors.grey[600],
-                                  fontSize: 14,
+                                  fontSize: 12, // Smaller font
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 8), // Much smaller spacing
                           ],
                         ),
                       ],

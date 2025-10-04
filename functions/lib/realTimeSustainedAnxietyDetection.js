@@ -419,13 +419,14 @@ async function getUserFCMToken(userId, deviceId, notificationType = "anxiety_ale
         return null;
     }
     // For WELLNESS NOTIFICATIONS: Get token from user level (all users)
-    if (notificationType === "wellness_reminder" || notificationType === "general") {
+    if (notificationType === "wellness_reminder" ||
+        notificationType === "general") {
         const userTokenRef = db.ref(`/users/${userId}/fcmToken`);
         const tokenSnapshot = await userTokenRef.once("value");
         if (tokenSnapshot.exists()) {
             const tokenData = tokenSnapshot.val();
             // Handle both new structure {token: "...", updatedAt: "..."} and legacy string format
-            const token = typeof tokenData === 'string' ? tokenData : tokenData === null || tokenData === void 0 ? void 0 : tokenData.token;
+            const token = typeof tokenData === "string" ? tokenData : tokenData === null || tokenData === void 0 ? void 0 : tokenData.token;
             if (token) {
                 console.log(`✅ Found wellness FCM token at user level: /users/${userId}/fcmToken`);
                 return token;
@@ -449,7 +450,7 @@ async function getUserFCMToken(userId, deviceId, notificationType = "anxiety_ale
     const tokenSnapshot = await userTokenRef.once("value");
     if (tokenSnapshot.exists()) {
         const tokenData = tokenSnapshot.val();
-        const token = typeof tokenData === 'string' ? tokenData : tokenData === null || tokenData === void 0 ? void 0 : tokenData.token;
+        const token = typeof tokenData === "string" ? tokenData : tokenData === null || tokenData === void 0 ? void 0 : tokenData.token;
         if (token) {
             console.log(`✅ Found FCM token at user level (fallback): /users/${userId}/fcmToken`);
             return token;

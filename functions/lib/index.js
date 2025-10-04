@@ -1,7 +1,7 @@
 "use strict";
 var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.triggerAppointmentExpiration = exports.expireAppointmentsNow = exports.checkExpiredAppointments = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -51,6 +51,11 @@ var deviceAssignmentSync_1 = require("./deviceAssignmentSync");
 Object.defineProperty(exports, "syncDeviceAssignment", { enumerable: true, get: function () { return deviceAssignmentSync_1.syncDeviceAssignment; } });
 Object.defineProperty(exports, "periodicDeviceSync", { enumerable: true, get: function () { return deviceAssignmentSync_1.periodicDeviceSync; } });
 Object.defineProperty(exports, "testDeviceSync", { enumerable: true, get: function () { return deviceAssignmentSync_1.testDeviceSync; } });
+// Import appointment expiration functions
+var appointmentExpiration_1 = require("./appointmentExpiration");
+Object.defineProperty(exports, "checkExpiredAppointments", { enumerable: true, get: function () { return appointmentExpiration_1.checkExpiredAppointments; } });
+Object.defineProperty(exports, "expireAppointmentsNow", { enumerable: true, get: function () { return appointmentExpiration_1.expireAppointmentsNow; } });
+Object.defineProperty(exports, "triggerAppointmentExpiration", { enumerable: true, get: function () { return appointmentExpiration_1.triggerAppointmentExpiration; } });
 // Cloud Function to send FCM notifications when anxiety severity changes
 exports.onAnxietySeverityChangeV2 = functions.database
     .ref("/devices/AnxieEase001/current")
@@ -842,7 +847,9 @@ exports.monitorDeviceBattery = functions.database
             return null;
         }
         // Get assigned user ID from device assignment
-        const assignmentRef = admin.database().ref(`/devices/${deviceId}/assignment`);
+        const assignmentRef = admin
+            .database()
+            .ref(`/devices/${deviceId}/assignment`);
         const assignmentSnapshot = await assignmentRef.once("value");
         let assignedUserId = null;
         if (assignmentSnapshot.exists()) {
@@ -852,7 +859,7 @@ exports.monitorDeviceBattery = functions.database
         // Get user FCM token for this device (with user validation)
         const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
         if (!fcmToken) {
-            console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ''}`);
+            console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ""}`);
             return null;
         }
         // Check if we need to send notifications
@@ -892,7 +899,7 @@ async function getDeviceFCMToken(deviceId, userId) {
                     console.log(`⚠️ Assignment FCM token for device ${deviceId} belongs to user ${assignedUser}, not requesting user ${userId}`);
                     return null;
                 }
-                console.log(`✅ Found FCM token via assignment for device ${deviceId}${userId ? ` (user: ${userId})` : ''}`);
+                console.log(`✅ Found FCM token via assignment for device ${deviceId}${userId ? ` (user: ${userId})` : ""}`);
                 return fcmToken;
             }
         }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
@@ -27,6 +28,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     'All',
     'Pending',
     'Accepted',
+    'Expired',
     'Unavailable',
     'Completed'
   ];
@@ -718,7 +720,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24)),
                             ),
-                            icon: const Icon(Icons.phone, size: 16),
+                            icon: const Icon(Icons.phone, size: 16, color: Colors.white),
                             label: Text(_psychologist!.contactPhone,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
@@ -756,27 +758,21 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24)),
                             ),
-                            icon: const Icon(Icons.email_outlined, size: 16),
+                            icon: const Icon(Icons.email_outlined, size: 16, color: Colors.white),
                             label: Text(_psychologist!.contactEmail,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
-                              final uri = Uri(
-                                  scheme: 'mailto',
-                                  path: _psychologist!.contactEmail);
-                              try {
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri);
-                                } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              'Cannot open email app on this device')),
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                Logger.error('Failed to launch email', e);
+                              // Copy email directly to clipboard
+                              await Clipboard.setData(ClipboardData(
+                                  text: _psychologist!.contactEmail));
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Email copied to clipboard!'),
+                                    backgroundColor: const Color(0xFF3AA772),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
                               }
                             },
                           ),
@@ -1050,6 +1046,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             case 'Accepted':
               return apt.status == AppointmentStatus.accepted ||
                   apt.status == AppointmentStatus.approved;
+            case 'Expired':
+              return apt.status == AppointmentStatus.expired;
             case 'Unavailable':
               return apt.status == AppointmentStatus.denied ||
                   apt.status == AppointmentStatus.cancelled;
@@ -1124,6 +1122,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           .where((apt) => apt.status == AppointmentStatus.completed)
           .toList();
 
+      final expiredAppointments = activeAppointments
+          .where((apt) => apt.status == AppointmentStatus.expired)
+          .toList();
+
       final pastAppointments = activeAppointments
           .where((apt) =>
               apt.status != AppointmentStatus.completed &&
@@ -1177,6 +1179,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             if (pendingAppointments.isNotEmpty) ...[
               _buildAppointmentCategory(
                   'Pending Requests', pendingAppointments, Colors.orange),
+              const SizedBox(height: 16),
+            ],
+
+            // Expired appointment requests
+            if (expiredAppointments.isNotEmpty) ...[
+              _buildAppointmentCategory(
+                  'Expired Requests', expiredAppointments, Colors.red.shade400),
               const SizedBox(height: 16),
             ],
 

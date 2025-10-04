@@ -7,6 +7,7 @@ enum AppointmentStatus {
   completed,
   cancelled,
   archived,
+  expired,
 }
 
 class AppointmentModel {
@@ -50,6 +51,8 @@ class AppointmentModel {
           return AppointmentStatus.cancelled;
         case 'archived':
           return AppointmentStatus.archived;
+        case 'expired':
+          return AppointmentStatus.expired;
         default:
           return AppointmentStatus.pending;
       }
@@ -98,6 +101,8 @@ class AppointmentModel {
         return 'Cancelled';
       case AppointmentStatus.archived:
         return 'Archived';
+      case AppointmentStatus.expired:
+        return 'Expired';
     }
   }
 }

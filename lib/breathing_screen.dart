@@ -26,7 +26,9 @@ class _BreathingScreenState extends State<BreathingScreen>
 
   // Add timer-related variables
   Timer? _sessionTimer;
+  Timer? _messageTimer;
   int _remainingSeconds = 0;
+  int _currentMessageIndex = 0;
   String get _formattedRemainingTime {
     final minutes = _remainingSeconds ~/ 60;
     final seconds = _remainingSeconds % 60;
@@ -76,9 +78,38 @@ class _BreathingScreenState extends State<BreathingScreen>
     "Right here, right now, you're okay",
     "Each breath is a fresh start",
     "Find peace in this moment",
+    // Additional comfort messages
+    "You are loved and you matter",
+    "Your courage brought you here today",
+    "Every small step counts",
+    "You're learning to be kind to yourself",
+    "This too shall pass, breathe through it",
+    "You're not alone in this journey",
+    "Your heart is healing with each breath",
+    "Trust the process of your healing",
+    "You're becoming more resilient",
+    "Your inner wisdom guides you",
+    "You choose peace over panic",
+    "This moment is a gift to yourself",
+    "You're practicing self-compassion",
+    "Your breath is medicine for your soul",
+    "You're creating space for calm",
+    "Each exhale releases what doesn't serve you",
+    "You're exactly where you need to be",
+    "Your presence is enough",
+    "You're writing a new story of peace",
+    "Your nervous system is learning to relax",
+    "You honor your feelings with kindness",
+    "This pause is powerful",
+    "You're investing in your wellbeing",
+    "Your future self will thank you",
+    "You're planting seeds of tranquility",
+    "Your breath reminds you that you're alive",
+    "You're the author of your calm",
+    "This practice strengthens your peace",
+    "You're learning the art of letting go",
+    "Your mindfulness grows with each session",
   ];
-
-  final int _lastMessageIndex = -1;
 
   @override
   void initState() {
@@ -94,53 +125,73 @@ class _BreathingScreenState extends State<BreathingScreen>
     _audioPlayer?.stop();
     _audioPlayer?.dispose();
     _sessionTimer?.cancel();
+    _messageTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          selectedExercise == null
-              ? 'Breathing Exercises'
-              : selectedExercise!.name,
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.green.shade500,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () {
-            _stopExercise();
-            if (selectedExercise != null) {
-              setState(() {
-                selectedExercise = null;
-                _selectedMinutes = 5;
-                _selectedSeconds = 0;
-                _showDurationSelection = false;
-              });
-            } else {
-              Navigator.pop(context);
-            }
-          },
-        ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.green.shade400,
-              Colors.green.shade50,
-            ],
+    return WillPopScope(
+      onWillPop: () async {
+        print('System back button/gesture detected');
+        if (selectedExercise != null) {
+          print('Exercise selected, showing confirmation dialog');
+          await _showExitConfirmationDialog();
+          return false; // Prevent default back behavior
+        } else {
+          print('No exercise selected, allowing back navigation');
+          return true; // Allow default back behavior
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            selectedExercise == null
+                ? 'Breathing Exercises'
+                : selectedExercise!.name,
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.green.shade500,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+            onPressed: () {
+              print('Back button pressed. selectedExercise: ${selectedExercise?.name}, _showDurationSelection: $_showDurationSelection');
+              if (selectedExercise != null) {
+                print('Showing exit confirmation dialog');
+                _showExitConfirmationDialog();
+              } else {
+                print('No exercise selected, navigating back to homepage');
+                Navigator.pop(context);
+              }
+            },
           ),
         ),
-        child: selectedExercise == null
-            ? _buildTechniqueSelection()
-            : _showDurationSelection
-                ? _buildDurationSelection()
-                : _buildExerciseScreen(),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.green.shade400,
+                Colors.green.shade50,
+              ],
+            ),
+          ),
+          child: Builder(
+            builder: (context) {
+              // Debug output
+              print('Build: selectedExercise=${selectedExercise?.name}, _showDurationSelection=$_showDurationSelection, _isPlaying=$_isPlaying, _isPaused=$_isPaused');
+              
+              if (selectedExercise == null) {
+                return _buildTechniqueSelection();
+              } else if (_showDurationSelection) {
+                return _buildDurationSelection();
+              } else {
+                return _buildExerciseScreen();
+              }
+            },
+          ),
+        ),
       ),
     );
   }
@@ -307,6 +358,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         // Start button
         ElevatedButton(
           onPressed: () {
+            print('Start Session button pressed');
             if (_selectedMinutes == 0 && _selectedSeconds == 0) {
               // Show error if no time selected
               ScaffoldMessenger.of(context).showSnackBar(
@@ -317,6 +369,7 @@ class _BreathingScreenState extends State<BreathingScreen>
               );
               return;
             }
+            print('Showing headphones reminder modal');
             _showTemporaryHeadphoneReminder();
           },
           style: ElevatedButton.styleFrom(
@@ -339,12 +392,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         const SizedBox(height: 20),
         TextButton(
           onPressed: () {
-            setState(() {
-              selectedExercise = null;
-              _selectedMinutes = 5;
-              _selectedSeconds = 0;
-              _showDurationSelection = false;
-            });
+            _resetToTechniqueSelection();
           },
           style: TextButton.styleFrom(
             foregroundColor: Colors.red.shade400,
@@ -362,62 +410,266 @@ class _BreathingScreenState extends State<BreathingScreen>
   }
 
   void _showTemporaryHeadphoneReminder() {
+    bool isModalDismissed = false;
+    
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true, // Allow tapping outside to dismiss
       builder: (context) => Dialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.headphones,
-                size: 60,
-                color: Colors.green.shade600,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Best Experience with Headphones',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+        child: InkWell(
+          onTap: () {
+            print('Modal tapped! isModalDismissed: $isModalDismissed');
+            if (!isModalDismissed) {
+              isModalDismissed = true;
+              print('Headphones modal tapped, calling _startSession');
+              // Dismiss modal and start session when tapped
+              Navigator.of(context, rootNavigator: true).pop();
+              _startSession();
+            } else {
+              print('Modal already dismissed, ignoring tap');
+            }
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.headphones,
+                  size: 60,
+                  color: Colors.green.shade600,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'For optimal relaxation, we recommend using headphones',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
+                const SizedBox(height: 16),
+                const Text(
+                  'Best Experience with Headphones',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'For optimal relaxation, we recommend using headphones',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Tap to continue',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-
-    // Auto-dismiss after 1.5 seconds
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (!_isDisposed && Navigator.of(context, rootNavigator: true).canPop()) {
-        Navigator.of(context, rootNavigator: true).pop();
+    ).then((_) {
+      // When dialog is dismissed (by any means), mark as dismissed
+      print('Headphones modal .then() callback triggered');
+      if (!isModalDismissed) {
+        isModalDismissed = true;
+        print('Modal auto-dismissed, calling _startSession');
         _startSession();
+      }
+    });
+
+    // Auto-dismiss after 3 seconds (as backup if user doesn't tap)
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!_isDisposed && !isModalDismissed && Navigator.of(context, rootNavigator: true).canPop()) {
+        isModalDismissed = true;
+        print('Auto-dismissing modal after 3 seconds');
+        Navigator.of(context, rootNavigator: true).pop();
+        // Ensure _startSession is called after auto-dismiss
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (!_isDisposed) {
+            print('Calling _startSession after auto-dismiss');
+            _startSession();
+          }
+        });
       }
     });
   }
 
   void _startSession() {
+    print('_startSession called');
     setState(() {
       _showDurationSelection = false;
     });
+    print('_showDurationSelection set to false');
     _setupAudio();
+    // Start the exercise automatically after transitioning to exercise screen
+    Future.delayed(const Duration(milliseconds: 100), () {
+      print('Starting exercise after delay');
+      _startExercise();
+    });
+  }
+
+  Future<void> _showExitConfirmationDialog() async {
+    print('_showExitConfirmationDialog called');
+    // Show confirmation modal if we have a selected exercise and we're in the exercise screen
+    if (selectedExercise != null && !_showDurationSelection) {
+      print('In exercise screen, checking if session is active');
+      // If exercise is currently active, show confirmation
+      if (_isPlaying || _isPaused) {
+        print('Session is active, showing active session confirmation');
+        return showDialog<void>(
+          context: context,
+          barrierDismissible: false, // User must choose an option
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange.shade600,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'End Session?',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              content: const Text(
+                'Your breathing session is currently active. Are you sure you want to end it and return to the technique selection?',
+                style: TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog, continue session
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade600,
+                  ),
+                  child: const Text(
+                    'Continue Session',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    _resetToTechniqueSelection(); // End session and reset
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  ),
+                  child: const Text(
+                    'End Session',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      } else {
+        // Exercise screen is showing but not active, show simpler confirmation
+        print('Session not active, showing simple confirmation');
+        return showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Return to Selection?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: const Text(
+                'Are you sure you want to return to the breathing technique selection?',
+                style: TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade600,
+                  ),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    _resetToTechniqueSelection(); // Reset to selection
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  ),
+                  child: const Text(
+                    'Return',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
+    
+    // If no exercise selected, just reset
+    _resetToTechniqueSelection();
   }
 
   Widget _buildExerciseScreen() {
@@ -491,6 +743,42 @@ class _BreathingScreenState extends State<BreathingScreen>
             child: _buildBreathingAnimation(),
           ),
         ),
+        // Add motivational message display
+        if (_isPlaying && !_isPaused)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: ValueListenableBuilder<String>(
+              valueListenable: _motivationalMessage,
+              builder: (context, message, child) {
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  child: Text(
+                    message,
+                    key: ValueKey(message),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.green.shade700,
+                      height: 1.4,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
           child: Column(
@@ -522,13 +810,7 @@ class _BreathingScreenState extends State<BreathingScreen>
               const SizedBox(height: 10),
               TextButton(
                 onPressed: () {
-                  _stopExercise();
-                  setState(() {
-                    selectedExercise = null;
-                    _selectedMinutes = 5;
-                    _selectedSeconds = 0;
-                    _showDurationSelection = false;
-                  });
+                  _showExitConfirmationDialog();
                 },
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.red.shade400,
@@ -881,6 +1163,15 @@ class _BreathingScreenState extends State<BreathingScreen>
       });
     });
 
+    // Set up motivational message timer
+    _messageTimer?.cancel();
+    _currentMessageIndex = 0;
+    _updateMotivationalMessage();
+    _messageTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
+      if (_isPaused) return; // Don't update messages if paused
+      _updateMotivationalMessage();
+    });
+
     setState(() {
       _isPlaying = true;
       _isPaused = false;
@@ -912,6 +1203,13 @@ class _BreathingScreenState extends State<BreathingScreen>
     _audioPlayer?.play();
   }
 
+  void _updateMotivationalMessage() {
+    if (_motivationalMessages.isNotEmpty) {
+      _currentMessageIndex = (_currentMessageIndex + 1) % _motivationalMessages.length;
+      _motivationalMessage.value = _motivationalMessages[_currentMessageIndex];
+    }
+  }
+
   void _stopExercise() {
     if (!_isPlaying && !_isPaused) return;
 
@@ -923,6 +1221,35 @@ class _BreathingScreenState extends State<BreathingScreen>
     _animationController?.stop();
     _audioPlayer?.pause();
     _sessionTimer?.cancel();
+    _messageTimer?.cancel();
+    _motivationalMessage.value = ''; // Clear the message
+  }
+
+  void _resetToTechniqueSelection() {
+    // Stop everything first
+    _stopExercise();
+    
+    // Dispose and reset animation controller
+    _animationController?.dispose();
+    _animationController = null;
+    
+    // Reset audio
+    _audioPlayer?.stop();
+    
+    setState(() {
+      selectedExercise = null;
+      _selectedMinutes = 5;
+      _selectedSeconds = 0;
+      _showDurationSelection = false;
+      _remainingSeconds = 0;
+      _currentMessageIndex = 0;
+      _isPlaying = false;
+      _isPaused = false;
+    });
+    _motivationalMessage.value = '';
+    
+    // Debug print to verify state
+    print('Reset completed: selectedExercise=${selectedExercise}, _showDurationSelection=${_showDurationSelection}');
   }
 
   void _completeSession() {
@@ -970,12 +1297,7 @@ class _BreathingScreenState extends State<BreathingScreen>
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    setState(() {
-                      selectedExercise = null;
-                      _selectedMinutes = 5;
-                      _selectedSeconds = 0;
-                      _showDurationSelection = false;
-                    });
+                    _resetToTechniqueSelection();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.shade600,
