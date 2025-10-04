@@ -2343,7 +2343,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _updateJournal(DailyLog log, String journalText) {
     final normalizedDate = _normalizeDate(log.timestamp);
-    
+
     // Check if the date exists in _dailyLogs
     if (_dailyLogs[normalizedDate] == null) {
       print('Warning: No logs found for date $normalizedDate');
@@ -2355,7 +2355,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
       return;
     }
-    
+
     final index = _dailyLogs[normalizedDate]!
         .indexWhere((l) => l.timestamp == log.timestamp);
 

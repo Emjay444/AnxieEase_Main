@@ -3061,7 +3061,7 @@ class SearchScreenState extends State<SearchScreen>
     }
 
     // Don't show if we have location permission errors
-    if (_errorMessage.contains('Location permissions are denied') || 
+    if (_errorMessage.contains('Location permissions are denied') ||
         _errorMessage.contains('Location permissions are permanently denied')) {
       return const SizedBox.shrink();
     }
@@ -3125,8 +3125,9 @@ class SearchScreenState extends State<SearchScreen>
 
   // Build location permission error screen
   Widget _buildLocationPermissionErrorScreen() {
-    final bool isPermanentlyDenied = _errorMessage.contains('permanently denied');
-    
+    final bool isPermanentlyDenied =
+        _errorMessage.contains('permanently denied');
+
     return Container(
       color: Colors.grey.shade50,
       child: Center(
@@ -3150,7 +3151,7 @@ class SearchScreenState extends State<SearchScreen>
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Title
               Text(
                 'Location Permission Required',
@@ -3162,7 +3163,7 @@ class SearchScreenState extends State<SearchScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              
+
               // Description
               Text(
                 isPermanentlyDenied
@@ -3176,7 +3177,7 @@ class SearchScreenState extends State<SearchScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              
+
               // Action buttons
               Column(
                 children: [
@@ -3239,7 +3240,7 @@ class SearchScreenState extends State<SearchScreen>
                     ),
                     const SizedBox(height: 12),
                   ],
-                  
+
                   // Go back button
                   SizedBox(
                     width: double.infinity,
@@ -3348,8 +3349,9 @@ class SearchScreenState extends State<SearchScreen>
               zoomControlsEnabled: false,
               trafficEnabled: true,
             )
-          else if (_errorMessage.contains('Location permissions are denied') || 
-                   _errorMessage.contains('Location permissions are permanently denied'))
+          else if (_errorMessage.contains('Location permissions are denied') ||
+              _errorMessage
+                  .contains('Location permissions are permanently denied'))
             // Show location permission error screen
             _buildLocationPermissionErrorScreen()
           else

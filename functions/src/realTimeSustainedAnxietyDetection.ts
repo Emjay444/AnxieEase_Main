@@ -256,7 +256,11 @@ function isExercisePattern(
   // - High movement intensity (>30) with proportional HR increase
   // - OR very high movement (>50) regardless of HR pattern
   if (movementIntensity > 50) {
-    console.log(`🏃 High movement detected (${movementIntensity.toFixed(1)}) - likely exercise`);
+    console.log(
+      `🏃 High movement detected (${movementIntensity.toFixed(
+        1
+      )}) - likely exercise`
+    );
     return true;
   }
 
@@ -309,17 +313,33 @@ function analyzeUserSustainedAnxiety(
     const accelX = point.accelX || 0;
     const accelY = point.accelY || 0;
     const accelZ = point.accelZ || 0;
-    
+
     // Calculate movement intensity
-    const movementIntensity = calculateMovementIntensity(accelX, accelY, accelZ);
-    
+    const movementIntensity = calculateMovementIntensity(
+      accelX,
+      accelY,
+      accelZ
+    );
+
     // Check if this looks like exercise (to prevent false positives)
-    const isExercise = isExercisePattern(movementIntensity, point.heartRate, baselineHR);
-    
-    if (point.heartRate >= anxietyThreshold && point.worn !== 0 && !isExercise) {
+    const isExercise = isExercisePattern(
+      movementIntensity,
+      point.heartRate,
+      baselineHR
+    );
+
+    if (
+      point.heartRate >= anxietyThreshold &&
+      point.worn !== 0 &&
+      !isExercise
+    ) {
       // Heart rate is elevated AND it doesn't look like exercise
-      console.log(`📊 Valid anxiety point: HR=${point.heartRate}, Movement=${movementIntensity.toFixed(1)}, Exercise=${isExercise}`);
-      
+      console.log(
+        `📊 Valid anxiety point: HR=${
+          point.heartRate
+        }, Movement=${movementIntensity.toFixed(1)}, Exercise=${isExercise}`
+      );
+
       if (currentSustainedStart === null) {
         currentSustainedStart = point.timestamp;
         currentElevatedPoints = [];
@@ -328,9 +348,13 @@ function analyzeUserSustainedAnxiety(
     } else {
       // Heart rate dropped below threshold OR exercise detected - check if this was our best sustained period
       if (isExercise) {
-        console.log(`🏃 Skipping point due to exercise: HR=${point.heartRate}, Movement=${movementIntensity.toFixed(1)}`);
+        console.log(
+          `🏃 Skipping point due to exercise: HR=${
+            point.heartRate
+          }, Movement=${movementIntensity.toFixed(1)}`
+        );
       }
-      
+
       if (currentSustainedStart !== null) {
         const sustainedDuration =
           (point.timestamp - currentSustainedStart) / 1000;

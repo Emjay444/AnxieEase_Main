@@ -123,7 +123,7 @@ class _WatchScreenState extends State<WatchScreen>
 
       // Initialize the device service to load baseline data
       await _deviceService.initialize();
-      
+
       // Load baseline data and update UI
       await _loadBaselineData();
 
@@ -296,14 +296,16 @@ class _WatchScreenState extends State<WatchScreen>
     try {
       // Get the current baseline from device service
       final baseline = _deviceService.currentBaseline;
-      
+
       if (baseline != null) {
         setState(() {
           baselineHR = baseline.baselineHR;
         });
-        debugPrint('📊 WatchScreen: Loaded baseline HR: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
+        debugPrint(
+            '📊 WatchScreen: Loaded baseline HR: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
       } else {
-        debugPrint('📊 WatchScreen: No baseline data found - using default value');
+        debugPrint(
+            '📊 WatchScreen: No baseline data found - using default value');
         setState(() {
           baselineHR = 70.0; // Default baseline
         });
@@ -464,7 +466,9 @@ class _WatchScreenState extends State<WatchScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Low battery warning banner
-            if (batteryPercentage != null && batteryPercentage! <= 10 && batteryPercentage! > 0)
+            if (batteryPercentage != null &&
+                batteryPercentage! <= 10 &&
+                batteryPercentage! > 0)
               _buildLowBatteryWarning(),
 
             // Device status card
@@ -570,7 +574,7 @@ class _WatchScreenState extends State<WatchScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              
+
               // Device Setup Information Card
               Container(
                 padding: const EdgeInsets.all(20),
@@ -611,9 +615,11 @@ class _WatchScreenState extends State<WatchScreen>
                     ),
                     const SizedBox(height: 12),
                     _buildSetupStep('1', 'Device is turned ON'),
-                    _buildSetupStep('2', 'Connected to "AnxieEase" WiFi hotspot'),
+                    _buildSetupStep(
+                        '2', 'Connected to "AnxieEase" WiFi hotspot'),
                     _buildSetupStep('3', 'WiFi password: "11112222"'),
-                    _buildSetupStep('4', 'Device is sending data to the system'),
+                    _buildSetupStep(
+                        '4', 'Device is sending data to the system'),
                   ],
                 ),
               ),
@@ -859,8 +865,11 @@ class _WatchScreenState extends State<WatchScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          isBatteryOffline ? 'N/A' : 
-          batteryPercentage == null ? '--' : '${battery.toStringAsFixed(0)}%',
+          isBatteryOffline
+              ? 'N/A'
+              : batteryPercentage == null
+                  ? '--'
+                  : '${battery.toStringAsFixed(0)}%',
           style: TextStyle(
             color: textColor,
             fontSize: 20,
@@ -878,7 +887,9 @@ class _WatchScreenState extends State<WatchScreen>
                 fontSize: 14,
               ),
             ),
-            if (batteryPercentage != null && isLowBattery && !isBatteryOffline) ...[
+            if (batteryPercentage != null &&
+                isLowBattery &&
+                !isBatteryOffline) ...[
               const SizedBox(width: 4),
               Icon(
                 Icons.warning,
@@ -976,7 +987,9 @@ class _WatchScreenState extends State<WatchScreen>
                     value: baselineHR?.toStringAsFixed(0) ?? '70',
                     unit: 'BPM',
                     icon: Icons.trending_flat,
-                    color: _deviceService.hasBaseline ? const Color(0xFF3AA772) : Colors.grey[600]!,
+                    color: _deviceService.hasBaseline
+                        ? const Color(0xFF3AA772)
+                        : Colors.grey[600]!,
                   ),
                 ),
               ],

@@ -19,7 +19,8 @@ class DeviceLinkingScreen extends StatefulWidget {
 class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
     with TickerProviderStateMixin {
   final TextEditingController _deviceIdController = TextEditingController();
-  final AdminDeviceManagementService _adminDeviceService = AdminDeviceManagementService();
+  final AdminDeviceManagementService _adminDeviceService =
+      AdminDeviceManagementService();
 
   bool _isCheckingAssignment = true;
   bool _hasDeviceAssigned = false;
@@ -76,7 +77,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
       });
 
       final status = await _adminDeviceService.checkDeviceAssignment();
-      
+
       setState(() {
         _hasDeviceAssigned = status.isAssigned && status.canUseDevice;
         _assignedDeviceId = _hasDeviceAssigned ? 'AnxieEase001' : null;
@@ -213,7 +214,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Welcome message
                 Text(
                   'Hello, ${user?.firstName ?? 'User'}! 👋',
@@ -235,10 +236,11 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Device ID card
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(12),
@@ -333,7 +335,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 20),
 
                 // Setup steps
@@ -368,9 +370,9 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                   Icons.bluetooth_connected,
                   Colors.teal,
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Success message
                 Container(
                   width: double.infinity,
@@ -497,7 +499,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
             ),
           ),
           const SizedBox(width: 16),
-          
+
           // Text content
           Expanded(
             child: Column(
@@ -552,7 +554,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
 
           // Instructions
           _buildInstructions(),
-          
+
           // Bottom padding
           const SizedBox(height: 40),
         ],
@@ -706,8 +708,7 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info,
-                        color: Colors.blue[700], size: 18),
+                    Icon(Icons.info, color: Colors.blue[700], size: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -861,5 +862,4 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
       ],
     );
   }
-
 }
