@@ -3060,6 +3060,12 @@ class SearchScreenState extends State<SearchScreen>
       return const SizedBox.shrink();
     }
 
+    // Don't show if we have location permission errors
+    if (_errorMessage.contains('Location permissions are denied') || 
+        _errorMessage.contains('Location permissions are permanently denied')) {
+      return const SizedBox.shrink();
+    }
+
     // Don't show if map is loaded and we have markers (show list instead)
     if (_mapCreated && !_isLoading && _markers.length > 1) {
       return const SizedBox.shrink();
@@ -3117,6 +3123,157 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
+  // Build location permission error screen
+  Widget _buildLocationPermissionErrorScreen() {
+    final bool isPermanentlyDenied = _errorMessage.contains('permanently denied');
+    
+    return Container(
+      color: Colors.grey.shade50,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Error icon
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.location_off,
+                  size: 60,
+                  color: Colors.red.shade400,
+                ),
+              ),
+              const SizedBox(height: 32),
+              
+              // Title
+              Text(
+                'Location Permission Required',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              
+              // Description
+              Text(
+                isPermanentlyDenied
+                    ? 'Location permissions are permanently denied. To find nearby clinics, please enable location permissions in your device settings.'
+                    : 'AnxieEase needs location access to find nearby mental health clinics and provide you with directions.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              
+              // Action buttons
+              Column(
+                children: [
+                  if (!isPermanentlyDenied) ...[
+                    // Retry button for regular denial
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _errorMessage = '';
+                            _isLoading = true;
+                          });
+                          _getCurrentLocation();
+                        },
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        label: const Text(
+                          'Grant Location Permission',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal.shade600,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    // Open settings button for permanent denial
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          await Geolocator.openAppSettings();
+                        },
+                        icon: const Icon(Icons.settings, color: Colors.white),
+                        label: const Text(
+                          'Open App Settings',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade600,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  
+                  // Go back button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      icon: Icon(Icons.arrow_back, color: Colors.grey.shade700),
+                      label: Text(
+                        'Go Back',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Logger.debug(
@@ -3153,7 +3310,7 @@ class SearchScreenState extends State<SearchScreen>
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Google Map as background
+          // Google Map as background OR location permission error screen
           if (_currentPosition != null)
             GoogleMap(
               initialCameraPosition: CameraPosition(
@@ -3190,6 +3347,18 @@ class SearchScreenState extends State<SearchScreen>
               compassEnabled: true,
               zoomControlsEnabled: false,
               trafficEnabled: true,
+            )
+          else if (_errorMessage.contains('Location permissions are denied') || 
+                   _errorMessage.contains('Location permissions are permanently denied'))
+            // Show location permission error screen
+            _buildLocationPermissionErrorScreen()
+          else
+            // Show loading or default background
+            Container(
+              color: Colors.grey.shade100,
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
             ),
 
           // Modern top card

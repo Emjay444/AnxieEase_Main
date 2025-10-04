@@ -198,7 +198,7 @@ class HealthMetrics {
 
     if (spo2! >= 98) return SpO2Status.excellent;
     if (spo2! >= 95) return SpO2Status.good;
-    if (spo2! >= 90) return SpO2Status.low;
+    if (spo2! >= 90) return SpO2Status.low; // reverted back to 90
     return SpO2Status.critical;
   }
 

@@ -10,7 +10,9 @@ import 'services/supabase_service.dart';
 
 /// Real-time health metrics dashboard integrated as wearable screen
 ///
-/// Displays live HR, baseline HR, temperature, SpO2, and movement data
+/// Health monitoring screen with IoT sensor integration.
+///
+/// Displays live HR, baseline HR, temperature, and movement data
 /// with beautiful modern UI components and real-time updates.
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
@@ -35,7 +37,6 @@ class _WatchScreenState extends State<WatchScreen>
   late DeviceService _deviceService;
 
   // Health metrics data - initially null until Firebase data arrives
-  double? spo2Value;
   double? bodyTempValue;
   double? ambientTempValue;
   double? heartRateValue;
@@ -120,6 +121,12 @@ class _WatchScreenState extends State<WatchScreen>
       // Check if device is setup (you can modify this logic based on your app's requirements)
       await _checkDeviceSetup();
 
+      // Initialize the device service to load baseline data
+      await _deviceService.initialize();
+      
+      // Load baseline data and update UI
+      await _loadBaselineData();
+
       // Listen to IoT Sensor Service changes
       _iotSensorService.addListener(_onIoTSensorChanged);
 
@@ -138,9 +145,6 @@ class _WatchScreenState extends State<WatchScreen>
             final data = event.snapshot.value as Map<dynamic, dynamic>;
             setState(() {
               // Extract sensor data
-              final spo2Parsed = _asDouble(data['spo2']);
-              if (spo2Parsed != null) spo2Value = spo2Parsed;
-
               final bodyTempParsed = _asDouble(data['bodyTemp']);
               if (bodyTempParsed != null) bodyTempValue = bodyTempParsed;
 
@@ -162,27 +166,28 @@ class _WatchScreenState extends State<WatchScreen>
                 isDeviceWorn = wornParsed;
               }
 
-              // Update connection status
-              isConnected = _iotSensorService.isConnected;
-
               // Mark that we have received live data
               final wasFirstData = !_hasRealtimeData;
               _hasRealtimeData = (hrParsed != null) ||
-                  (spo2Parsed != null) ||
                   (bodyTempParsed != null) ||
                   (battParsed != null);
 
-              // Automatically connect when Firebase data arrives
-              if (wasFirstData && _hasRealtimeData) {
+              // Update connection status - prioritize Firebase data reception
+              if (_hasRealtimeData) {
+                // If we're receiving Firebase data, we're connected
                 isConnected = true;
-                debugPrint(
-                    '📱 WatchScreen: Auto-connected - Firebase data received');
+                if (wasFirstData) {
+                  debugPrint(
+                      '📱 WatchScreen: Auto-connected - Firebase data received');
+                }
+              } else {
+                // Fallback to IoT service connection status
+                isConnected = _iotSensorService.isConnected;
               }
 
               // If not worn, clear vitals to avoid misleading UI
               if (!isDeviceWorn) {
                 heartRateValue = null;
-                spo2Value = null;
               }
             });
             // Update pulse speed based on latest values
@@ -286,18 +291,52 @@ class _WatchScreenState extends State<WatchScreen>
     }
   }
 
+  /// Load baseline heart rate data from the device service
+  Future<void> _loadBaselineData() async {
+    try {
+      // Get the current baseline from device service
+      final baseline = _deviceService.currentBaseline;
+      
+      if (baseline != null) {
+        setState(() {
+          baselineHR = baseline.baselineHR;
+        });
+        debugPrint('📊 WatchScreen: Loaded baseline HR: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
+      } else {
+        debugPrint('📊 WatchScreen: No baseline data found - using default value');
+        setState(() {
+          baselineHR = 70.0; // Default baseline
+        });
+      }
+    } catch (e) {
+      debugPrint('📊 WatchScreen: Error loading baseline data: $e');
+      setState(() {
+        baselineHR = 70.0; // Fallback to default
+      });
+    }
+  }
+
+  /// Refresh baseline data (call this when returning from baseline recording)
+  Future<void> refreshBaselineData() async {
+    debugPrint('📊 WatchScreen: Refreshing baseline data...');
+    await _deviceService.initialize(); // Re-initialize to load latest baseline
+    await _loadBaselineData(); // Update UI with new baseline
+  }
+
   void _onIoTSensorChanged() {
     if (mounted) {
       setState(() {
-        isConnected = _iotSensorService.isConnected;
-        if (!isConnected) {
-          _hasRealtimeData = false;
+        // Only update connection status from IoT service if we don't have Firebase data
+        if (!_hasRealtimeData) {
+          isConnected = _iotSensorService.isConnected;
+          if (!isConnected) {
+            _hasRealtimeData = false;
+          }
         }
 
         // Update current values from service
         if (_iotSensorService.isActive) {
           heartRateValue = _iotSensorService.heartRate;
-          spo2Value = _iotSensorService.spo2;
           bodyTempValue = _iotSensorService.bodyTemperature;
           ambientTempValue = _iotSensorService.ambientTemperature;
           batteryPercentage = _iotSensorService.batteryLevel;
@@ -425,7 +464,7 @@ class _WatchScreenState extends State<WatchScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Low battery warning banner
-            if ((batteryPercentage ?? 0) <= 10 && (batteryPercentage ?? 0) > 0)
+            if (batteryPercentage != null && batteryPercentage! <= 10 && batteryPercentage! > 0)
               _buildLowBatteryWarning(),
 
             // Device status card
@@ -494,43 +533,133 @@ class _WatchScreenState extends State<WatchScreen>
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                shape: BoxShape.circle,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.admin_panel_settings,
+                  size: 80,
+                  color: Colors.blue.shade600,
+                ),
               ),
-              child: Icon(
-                Icons.assignment_outlined,
-                size: 80,
-                color: Colors.orange.shade600,
+              const SizedBox(height: 32),
+              const Text(
+                'Admin Device Assignment Required',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'No Device Assigned',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+              const SizedBox(height: 16),
+              const Text(
+                'Please contact an administrator to assign a wearable device to your account. Once assigned, you can start monitoring your health metrics.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.black54,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'You need to have a wearable device assigned by an administrator before you can start monitoring your health metrics.',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.black54,
-                height: 1.5,
+              const SizedBox(height: 32),
+              
+              // Device Setup Information Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.blue.shade600,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Device Setup Requirements',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'When your device is assigned, ensure:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSetupStep('1', 'Device is turned ON'),
+                    _buildSetupStep('2', 'Connected to "AnxieEase" WiFi hotspot'),
+                    _buildSetupStep('3', 'WiFi password: "11112222"'),
+                    _buildSetupStep('4', 'Device is sending data to the system'),
+                  ],
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSetupStep(String stepNumber, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                stepNumber,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade600,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              description,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black54,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -667,17 +796,23 @@ class _WatchScreenState extends State<WatchScreen>
     final battery = batteryPercentage ?? 0;
     final isLowBattery = battery <= 10;
     final isCriticalBattery = battery <= 5;
-    final isOffline = !isConnected || battery <= 0;
+    // Separate battery offline status from general connection status
+    final isBatteryOffline = batteryPercentage == null || battery <= 0;
 
     // Choose appropriate icon and color
     IconData batteryIcon;
     Color iconColor;
     Color textColor;
 
-    if (isOffline) {
+    if (isBatteryOffline) {
       batteryIcon = Icons.battery_unknown;
       iconColor = Colors.grey;
       textColor = Colors.grey;
+    } else if (batteryPercentage == null) {
+      // Connected but no battery data yet
+      batteryIcon = Icons.battery_std;
+      iconColor = Colors.white.withOpacity(0.7);
+      textColor = Colors.white.withOpacity(0.7);
     } else if (isCriticalBattery) {
       batteryIcon = Icons.battery_alert;
       iconColor = Colors.red;
@@ -707,7 +842,7 @@ class _WatchScreenState extends State<WatchScreen>
           children: [
             Icon(batteryIcon, color: iconColor, size: 28),
             // Add warning indicator for low battery
-            if (isLowBattery && !isOffline)
+            if (batteryPercentage != null && isLowBattery && !isBatteryOffline)
               Positioned(
                 top: -2,
                 right: -2,
@@ -724,7 +859,8 @@ class _WatchScreenState extends State<WatchScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          isOffline ? 'N/A' : '${battery.toStringAsFixed(0)}%',
+          isBatteryOffline ? 'N/A' : 
+          batteryPercentage == null ? '--' : '${battery.toStringAsFixed(0)}%',
           style: TextStyle(
             color: textColor,
             fontSize: 20,
@@ -742,7 +878,7 @@ class _WatchScreenState extends State<WatchScreen>
                 fontSize: 14,
               ),
             ),
-            if (isLowBattery && !isOffline) ...[
+            if (batteryPercentage != null && isLowBattery && !isBatteryOffline) ...[
               const SizedBox(width: 4),
               Icon(
                 Icons.warning,
@@ -817,46 +953,48 @@ class _WatchScreenState extends State<WatchScreen>
   Widget _buildMainMetricsGrid() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - 16) / 2; // Account for gap
-        final cardHeight =
-            cardWidth * 1.0; // Square aspect ratio for more space
-
-        return GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: cardWidth / cardHeight,
+        // For 3 cards, use a more flexible layout
+        return Column(
           children: [
-            _buildMetricCard(
-              title: 'Heart Rate',
-              value: heartRateValue?.toStringAsFixed(0) ?? '--',
-              unit: 'BPM',
-              icon: Icons.favorite,
-              color: Colors.red,
-              isAnimated: heartRateValue != null && heartRateValue! > 0,
+            // First row: Heart Rate and Baseline HR (2 cards)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Heart Rate',
+                    value: heartRateValue?.toStringAsFixed(0) ?? '--',
+                    unit: 'BPM',
+                    icon: Icons.favorite,
+                    color: Colors.red,
+                    isAnimated: heartRateValue != null && heartRateValue! > 0,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Baseline HR',
+                    value: baselineHR?.toStringAsFixed(0) ?? '70',
+                    unit: 'BPM',
+                    icon: Icons.trending_flat,
+                    color: _deviceService.hasBaseline ? const Color(0xFF3AA772) : Colors.grey[600]!,
+                  ),
+                ),
+              ],
             ),
-            _buildMetricCard(
-              title: 'Baseline HR',
-              value: baselineHR?.toStringAsFixed(0) ?? '70',
-              unit: 'BPM',
-              icon: Icons.trending_flat,
-              color: const Color(0xFF3AA772),
-            ),
-            _buildMetricCard(
-              title: 'SpO₂',
-              value: spo2Value?.toStringAsFixed(0) ?? '--',
-              unit: '%',
-              icon: Icons.air,
-              color: Colors.blue,
-            ),
-            _buildMetricCard(
-              title: 'Temperature',
-              value: bodyTempValue?.toStringAsFixed(1) ?? '--',
-              unit: '°C',
-              icon: Icons.thermostat,
-              color: Colors.orange,
+            const SizedBox(height: 16),
+            // Second row: Temperature (centered, single card)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Temperature',
+                    value: bodyTempValue?.toStringAsFixed(1) ?? '--',
+                    unit: '°C',
+                    icon: Icons.thermostat,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
             ),
           ],
         );

@@ -6,18 +6,18 @@ admin.initializeApp();
 
 // Optional: Supabase server-side persistence for test notifications
 // Configure via environment variables (Firebase Functions config or runtime env)
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || functions.config().supabase?.url;
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  functions.config().supabase?.service_role_key;
+// const SUPABASE_URL =
+//   process.env.SUPABASE_URL || functions.config().supabase?.url;
+// const SUPABASE_SERVICE_ROLE_KEY =
+//   process.env.SUPABASE_SERVICE_ROLE_KEY ||
+//   functions.config().supabase?.service_role_key;
 
 // Lazy import to avoid hard dependency when not configured
-let fetchImpl: any = null;
-try {
-  // Node 18+ has global fetch; fallback not needed normally
-  fetchImpl = (global as any).fetch || require("node-fetch");
-} catch {}
+// let fetchImpl: any = null;
+// try {
+//   // Node 18+ has global fetch; fallback not needed normally
+//   fetchImpl = (global as any).fetch || require("node-fetch");
+// } catch {}
 
 // Import and export data cleanup functions
 export {

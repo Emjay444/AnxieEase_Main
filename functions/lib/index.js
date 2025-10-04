@@ -1,5 +1,4 @@
 "use strict";
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
@@ -8,16 +7,17 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 // Optional: Supabase server-side persistence for test notifications
 // Configure via environment variables (Firebase Functions config or runtime env)
-const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+// const SUPABASE_URL =
+//   process.env.SUPABASE_URL || functions.config().supabase?.url;
+// const SUPABASE_SERVICE_ROLE_KEY =
+//   process.env.SUPABASE_SERVICE_ROLE_KEY ||
+//   functions.config().supabase?.service_role_key;
 // Lazy import to avoid hard dependency when not configured
-let fetchImpl = null;
-try {
-    // Node 18+ has global fetch; fallback not needed normally
-    fetchImpl = global.fetch || require("node-fetch");
-}
-catch (_c) { }
+// let fetchImpl: any = null;
+// try {
+//   // Node 18+ has global fetch; fallback not needed normally
+//   fetchImpl = (global as any).fetch || require("node-fetch");
+// } catch {}
 // Import and export data cleanup functions
 var dataCleanup_1 = require("./dataCleanup");
 Object.defineProperty(exports, "cleanupHealthData", { enumerable: true, get: function () { return dataCleanup_1.cleanupHealthData; } });
@@ -151,13 +151,13 @@ function getNotificationContent(severity, heartRate) {
 function getChannelIdForSeverity(severity) {
     switch (severity.toLowerCase()) {
         case "mild":
-            return "mild_anxiety_alerts_v5";
+            return "mild_anxiety_alerts_v4";
         case "moderate":
-            return "moderate_anxiety_alerts_v3";
+            return "moderate_anxiety_alerts_v2";
         case "severe":
-            return "severe_anxiety_alerts_v3";
+            return "severe_anxiety_alerts_v2";
         case "critical":
-            return "critical_anxiety_alerts_v3";
+            return "critical_anxiety_alerts_v2";
         default:
             return "anxiease_channel";
     }

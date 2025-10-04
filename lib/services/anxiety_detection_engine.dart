@@ -85,9 +85,9 @@ class AnxietyDetectionEngine {
   static const double _highHRThresholdMin = 0.20; // 20% above resting
   static const double _highHRThresholdMax = 0.30; // 30% above resting
   static const double _lowHRThreshold = 50.0; // BPM
-  static const double _spo2LowThreshold = 94.0; // %
-  static const double _spo2CriticalThreshold = 90.0; // %
-  static const int _sustainedDurationSeconds = 30;
+  static const double _spo2LowThreshold = 94.0; // % (reverted back)
+  static const double _spo2CriticalThreshold = 90.0; // % (reverted back)
+  static const int _sustainedDurationSeconds = 60; // kept as 60 seconds
 
   // Historical data for sustained detection
   final List<double> _recentHeartRates = [];

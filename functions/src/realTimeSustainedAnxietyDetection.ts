@@ -150,7 +150,7 @@ export const realTimeSustainedAnxietyDetection = functions.database
         });
       } else {
         console.log(
-          `✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 30s required)`
+          `✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 60s required)`
         );
       }
 
@@ -223,7 +223,53 @@ async function getUserSessionHistory(
 }
 
 /**
- * Analyze sustained anxiety using USER-SPECIFIC data and baselines
+ * Calculate movement intensity from accelerometer data to detect exercise vs anxiety
+ */
+function calculateMovementIntensity(
+  accelX: number = 0,
+  accelY: number = 0,
+  accelZ: number = 0
+): number {
+  // Calculate magnitude of acceleration vector
+  const magnitude = Math.sqrt(
+    accelX * accelX + accelY * accelY + accelZ * accelZ
+  );
+
+  // Subtract gravity (approximately 9.8 m/s²) to get movement component
+  const movementComponent = Math.abs(magnitude - 9.8);
+
+  // Scale to 0-100 for easier interpretation (multiply by 10 for sensitivity)
+  return Math.min(100, movementComponent * 10);
+}
+
+/**
+ * Detect if movement pattern suggests exercise (to prevent false positives)
+ */
+function isExercisePattern(
+  movementIntensity: number,
+  heartRate: number,
+  restingHR: number
+): boolean {
+  const hrElevation = (heartRate - restingHR) / restingHR;
+
+  // Exercise typically shows:
+  // - High movement intensity (>30) with proportional HR increase
+  // - OR very high movement (>50) regardless of HR pattern
+  if (movementIntensity > 50) {
+    console.log(`🏃 High movement detected (${movementIntensity.toFixed(1)}) - likely exercise`);
+    return true;
+  }
+
+  if (movementIntensity > 30 && hrElevation > 0.3) {
+    console.log(`🚶 Moderate movement with high HR - likely physical activity`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Enhanced sustained anxiety analysis with movement-based false positive prevention
  */
 function analyzeUserSustainedAnxiety(
   userHistoryData: any[],
@@ -259,15 +305,32 @@ function analyzeUserSustainedAnxiety(
   let bestElevatedPoints: any[] = [];
 
   for (const point of allData) {
-    if (point.heartRate >= anxietyThreshold && point.worn !== 0) {
-      // Heart rate is elevated
+    // Extract accelerometer data if available
+    const accelX = point.accelX || 0;
+    const accelY = point.accelY || 0;
+    const accelZ = point.accelZ || 0;
+    
+    // Calculate movement intensity
+    const movementIntensity = calculateMovementIntensity(accelX, accelY, accelZ);
+    
+    // Check if this looks like exercise (to prevent false positives)
+    const isExercise = isExercisePattern(movementIntensity, point.heartRate, baselineHR);
+    
+    if (point.heartRate >= anxietyThreshold && point.worn !== 0 && !isExercise) {
+      // Heart rate is elevated AND it doesn't look like exercise
+      console.log(`📊 Valid anxiety point: HR=${point.heartRate}, Movement=${movementIntensity.toFixed(1)}, Exercise=${isExercise}`);
+      
       if (currentSustainedStart === null) {
         currentSustainedStart = point.timestamp;
         currentElevatedPoints = [];
       }
       currentElevatedPoints.push(point);
     } else {
-      // Heart rate dropped below threshold - check if this was our best sustained period
+      // Heart rate dropped below threshold OR exercise detected - check if this was our best sustained period
+      if (isExercise) {
+        console.log(`🏃 Skipping point due to exercise: HR=${point.heartRate}, Movement=${movementIntensity.toFixed(1)}`);
+      }
+      
       if (currentSustainedStart !== null) {
         const sustainedDuration =
           (point.timestamp - currentSustainedStart) / 1000;
@@ -303,8 +366,8 @@ function analyzeUserSustainedAnxiety(
     }
   }
 
-  // Check if we have 30+ seconds of sustained elevation for true anxiety detection
-  if (longestSustainedDuration >= 30 && bestElevatedPoints.length > 0) {
+  // Check if we have 60+ seconds of sustained elevation for true anxiety detection
+  if (longestSustainedDuration >= 60 && bestElevatedPoints.length > 0) {
     const avgHR =
       bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
       bestElevatedPoints.length;

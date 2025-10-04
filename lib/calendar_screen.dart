@@ -2343,6 +2343,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _updateJournal(DailyLog log, String journalText) {
     final normalizedDate = _normalizeDate(log.timestamp);
+    
+    // Check if the date exists in _dailyLogs
+    if (_dailyLogs[normalizedDate] == null) {
+      print('Warning: No logs found for date $normalizedDate');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: Unable to find the log to update'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     final index = _dailyLogs[normalizedDate]!
         .indexWhere((l) => l.timestamp == log.timestamp);
 
@@ -2367,22 +2380,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _saveLogsDebounced();
 
       // Also sync with Supabase
-      try {
-        print(
-            'Syncing updated journal with Supabase. ID: ${log.id ?? "None"}, Timestamp: ${log.timestamp}');
-        updatedLog.syncWithSupabase();
+      _syncJournalUpdate(updatedLog);
+    } else {
+      print(
+          'Warning: Could not find log to update journal at timestamp: ${log.timestamp}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: Unable to find the specific log to update'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
-        // Show success message
+  // Separate method for syncing journal updates to handle errors properly
+  Future<void> _syncJournalUpdate(DailyLog updatedLog) async {
+    try {
+      print(
+          'Syncing updated journal with Supabase. ID: ${updatedLog.id ?? "None"}, Timestamp: ${updatedLog.timestamp}');
+      await updatedLog.syncWithSupabase();
+
+      // Show success message
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Journal updated successfully'),
             backgroundColor: Colors.green,
           ),
         );
-      } catch (e) {
-        print('Error syncing journal with Supabase: $e');
+      }
+    } catch (e) {
+      print('Error syncing journal with Supabase: $e');
 
-        // Show error message
+      // Show error message
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating journal: $e'),
@@ -2390,9 +2421,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         );
       }
-    } else {
-      print(
-          'Warning: Could not find log to update journal at timestamp: ${log.timestamp}');
     }
   }
 
