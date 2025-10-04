@@ -2,7 +2,8 @@
 
 ## ✅ Completed Deployments
 
-### 1. **Flutter App Build** 
+### 1. **Flutter App Build**
+
 - **Status**: ✅ **COMPLETED**
 - **File**: `build\app\outputs\flutter-apk\app-release.apk (287.8MB)`
 - **Build Time**: 244.7 seconds
@@ -13,11 +14,13 @@
   - Enhanced assignment-level token management
 
 ### 2. **Firebase Functions Build**
-- **Status**: ✅ **COMPLETED** 
+
+- **Status**: ✅ **COMPLETED**
 - **Command**: `npm --prefix "functions" run build`
 - **Output**: TypeScript compilation successful
 
 ### 3. **Firebase Functions Deployment**
+
 - **Status**: 🔄 **IN PROGRESS**
 - **Command**: `npx firebase-tools deploy --only functions`
 - **Target**: Project `anxieease-sensors`
@@ -27,14 +30,16 @@
 ### **Immediate Actions Required:**
 
 1. **Install the New APK**:
+
    ```bash
    # Connect your Android device and install
    adb install build\app\outputs\flutter-apk\app-release.apk
-   
+
    # Or manually transfer the APK to your test devices
    ```
 
 2. **Wait for Firebase Functions Deployment**:
+
    - The functions deployment is currently in progress
    - This ensures the latest Cloud Functions code is live
    - **Don't test until deployment completes!**
@@ -48,15 +53,17 @@
 ### **Key Monitoring Points:**
 
 **Look for these logs in the Flutter app:**
+
 ```
 ✅ FCM token stored in assignment node: AnxieEase001
 ✅ App resumed - refreshing FCM token
-✅ FCM token persisted before app backgrounding  
+✅ FCM token persisted before app backgrounding
 ✅ Periodic FCM token refresh
 ✅ Assignment FCM token validation passed
 ```
 
 **Check Firebase Database:**
+
 ```
 /devices/AnxieEase001/assignment/
   ├── fcmToken: "token_string"
@@ -66,6 +73,7 @@
 ```
 
 ### **Expected Fix Results:**
+
 - ✅ Users receive notifications even when app was closed
 - ✅ Device reassignment properly updates FCM tokens
 - ✅ No more "No anxiety alert FCM token found" errors
@@ -76,15 +84,19 @@
 ## 🔧 Technical Changes Summary
 
 ### **Code Changes in `main.dart`:**
+
 1. **App Lifecycle Management**:
+
    - `AppLifecycleState.resumed` → Refresh FCM token
    - `AppLifecycleState.paused` → Persist FCM token
 
 2. **Periodic Refresh**:
+
    - Timer every 5 minutes for active apps
    - Early refresh during first 5 minutes (every 30s)
 
 3. **Enhanced Token Storage**:
+
    - Added `lastTokenRefresh` timestamp
    - Better user validation
    - Automatic cleanup on reassignment
@@ -95,6 +107,7 @@
    - Multiple retry strategies
 
 ### **No Changes Needed in Cloud Functions:**
+
 - The existing FCM retrieval logic in `realTimeSustainedAnxietyDetection.ts` was already correct
 - Functions properly look for tokens in `/devices/AnxieEase001/assignment/fcmToken`
 - Issue was on the Flutter side (token not persisting)
@@ -114,5 +127,5 @@
 
 ---
 
-*Generated on: October 4, 2025*
-*Build completed successfully - Ready for testing once Firebase deployment finishes*
+_Generated on: October 4, 2025_
+_Build completed successfully - Ready for testing once Firebase deployment finishes_

@@ -720,7 +720,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24)),
                             ),
-                            icon: const Icon(Icons.phone, size: 16, color: Colors.white),
+                            icon: const Icon(Icons.phone,
+                                size: 16, color: Colors.white),
                             label: Text(_psychologist!.contactPhone,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {
@@ -758,7 +759,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24)),
                             ),
-                            icon: const Icon(Icons.email_outlined, size: 16, color: Colors.white),
+                            icon: const Icon(Icons.email_outlined,
+                                size: 16, color: Colors.white),
                             label: Text(_psychologist!.contactEmail,
                                 overflow: TextOverflow.ellipsis),
                             onPressed: () async {

@@ -433,7 +433,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: Container(
             constraints: const BoxConstraints(
               maxHeight: 500, // Much smaller height
-              maxWidth: 340,  // Smaller width
+              maxWidth: 340, // Smaller width
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
@@ -493,7 +493,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 // Scrollable content section
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16), // Smaller padding
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16), // Smaller padding
                     child: Column(
                       children: [
                         const SizedBox(height: 12), // Smaller spacing
@@ -502,12 +503,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12), // Smaller padding
-                          margin: const EdgeInsets.only(bottom: 12), // Smaller margin
+                          margin: const EdgeInsets.only(
+                              bottom: 12), // Smaller margin
                           decoration: BoxDecoration(
                             color: Colors.grey[50], // Light grey background
                             borderRadius: BorderRadius.circular(12),
-                            border:
-                                Border.all(color: Colors.grey[200]!), // Grey border
+                            border: Border.all(
+                                color: Colors.grey[200]!), // Grey border
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,7 +517,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               Row(
                                 children: [
                                   Icon(Icons.phone_in_talk,
-                                      color: Colors.grey[700], size: 16), // Grey icon
+                                      color: Colors.grey[700],
+                                      size: 16), // Grey icon
                                   const SizedBox(width: 6),
                                   Text(
                                     'Emergency Contacts',
@@ -545,7 +548,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 'NCMH (National Center for Mental Health) Crisis Hotline',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey[800], // Dark grey instead of red
+                                  color: Colors
+                                      .grey[800], // Dark grey instead of red
                                   fontSize: 13,
                                 ),
                               ),
@@ -643,12 +647,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     color: Colors.white, size: 20),
                                 label: const Text('Emergency Call 911'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.grey[700], // Dark grey instead of red
+                                  backgroundColor: Colors
+                                      .grey[700], // Dark grey instead of red
                                   foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 10), // Smaller padding
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10), // Smaller padding
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10), // Smaller radius
+                                    borderRadius: BorderRadius.circular(
+                                        10), // Smaller radius
                                   ),
                                   elevation: 2, // Smaller elevation
                                 ),
@@ -664,14 +670,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   Navigator.pop(context);
                                   Navigator.pushNamed(context, '/breathing');
                                 },
-                                icon:
-                                    const Icon(Icons.air, color: Colors.white, size: 16), // Smaller icon
-                                label: const Text('Breathing Exercise', style: TextStyle(fontSize: 12)), // Smaller text
+                                icon: const Icon(Icons.air,
+                                    color: Colors.white,
+                                    size: 16), // Smaller icon
+                                label: const Text('Breathing Exercise',
+                                    style: TextStyle(
+                                        fontSize: 12)), // Smaller text
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.teal,
                                   foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8), // Smaller padding
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 8), // Smaller padding
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
                                   ),
@@ -680,7 +689,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ),
                             const SizedBox(height: 8), // Smaller spacing
 
-                            // Find Nearest Clinic Button  
+                            // Find Nearest Clinic Button
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
@@ -695,13 +704,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   );
                                 },
                                 icon: Icon(Icons.local_hospital,
-                                    color: Colors.grey[700], size: 16), // Grey icon
-                                label: const Text('Find Nearest Clinic', style: TextStyle(fontSize: 12)), // Smaller text
+                                    color: Colors.grey[700],
+                                    size: 16), // Grey icon
+                                label: const Text('Find Nearest Clinic',
+                                    style: TextStyle(
+                                        fontSize: 12)), // Smaller text
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.grey[700], // Grey instead of red
-                                  side: BorderSide(color: Colors.grey[700]!), // Grey border
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8), // Smaller padding
+                                  foregroundColor:
+                                      Colors.grey[700], // Grey instead of red
+                                  side: BorderSide(
+                                      color: Colors.grey[700]!), // Grey border
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 8), // Smaller padding
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
                                   ),

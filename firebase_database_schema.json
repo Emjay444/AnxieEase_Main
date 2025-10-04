@@ -3,7 +3,7 @@
     "AnxieEase001": {
       "assignment": {
         "assignedUser": "user_123",
-        "activeSessionId": "session_456", 
+        "activeSessionId": "session_456",
         "assignedAt": 1695369600000,
         "assignedBy": "admin_user_id",
         "fcmToken": "fcm_token_for_notifications",
@@ -174,7 +174,7 @@
             "startTime": 1695283200000,
             "endTime": 1695286800000,
             "status": "completed",
-            "assignedBy": "admin_user_id", 
+            "assignedBy": "admin_user_id",
             "adminNotes": "Completed baseline recording session",
             "totalDataPoints": 360,
             "lastActivity": 1695286800000,
@@ -188,7 +188,7 @@
               "timestamp": 1695283200000,
               "deviceId": "AnxieEase001",
               "copiedAt": 1695283205000,
-              "sessionId": "session_789", 
+              "sessionId": "session_789",
               "userId": "user_123"
             }
           },

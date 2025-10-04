@@ -493,12 +493,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         // App became active/foreground - refresh FCM token and sync notifications
-        debugPrint('🔄 App resumed - refreshing FCM token and syncing notifications...');
+        debugPrint(
+            '🔄 App resumed - refreshing FCM token and syncing notifications...');
         Future.delayed(const Duration(milliseconds: 500), () async {
           // CRITICAL FIX: Refresh and store FCM token when app resumes
           // This ensures the assignment node always has a valid token
           await _refreshAndStoreToken();
-          
+
           await _debugLocalNotifications(); // Debug what's in local storage
           _syncPendingNotifications();
         });
@@ -570,7 +571,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               '✅ Strategy 1: Auth ready after launch → syncing pending notifications');
           await _debugLocalNotifications(); // Debug what's in local storage
           await _syncPendingNotifications();
-          
+
           // CRITICAL FIX: Validate and refresh FCM token after auth is ready
           await _validateAndRefreshAssignmentToken();
         }
@@ -591,7 +592,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('🔄 Strategy 3: Standard sync attempt after 3 seconds...');
       await _debugLocalNotifications(); // Debug what's in local storage
       await _syncPendingNotifications();
-      
+
       // Validate FCM token after initial setup
       await _validateAndRefreshAssignmentToken();
     });
@@ -618,7 +619,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await _syncPendingNotifications();
       });
     }
-    
+
     // CRITICAL FIX: Set up periodic FCM token refresh to prevent token loss
     _setupPeriodicTokenRefresh();
   }
@@ -626,7 +627,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // NEW: Set up periodic FCM token refresh
   void _setupPeriodicTokenRefresh() {
     debugPrint('🔄 Setting up periodic FCM token refresh...');
-    
+
     // Refresh token every 5 minutes to ensure it's always available
     Timer.periodic(const Duration(minutes: 5), (timer) async {
       try {
@@ -636,7 +637,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         debugPrint('❌ Error in periodic token refresh: $e');
       }
     });
-    
+
     // Also refresh token every 30 seconds for the first 5 minutes (during critical startup period)
     for (int i = 1; i <= 10; i++) {
       Future.delayed(Duration(seconds: 30 * i), () async {
@@ -2241,7 +2242,8 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
           'tokenAssignedAt': DateTime.now().toIso8601String(),
           'assignedUser': currentUser
               .id, // Ensure we track which user this token belongs to
-          'lastTokenRefresh': DateTime.now().toIso8601String(), // Add refresh timestamp
+          'lastTokenRefresh':
+              DateTime.now().toIso8601String(), // Add refresh timestamp
         });
         debugPrint(
             '✅ FCM token stored in assignment node: $deviceId (User: ${currentUser.id})');
@@ -2309,7 +2311,7 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
 Future<void> _ensureTokenPersistence() async {
   try {
     debugPrint('🔒 Ensuring FCM token persistence...');
-    
+
     // Get current token and store it
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
@@ -2328,34 +2330,36 @@ Future<void> _validateAndRefreshAssignmentToken() async {
   try {
     const deviceId = 'AnxieEase001';
     debugPrint('🔍 Validating assignment FCM token...');
-    
+
     final adminDeviceService = AdminDeviceManagementService();
     final assignmentStatus = await adminDeviceService.checkDeviceAssignment();
-    
+
     if (!assignmentStatus.canUseDevice) {
       debugPrint('ℹ️ User has no device assigned - skipping token validation');
       return;
     }
-    
+
     final supabaseService = SupabaseService();
     final currentUser = supabaseService.client.auth.currentUser;
-    
+
     if (currentUser == null) {
       debugPrint('❌ No authenticated user for token validation');
       return;
     }
-    
+
     // Check if assignment has FCM token
-    final assignmentRef = FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
+    final assignmentRef =
+        FirebaseDatabase.instance.ref('/devices/$deviceId/assignment');
     final assignmentSnapshot = await assignmentRef.once();
     final assignmentData = assignmentSnapshot.snapshot.value as Map?;
-    
+
     final fcmToken = assignmentData?['fcmToken'] as String?;
     final assignedUserId = assignmentData?['assignedUser'] as String?;
-    
+
     // If no token exists or token belongs to different user, refresh it
     if (fcmToken == null || assignedUserId != currentUser.id) {
-      debugPrint('🔄 Assignment missing FCM token or belongs to different user - refreshing...');
+      debugPrint(
+          '🔄 Assignment missing FCM token or belongs to different user - refreshing...');
       await _refreshAndStoreToken();
     } else {
       debugPrint('✅ Assignment FCM token validation passed');

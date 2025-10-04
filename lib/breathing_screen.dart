@@ -155,7 +155,8 @@ class _BreathingScreenState extends State<BreathingScreen>
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
             onPressed: () {
-              print('Back button pressed. selectedExercise: ${selectedExercise?.name}, _showDurationSelection: $_showDurationSelection');
+              print(
+                  'Back button pressed. selectedExercise: ${selectedExercise?.name}, _showDurationSelection: $_showDurationSelection');
               if (selectedExercise != null) {
                 print('Showing exit confirmation dialog');
                 _showExitConfirmationDialog();
@@ -180,8 +181,9 @@ class _BreathingScreenState extends State<BreathingScreen>
           child: Builder(
             builder: (context) {
               // Debug output
-              print('Build: selectedExercise=${selectedExercise?.name}, _showDurationSelection=$_showDurationSelection, _isPlaying=$_isPlaying, _isPaused=$_isPaused');
-              
+              print(
+                  'Build: selectedExercise=${selectedExercise?.name}, _showDurationSelection=$_showDurationSelection, _isPlaying=$_isPlaying, _isPaused=$_isPaused');
+
               if (selectedExercise == null) {
                 return _buildTechniqueSelection();
               } else if (_showDurationSelection) {
@@ -411,7 +413,7 @@ class _BreathingScreenState extends State<BreathingScreen>
 
   void _showTemporaryHeadphoneReminder() {
     bool isModalDismissed = false;
-    
+
     showDialog(
       context: context,
       barrierDismissible: true, // Allow tapping outside to dismiss
@@ -489,7 +491,9 @@ class _BreathingScreenState extends State<BreathingScreen>
 
     // Auto-dismiss after 3 seconds (as backup if user doesn't tap)
     Future.delayed(const Duration(seconds: 3), () {
-      if (!_isDisposed && !isModalDismissed && Navigator.of(context, rootNavigator: true).canPop()) {
+      if (!_isDisposed &&
+          !isModalDismissed &&
+          Navigator.of(context, rootNavigator: true).canPop()) {
         isModalDismissed = true;
         print('Auto-dismissing modal after 3 seconds');
         Navigator.of(context, rootNavigator: true).pop();
@@ -561,7 +565,8 @@ class _BreathingScreenState extends State<BreathingScreen>
               actions: <Widget>[
                 TextButton(
                   onPressed: () {
-                    Navigator.of(context).pop(); // Close dialog, continue session
+                    Navigator.of(context)
+                        .pop(); // Close dialog, continue session
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.grey.shade600,
@@ -585,7 +590,8 @@ class _BreathingScreenState extends State<BreathingScreen>
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
                   ),
                   child: const Text(
                     'End Session',
@@ -651,7 +657,8 @@ class _BreathingScreenState extends State<BreathingScreen>
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
                   ),
                   child: const Text(
                     'Return',
@@ -667,7 +674,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         );
       }
     }
-    
+
     // If no exercise selected, just reset
     _resetToTechniqueSelection();
   }
@@ -1205,7 +1212,8 @@ class _BreathingScreenState extends State<BreathingScreen>
 
   void _updateMotivationalMessage() {
     if (_motivationalMessages.isNotEmpty) {
-      _currentMessageIndex = (_currentMessageIndex + 1) % _motivationalMessages.length;
+      _currentMessageIndex =
+          (_currentMessageIndex + 1) % _motivationalMessages.length;
       _motivationalMessage.value = _motivationalMessages[_currentMessageIndex];
     }
   }
@@ -1228,14 +1236,14 @@ class _BreathingScreenState extends State<BreathingScreen>
   void _resetToTechniqueSelection() {
     // Stop everything first
     _stopExercise();
-    
+
     // Dispose and reset animation controller
     _animationController?.dispose();
     _animationController = null;
-    
+
     // Reset audio
     _audioPlayer?.stop();
-    
+
     setState(() {
       selectedExercise = null;
       _selectedMinutes = 5;
@@ -1247,9 +1255,10 @@ class _BreathingScreenState extends State<BreathingScreen>
       _isPaused = false;
     });
     _motivationalMessage.value = '';
-    
+
     // Debug print to verify state
-    print('Reset completed: selectedExercise=${selectedExercise}, _showDurationSelection=${_showDurationSelection}');
+    print(
+        'Reset completed: selectedExercise=${selectedExercise}, _showDurationSelection=${_showDurationSelection}');
   }
 
   void _completeSession() {
