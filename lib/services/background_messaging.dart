@@ -48,7 +48,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
       // Override for wellness reminders
       if (isWellnessReminder) {
-        soundResource = 'resource://raw/mild_alert'; // Gentle sound
+        soundResource = 'resource://raw/mild_alerts'; // Gentle sound
         channelKey = 'wellness_reminders'; // Wellness channel
         debugPrint('🍃 Processing wellness reminder in background');
       }
@@ -280,15 +280,15 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
 String _getSeveritySound(String severity) {
   switch (severity.toLowerCase()) {
     case 'mild':
-      return 'resource://raw/mild_alert';
+      return 'resource://raw/mild_alerts';
     case 'moderate':
-      return 'resource://raw/moderate_alert';
+      return 'resource://raw/moderate_alerts';
     case 'severe':
-      return 'resource://raw/severe_alert';
+      return 'resource://raw/severe_alerts';
     case 'critical':
-      return 'resource://raw/critical_alert';
+      return 'resource://raw/critical_alerts';
     default:
-      return 'resource://raw/mild_alert'; // Default fallback
+      return 'resource://raw/mild_alerts'; // Default fallback
   }
 }
 
@@ -296,13 +296,13 @@ String _getSeveritySound(String severity) {
 String _getSeverityChannel(String severity) {
   switch (severity.toLowerCase()) {
     case 'mild':
-      return 'mild_anxiety_alerts_v4'; // Bumped to force new channel with correct config
+      return 'mild_anxiety_alerts_v4'; // Back to original working channel
     case 'moderate':
-      return 'moderate_anxiety_alerts_v2';
+      return 'moderate_anxiety_alerts_v2'; // Back to original working channel
     case 'severe':
-      return 'severe_anxiety_alerts_v2';
+      return 'severe_anxiety_alerts_v2'; // Back to original working channel
     case 'critical':
-      return 'critical_anxiety_alerts_v2';
+      return 'critical_anxiety_alerts_v2'; // Back to original working channel
     default:
       return 'anxiety_alerts'; // Default fallback
   }

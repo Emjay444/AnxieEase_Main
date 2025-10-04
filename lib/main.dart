@@ -27,6 +27,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'firebase_options.dart';
 import 'services/background_messaging.dart';
+import 'services/appointment_service.dart';
 import 'breathing_screen.dart';
 import 'grounding_screen.dart';
 import 'screens/device_linking_screen.dart';
@@ -203,6 +204,13 @@ Future<void> _initializeServices() async {
     // Early sync attempt - try to sync notifications immediately after Supabase is ready
     debugPrint('🔄 Early sync attempt during initialization...');
     _syncPendingNotifications();
+
+    // Check and expire old appointment requests
+    debugPrint('⏰ Checking for expired appointments...');
+    final appointmentService = AppointmentService();
+    appointmentService.checkAndExpireAppointments().catchError((error) {
+      debugPrint('⚠️ Failed to check expired appointments: $error');
+    });
 
     // Create lightweight provider instances (heavy work deferred)
     final authProvider = AuthProvider();

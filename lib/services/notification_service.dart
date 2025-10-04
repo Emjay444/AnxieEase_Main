@@ -97,15 +97,15 @@ class NotificationService extends ChangeNotifier {
   String _getChannelKeyForSeverity(String severity) {
     switch (severity.toLowerCase()) {
       case 'mild':
-        return 'mild_anxiety_alerts_v4'; // Updated to new channel
+        return 'mild_anxiety_alerts_v4'; // Back to original working channel
       case 'moderate':
-        return 'moderate_anxiety_alerts';
+        return 'moderate_anxiety_alerts_v2'; // Back to original working channel
       case 'severe':
-        return 'severe_anxiety_alerts';
+        return 'severe_anxiety_alerts_v2'; // Back to original working channel
       case 'critical':
-        return 'critical_anxiety_alerts';
+        return 'critical_anxiety_alerts_v2'; // Back to original working channel
       case 'elevated':
-        return 'mild_anxiety_alerts_v4'; // Updated to new channel
+        return 'mild_anxiety_alerts_v4'; // Back to original working channel
       default:
         return 'anxiety_alerts'; // Fallback to general channel
     }
@@ -257,25 +257,23 @@ class NotificationService extends ChangeNotifier {
           icon: 'resource://drawable/launcher_icon',
         ),
 
-        // Severity-specific channels with default sounds (fixed audio issues)
-        // TESTING: Ultra-aggressive mild anxiety channel for popup testing
+                // Severity-specific channels with custom sounds (using existing channel names)
+        // TESTING: Ultra-aggressive mild anxiety channel for custom sound testing
         NotificationChannel(
           channelKey: 'mild_anxiety_alerts_v4',
           channelName: 'Mild Anxiety Emergency Test',
           channelDescription:
-              'TESTING: Ultra-priority mild anxiety with forced popup',
+              'TESTING: Ultra-priority mild anxiety with forced popup and custom sound',
           defaultColor: const Color(0xFF66BB6A), // Light Green
           importance: NotificationImportance.Max, // Maximum importance
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
-          // Removed custom soundSource to use default system sound
+          soundSource: 'resource://raw/mild_alerts', // Custom mild sound
           defaultPrivacy: NotificationPrivacy.Public, // Show on all screens
           icon: 'resource://drawable/launcher_icon',
-          // Avoid critical alerts to prevent OEMs from looping sounds
           criticalAlerts: false,
-          onlyAlertOnce:
-              true, // Prevent sound looping - play only once per notification
+          onlyAlertOnce: true, // Prevent sound looping - play only once per notification
         ),
 
         // TESTING: New mild anxiety channel with maximum popup settings
@@ -283,18 +281,76 @@ class NotificationService extends ChangeNotifier {
           channelKey: 'mild_anxiety_alerts_v2',
           channelName: 'Mild Anxiety Alerts V2',
           channelDescription:
-              'Gentle notifications for mild anxiety detection with popup',
+              'Gentle notifications for mild anxiety detection with popup and custom sound',
           defaultColor: const Color(0xFF66BB6A), // Light Green
           importance:
               NotificationImportance.Max, // Maximum importance for popup
           ledColor: const Color(0xFF66BB6A),
           enableVibration: true,
           playSound: true,
-          // Removed custom soundSource to use default system sound
+          soundSource: 'resource://raw/mild_alerts', // Custom mild sound
           defaultPrivacy:
               NotificationPrivacy.Public, // Make sure it shows on lock screen
           icon: 'resource://drawable/launcher_icon',
           criticalAlerts: true, // Enable critical alerts for popup testing
+        ),
+
+        // Original mild anxiety channel (keep as backup)
+        NotificationChannel(
+          channelKey: 'mild_anxiety_alerts',
+          channelName: 'Mild Anxiety Alerts',
+          channelDescription: 'Gentle notifications for mild anxiety detection',
+          defaultColor: const Color(0xFF66BB6A), // Light Green
+          importance: NotificationImportance
+              .High, // Changed from Default to High for popup
+          ledColor: const Color(0xFF66BB6A),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/mild_alerts', // Added custom mild sound
+          icon: 'resource://drawable/launcher_icon',
+          criticalAlerts: true, // Enable critical alerts for popup testing
+        ),
+
+        NotificationChannel(
+          channelKey: 'moderate_anxiety_alerts_v2',
+          channelName: 'Moderate Anxiety Alerts',
+          channelDescription: 'Medium priority alerts for moderate anxiety with custom sound',
+          defaultColor: const Color(0xFFFF9800), // Orange
+          importance: NotificationImportance.High,
+          ledColor: const Color(0xFFFF9800),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/moderate_alerts', // Custom moderate sound
+          icon: 'resource://drawable/launcher_icon',
+        ),
+
+        NotificationChannel(
+          channelKey: 'severe_anxiety_alerts_v2',
+          channelName: 'Severe Anxiety Alerts',
+          channelDescription:
+              'High priority alerts for severe anxiety detection with custom sound',
+          defaultColor: const Color(0xFFF44336), // Red
+          importance: NotificationImportance.High, // Changed from Max to High
+          ledColor: const Color(0xFFF44336),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/severe_alerts', // Custom severe sound
+          icon: 'resource://drawable/launcher_icon',
+          // Removed criticalAlerts: true to prevent looping
+        ),
+
+        NotificationChannel(
+          channelKey: 'critical_anxiety_alerts_v2',
+          channelName: 'Critical Emergency Alerts',
+          channelDescription: 'Emergency alerts requiring immediate attention with custom sound',
+          defaultColor: const Color(0xFFD32F2F), // Dark Red
+          importance: NotificationImportance.Max,
+          ledColor: const Color(0xFFD32F2F),
+          enableVibration: true,
+          playSound: true,
+          soundSource: 'resource://raw/critical_alerts', // Custom critical sound
+          icon: 'resource://drawable/launcher_icon',
+          // Keep non-critical; rely on Max importance
         ),
 
         // Original mild anxiety channel (keep as backup)
@@ -322,7 +378,8 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFFF9800),
           enableVibration: true,
           playSound: true,
-          // Removed custom soundSource to use default system sound
+          soundSource:
+              'resource://raw/moderate_alerts', // Custom moderate sound
           icon: 'resource://drawable/launcher_icon',
         ),
 
@@ -336,7 +393,7 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFF44336),
           enableVibration: true,
           playSound: true,
-          // Removed custom soundSource to use default system sound
+          soundSource: 'resource://raw/severe_alerts', // Custom severe sound
           icon: 'resource://drawable/launcher_icon',
           // Removed criticalAlerts: true to prevent looping
         ),
@@ -350,7 +407,8 @@ class NotificationService extends ChangeNotifier {
           ledColor: const Color(0xFFD32F2F),
           enableVibration: true,
           playSound: true,
-          // Removed custom soundSource to use default system sound
+          soundSource:
+              'resource://raw/critical_alerts', // Custom critical sound
           icon: 'resource://drawable/launcher_icon',
           // Keep non-critical; rely on Max importance
         ),

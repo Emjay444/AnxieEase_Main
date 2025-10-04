@@ -1,7 +1,7 @@
 "use strict";
 var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.detectAnxietyMultiParameter = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testNotificationHTTP = exports.sendTestNotificationV2 = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.onAnxietySeverityChangeV2 = exports.triggerAppointmentExpiration = exports.expireAppointmentsNow = exports.checkExpiredAppointments = exports.testDeviceSync = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.getRateLimitStatus = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -30,10 +30,9 @@ Object.defineProperty(exports, "copyDeviceCurrentToUserSession", { enumerable: t
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
 Object.defineProperty(exports, "getDeviceAssignment", { enumerable: true, get: function () { return deviceDataCopyService_1.getDeviceAssignment; } });
 Object.defineProperty(exports, "cleanupOldSessions", { enumerable: true, get: function () { return deviceDataCopyService_1.cleanupOldSessions; } });
-// Import and export enhanced rate limiting functions
+// Import and export enhanced rate limiting functions (remove testing functions)
 var enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 Object.defineProperty(exports, "handleUserConfirmationResponse", { enumerable: true, get: function () { return enhancedRateLimiting_1.handleUserConfirmationResponse; } });
-Object.defineProperty(exports, "getRateLimitStatus", { enumerable: true, get: function () { return enhancedRateLimiting_1.getRateLimitStatus; } });
 // Import auto history creator
 var autoHistoryCreator_1 = require("./autoHistoryCreator");
 Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, get: function () { return autoHistoryCreator_1.autoCreateDeviceHistory; } });
@@ -41,36 +40,19 @@ Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, ge
 var realTimeSustainedAnxietyDetection_1 = require("./realTimeSustainedAnxietyDetection");
 Object.defineProperty(exports, "realTimeSustainedAnxietyDetection", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.realTimeSustainedAnxietyDetection; } });
 Object.defineProperty(exports, "clearAnxietyRateLimits", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.clearAnxietyRateLimits; } });
-// Import auto-cleanup functions
+// Import auto-cleanup functions (remove testing functions)
 var autoCleanup_1 = require("./autoCleanup");
 Object.defineProperty(exports, "autoCleanup", { enumerable: true, get: function () { return autoCleanup_1.autoCleanup; } });
-Object.defineProperty(exports, "manualCleanup", { enumerable: true, get: function () { return autoCleanup_1.manualCleanup; } });
-Object.defineProperty(exports, "getCleanupStats", { enumerable: true, get: function () { return autoCleanup_1.getCleanupStats; } });
-// Import device assignment sync functions
+// Import device assignment sync functions (remove testing functions)
 var deviceAssignmentSync_1 = require("./deviceAssignmentSync");
 Object.defineProperty(exports, "syncDeviceAssignment", { enumerable: true, get: function () { return deviceAssignmentSync_1.syncDeviceAssignment; } });
 Object.defineProperty(exports, "periodicDeviceSync", { enumerable: true, get: function () { return deviceAssignmentSync_1.periodicDeviceSync; } });
-Object.defineProperty(exports, "testDeviceSync", { enumerable: true, get: function () { return deviceAssignmentSync_1.testDeviceSync; } });
-// Import appointment expiration functions
-var appointmentExpiration_1 = require("./appointmentExpiration");
-Object.defineProperty(exports, "checkExpiredAppointments", { enumerable: true, get: function () { return appointmentExpiration_1.checkExpiredAppointments; } });
-Object.defineProperty(exports, "expireAppointmentsNow", { enumerable: true, get: function () { return appointmentExpiration_1.expireAppointmentsNow; } });
-Object.defineProperty(exports, "triggerAppointmentExpiration", { enumerable: true, get: function () { return appointmentExpiration_1.triggerAppointmentExpiration; } });
-// Cloud Function to send FCM notifications when anxiety severity changes
-exports.onAnxietySeverityChangeV2 = functions.database
-    .ref("/devices/AnxieEase001/current")
-    .onWrite(async (change, context) => {
-    try {
-        // Legacy function disabled - anxiety detection now requires personalized baseline
-        // Use personalizedAnxietyDetection function instead
-        console.log("Legacy threshold-based detection disabled - requires baseline from personalizedAnxietyDetection function");
-        return null;
-    }
-    catch (error) {
-        console.error("❌ Error in onAnxietySeverityChangeV2:", error);
-        throw error;
-    }
-});
+// Remove appointment expiration functions - appointments are handled in Supabase, not Firebase
+// export {
+//   checkExpiredAppointments,
+//   expireAppointmentsNow,
+//   triggerAppointmentExpiration,
+// } from "./appointmentExpiration";
 // NEW: Send FCM when a native alert is created under devices/<deviceId>/alerts
 exports.onNativeAlertCreate = functions.database
     .ref("/devices/{deviceId}/alerts/{alertId}")
@@ -87,7 +69,7 @@ exports.onNativeAlertCreate = functions.database
             return null;
         }
         const { title, body } = getNotificationContent(severity, heartRate);
-        // DATA-ONLY: Include title/body in data; no notification key
+        // Enhanced notification structure with proper sound support
         const message = {
             data: {
                 type: "anxiety_alert",
@@ -97,9 +79,19 @@ exports.onNativeAlertCreate = functions.database
                 notificationId: `${severity}_${ts}`,
                 title,
                 message: body,
+                channelId: getChannelIdForSeverity(severity),
+                sound: getSoundForSeverity(severity),
+                color: getSeverityColor(severity),
+                requiresConfirmation: "false",
+                alertType: "direct",
             },
             android: {
                 priority: "high",
+                notification: {
+                    channelId: getChannelIdForSeverity(severity),
+                    sound: getSoundForSeverity(severity).replace(".mp3", ""),
+                    priority: "max",
+                },
             },
             apns: {
                 headers: {
@@ -109,6 +101,7 @@ exports.onNativeAlertCreate = functions.database
                     aps: {
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
+                        sound: getSoundForSeverity(severity), // iOS can use .mp3
                     },
                 },
             },
@@ -142,11 +135,61 @@ function getNotificationContent(severity, heartRate) {
                 title: "🔴 Severe Alert - 85% Confidence",
                 body: `URGENT: High risk detected!${hrText}`,
             };
+        case "critical":
+            return {
+                title: "🚨 CRITICAL Alert - 95% Confidence",
+                body: `EMERGENCY: Critical anxiety detected!${hrText}`,
+            };
         default:
             return {
                 title: "📱 AnxieEase Alert",
                 body: `Anxiety level detected.${hrText}`,
             };
+    }
+}
+// Helper function to get correct channel ID for severity
+function getChannelIdForSeverity(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "mild_anxiety_alerts_v5";
+        case "moderate":
+            return "moderate_anxiety_alerts_v3";
+        case "severe":
+            return "severe_anxiety_alerts_v3";
+        case "critical":
+            return "critical_anxiety_alerts_v3";
+        default:
+            return "anxiease_channel";
+    }
+}
+// Helper function to get correct sound for severity
+function getSoundForSeverity(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "mild_alerts.mp3";
+        case "moderate":
+            return "moderate_alerts.mp3";
+        case "severe":
+            return "severe_alerts.mp3";
+        case "critical":
+            return "critical_alerts.mp3";
+        default:
+            return "default";
+    }
+}
+// Helper function to get color for severity
+function getSeverityColor(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "#4CAF50"; // Green
+        case "moderate":
+            return "#FF9800"; // Orange
+        case "severe":
+            return "#F44336"; // Red
+        case "critical":
+            return "#8B0000"; // Dark Red
+        default:
+            return "#2196F3"; // Blue
     }
 }
 // Cloud Function to subscribe new users to the anxiety alerts topic
@@ -168,73 +211,99 @@ exports.subscribeToAnxietyAlertsV2 = functions.https.onCall(async (data, context
         throw new functions.https.HttpsError("internal", "Failed to subscribe to notifications");
     }
 });
-// Cloud Function to test FCM notifications (for debugging)
-exports.sendTestNotificationV2 = functions.https.onCall(async (data, context) => {
+// Cloud Function to test FCM notifications (for debugging) - REMOVED TO REDUCE FUNCTION COUNT
+/*
+export const sendTestNotificationV2 = functions.https.onCall(
+  async (data, context) => {
     try {
-        const { severity = "mild", heartRate = 75 } = data;
-        const notificationData = getNotificationContent(severity, heartRate);
-        // DATA-ONLY test message so background handler processes it
-        const message = {
-            data: {
-                type: "anxiety_alert",
-                severity: severity,
-                heartRate: heartRate.toString(),
-                timestamp: Date.now().toString(),
-                title: `[TEST] ${notificationData.title}`,
-                message: notificationData.body,
+      const { severity = "mild", heartRate = 75 } = data;
+
+      const notificationData = getNotificationContent(severity, heartRate);
+
+      // DATA-ONLY test message with proper channel and sound
+      const message = {
+        data: {
+          type: "anxiety_alert",
+          severity: severity,
+          heartRate: heartRate.toString(),
+          timestamp: Date.now().toString(),
+          title: `[TEST] ${notificationData.title}`,
+          message: notificationData.body,
+          // Add proper channel and sound for test notifications
+          channelId: getChannelIdForSeverity(severity),
+          sound: getSoundForSeverity(severity),
+          color: getSeverityColor(severity),
+          requiresConfirmation: "false",
+          alertType: "test",
+        },
+        android: {
+          priority: "high" as const,
+        },
+        apns: {
+          headers: {
+            "apns-priority": "10",
+          },
+          payload: {
+            aps: {
+              "content-available": 1,
+              category: "ANXIETY_ALERT",
             },
-            android: {
-                priority: "high",
-            },
-            apns: {
-                headers: {
-                    "apns-priority": "10",
-                },
-                payload: {
-                    aps: {
-                        "content-available": 1,
-                        category: "ANXIETY_ALERT",
-                    },
-                },
-            },
-            topic: "anxiety_alerts",
-        };
-        const response = await admin.messaging().send(message);
-        console.log("✅ Test FCM notification sent successfully:", response);
-        return { success: true, messageId: response };
+          },
+        },
+        topic: "anxiety_alerts",
+      } as any;
+
+      const response = await admin.messaging().send(message);
+      console.log("✅ Test FCM notification sent successfully:", response);
+
+      return { success: true, messageId: response };
+    } catch (error) {
+      console.error("❌ Error sending test notification:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to send test notification"
+      );
     }
-    catch (error) {
-        console.error("❌ Error sending test notification:", error);
-        throw new functions.https.HttpsError("internal", "Failed to send test notification");
-    }
-});
-// HTTP-based test notification function for easy testing
-exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
-    // Enable CORS
+  }
+);
+*/
+// Individual HTTP endpoints for testing each severity level
+exports.testMildNotification = functions.https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
-    // Handle preflight requests
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
     }
     try {
-        const { severity = "mild", heartRate = 75 } = req.method === "POST" ? req.body : req.query;
-        console.log(`📧 Testing notification: ${severity} alert with HR: ${heartRate}`);
-        const notificationData = getNotificationContent(severity, heartRate);
-        // DATA-ONLY HTTP test message
+        const heartRate = 88;
+        const notificationContent = getNotificationContent("mild", heartRate);
         const message = {
             data: {
                 type: "anxiety_alert",
-                severity: severity,
+                severity: "mild",
                 heartRate: heartRate.toString(),
                 timestamp: Date.now().toString(),
-                title: `[TEST] ${notificationData.title}`,
-                message: notificationData.body,
+                title: `${notificationContent.title}`,
+                message: notificationContent.body,
+                channelId: getChannelIdForSeverity("mild"),
+                sound: getSoundForSeverity("mild"),
+                color: getSeverityColor("mild"),
+                requiresConfirmation: "false",
+                alertType: "http_test",
+            },
+            notification: {
+                title: notificationContent.title,
+                body: notificationContent.body,
             },
             android: {
                 priority: "high",
+                notification: {
+                    channelId: getChannelIdForSeverity("mild"),
+                    sound: "mild_alerts",
+                    priority: "max",
+                },
             },
             apns: {
                 headers: {
@@ -244,78 +313,385 @@ exports.testNotificationHTTP = functions.https.onRequest(async (req, res) => {
                     aps: {
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
+                        sound: "mild_alerts.mp3", // iOS can use .mp3
                     },
                 },
             },
             topic: "anxiety_alerts",
         };
         const response = await admin.messaging().send(message);
-        console.log("✅ Test FCM notification sent successfully:", response);
-        // Additionally, persist test alert to Supabase if configured
-        try {
-            if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
-                await persistTestAlertToSupabase(severity, heartRate, notificationData);
-                console.log("✅ Test alert also saved to Supabase");
-            }
-            else {
-                console.log("ℹ️ Supabase env not configured; skipping test alert storage");
-            }
-        }
-        catch (e) {
-            console.error("❌ Failed to persist test alert to Supabase:", e);
-        }
+        console.log("✅ Mild notification sent:", response);
         res.status(200).json({
             success: true,
             messageId: response,
-            severity,
-            heartRate,
-            notification: {
-                title: notificationData.title,
-                body: notificationData.body,
-            },
-            message: "Test notification sent successfully! Check your device.",
+            severity: "mild",
+            heartRate: heartRate,
+            sound: getSoundForSeverity("mild"),
+            channelId: getChannelIdForSeverity("mild"),
+            message: "Mild anxiety notification sent successfully!",
         });
     }
     catch (error) {
-        console.error("❌ Error sending test notification:", error);
+        console.error("❌ Error sending mild notification:", error);
         res.status(500).json({
             success: false,
             error: error instanceof Error ? error.message : "Unknown error",
-            message: "Failed to send test notification",
         });
     }
 });
-/**
- * Persist test alert to Supabase (similar to realTimeSustainedAnxietyDetection)
- */
-async function persistTestAlertToSupabase(severity, heartRate, notificationContent) {
-    const url = `${SUPABASE_URL}/rest/v1/notifications`;
-    const payload = {
-        // Keep payload aligned with app-side SupabaseService.createNotification schema
-        user_id: "5afad7d4-3dcd-4353-badb-4f155303419a",
-        title: `[TEST] ${notificationContent.title}`,
-        message: notificationContent.body,
-        type: "alert",
-        related_screen: "notifications",
-        created_at: new Date().toISOString(),
-    };
-    const res = await fetchImpl(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            Prefer: "return=representation",
-        },
-        body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Supabase test insert failed: ${res.status} ${text}`);
+exports.testModerateNotification = functions.https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
     }
-    const json = await res.json();
-    console.log("🗃️ Supabase test insert success:", json);
+    try {
+        const heartRate = 108;
+        const notificationContent = getNotificationContent("moderate", heartRate);
+        const message = {
+            data: {
+                type: "anxiety_alert",
+                severity: "moderate",
+                heartRate: heartRate.toString(),
+                timestamp: Date.now().toString(),
+                title: `${notificationContent.title}`,
+                message: notificationContent.body,
+                channelId: getChannelIdForSeverity("moderate"),
+                sound: getSoundForSeverity("moderate"),
+                color: getSeverityColor("moderate"),
+                requiresConfirmation: "false",
+                alertType: "http_test",
+            },
+            notification: {
+                title: notificationContent.title,
+                body: notificationContent.body,
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: getChannelIdForSeverity("moderate"),
+                    sound: "moderate_alerts",
+                    priority: "max",
+                },
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                        sound: "moderate_alerts.mp3", // iOS can use .mp3
+                    },
+                },
+            },
+            topic: "anxiety_alerts",
+        };
+        const response = await admin.messaging().send(message);
+        console.log("✅ Moderate notification sent:", response);
+        res.status(200).json({
+            success: true,
+            messageId: response,
+            severity: "moderate",
+            heartRate: heartRate,
+            sound: getSoundForSeverity("moderate"),
+            channelId: getChannelIdForSeverity("moderate"),
+            message: "Moderate anxiety notification sent successfully!",
+        });
+    }
+    catch (error) {
+        console.error("❌ Error sending moderate notification:", error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+exports.testSevereNotification = functions.https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    try {
+        const heartRate = 125;
+        const notificationContent = getNotificationContent("severe", heartRate);
+        const message = {
+            data: {
+                type: "anxiety_alert",
+                severity: "severe",
+                heartRate: heartRate.toString(),
+                timestamp: Date.now().toString(),
+                title: `${notificationContent.title}`,
+                message: notificationContent.body,
+                channelId: getChannelIdForSeverity("severe"),
+                sound: getSoundForSeverity("severe"),
+                color: getSeverityColor("severe"),
+                requiresConfirmation: "false",
+                alertType: "http_test",
+            },
+            notification: {
+                title: notificationContent.title,
+                body: notificationContent.body,
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: getChannelIdForSeverity("severe"),
+                    sound: "severe_alerts",
+                    priority: "max",
+                },
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                        sound: "severe_alerts.mp3", // iOS can use .mp3
+                    },
+                },
+            },
+            topic: "anxiety_alerts",
+        };
+        const response = await admin.messaging().send(message);
+        console.log("✅ Severe notification sent:", response);
+        res.status(200).json({
+            success: true,
+            messageId: response,
+            severity: "severe",
+            heartRate: heartRate,
+            sound: getSoundForSeverity("severe"),
+            channelId: getChannelIdForSeverity("severe"),
+            message: "Severe anxiety notification sent successfully!",
+        });
+    }
+    catch (error) {
+        console.error("❌ Error sending severe notification:", error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+exports.testCriticalNotification = functions.https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    try {
+        const heartRate = 145;
+        const notificationContent = getNotificationContent("critical", heartRate);
+        const message = {
+            data: {
+                type: "anxiety_alert",
+                severity: "critical",
+                heartRate: heartRate.toString(),
+                timestamp: Date.now().toString(),
+                title: `${notificationContent.title}`,
+                message: notificationContent.body,
+                channelId: getChannelIdForSeverity("critical"),
+                sound: getSoundForSeverity("critical"),
+                color: getSeverityColor("critical"),
+                requiresConfirmation: "false",
+                alertType: "http_test",
+            },
+            notification: {
+                title: notificationContent.title,
+                body: notificationContent.body,
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: getChannelIdForSeverity("critical"),
+                    sound: "critical_alerts",
+                    priority: "max",
+                },
+            },
+            apns: {
+                headers: {
+                    "apns-priority": "10",
+                },
+                payload: {
+                    aps: {
+                        "content-available": 1,
+                        category: "ANXIETY_ALERT",
+                        sound: "critical_alerts.mp3", // iOS can use .mp3
+                    },
+                },
+            },
+            topic: "anxiety_alerts",
+        };
+        const response = await admin.messaging().send(message);
+        console.log("✅ Critical notification sent:", response);
+        res.status(200).json({
+            success: true,
+            messageId: response,
+            severity: "critical",
+            heartRate: heartRate,
+            sound: getSoundForSeverity("critical"),
+            channelId: getChannelIdForSeverity("critical"),
+            message: "CRITICAL anxiety notification sent successfully!",
+        });
+    }
+    catch (error) {
+        console.error("❌ Error sending critical notification:", error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
+    }
+});
+/* Commented out - replaced with individual test functions for each severity level
+// HTTP-based test notification function for easy testing
+export const testNotificationHTTP = functions.https.onRequest(
+  async (req, res) => {
+    // Enable CORS
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+
+    // Handle preflight requests
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    try {
+      const { severity = "mild", heartRate = 75 } =
+        req.method === "POST" ? req.body : req.query;
+
+      console.log(
+        `📧 Testing notification: ${severity} alert with HR: ${heartRate}`
+      );
+
+      const notificationData = getNotificationContent(severity, heartRate);
+
+      // DATA-ONLY HTTP test message with proper channel and sound
+      const message = {
+        data: {
+          type: "anxiety_alert",
+          severity: severity as string,
+          heartRate: heartRate.toString(),
+          timestamp: Date.now().toString(),
+          title: `[TEST] ${notificationData.title}`,
+          message: notificationData.body,
+          // Add proper channel and sound for HTTP test notifications
+          channelId: getChannelIdForSeverity(severity as string),
+          sound: getSoundForSeverity(severity as string),
+          color: getSeverityColor(severity as string),
+          requiresConfirmation: "false",
+          alertType: "http_test",
+        },
+        android: {
+          priority: "high" as const,
+        },
+        apns: {
+          headers: {
+            "apns-priority": "10",
+          },
+          payload: {
+            aps: {
+              "content-available": 1,
+              category: "ANXIETY_ALERT",
+            },
+          },
+        },
+        topic: "anxiety_alerts",
+      } as any;
+
+      const response = await admin.messaging().send(message);
+      console.log("✅ Test FCM notification sent successfully:", response);
+
+      // Additionally, persist test alert to Supabase if configured
+      try {
+        if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
+          await persistTestAlertToSupabase(
+            severity as string,
+            heartRate,
+            notificationData
+          );
+          console.log("✅ Test alert also saved to Supabase");
+        } else {
+          console.log(
+            "ℹ️ Supabase env not configured; skipping test alert storage"
+          );
+        }
+      } catch (e) {
+        console.error("❌ Failed to persist test alert to Supabase:", e);
+      }
+
+      res.status(200).json({
+        success: true,
+        messageId: response,
+        severity,
+        heartRate,
+        notification: {
+          title: notificationData.title,
+          body: notificationData.body,
+        },
+        message: "Test notification sent successfully! Check your device.",
+      });
+    } catch (error) {
+      console.error("❌ Error sending test notification:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        message: "Failed to send test notification",
+      });
+    }
+  }
+);
+*/
+/*
+// Commented out - only used by the commented testNotificationHTTP function
+// Persist test alert to Supabase (similar to realTimeSustainedAnxietyDetection)
+async function persistTestAlertToSupabase(
+  severity: string,
+  heartRate: number,
+  notificationContent: any
+) {
+  const url = `${SUPABASE_URL}/rest/v1/notifications`;
+  const payload = {
+    // Keep payload aligned with app-side SupabaseService.createNotification schema
+    user_id: "5afad7d4-3dcd-4353-badb-4f155303419a", // Real user ID for testing
+    title: `[TEST] ${notificationContent.title}`,
+    message: notificationContent.body,
+    type: "alert", // match enum used by app (alert|reminder)
+    related_screen: "notifications",
+    created_at: new Date().toISOString(),
+  } as any;
+
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase test insert failed: ${res.status} ${text}`);
+  }
+
+  const json = await res.json();
+  console.log("🗃️ Supabase test insert success:", json);
 }
+*/
 // Wellness message categories with varied content for different times of day
 const WELLNESS_MESSAGES = {
     morning: [
@@ -654,181 +1030,6 @@ function getRandomWellnessMessage(timeCategory) {
     sentWellnessMessages[timeCategory].push(randomIndex);
     return selectedMessage;
 }
-// Multi-parameter anxiety detection Cloud Function
-exports.detectAnxietyMultiParameter = functions.database
-    .ref("/devices/{deviceId}/current")
-    .onUpdate(async (change, context) => {
-    const deviceId = context.params.deviceId;
-    const afterData = change.after.val();
-    console.log(`Processing metrics update for device ${deviceId}`);
-    // Validate required data
-    if (!afterData || !afterData.heartRate || !afterData.spo2) {
-        console.log("Missing required metrics data, skipping");
-        return null;
-    }
-    try {
-        // Get device info to find user
-        const deviceRef = admin.database().ref(`/devices/${deviceId}/metadata`);
-        const deviceSnapshot = await deviceRef.once("value");
-        const deviceInfo = deviceSnapshot.val();
-        if (!deviceInfo || !deviceInfo.userId) {
-            console.log("Device info or userId not found");
-            return null;
-        }
-        // Get user's baseline HR from Supabase
-        const userRef = admin
-            .database()
-            .ref(`/users/${deviceInfo.userId}/baseline`);
-        const baselineSnapshot = await userRef.once("value");
-        const baseline = baselineSnapshot.val();
-        if (!baseline || !baseline.baselineHR) {
-            console.log(`No baseline found for user ${deviceInfo.userId}`);
-            return null;
-        }
-        // Analyze heart rate (20-30% above baseline)
-        const currentHR = afterData.heartRate;
-        const restingHR = baseline.baselineHR;
-        const hrThreshold = restingHR * 1.2; // 20% above
-        const severityThreshold = restingHR * 1.3; // 30% above
-        let hrAnalysis = { abnormal: false, severity: "normal", confidence: 0.6 };
-        if (currentHR > severityThreshold) {
-            hrAnalysis = { abnormal: true, severity: "high", confidence: 0.8 };
-        }
-        else if (currentHR > hrThreshold) {
-            hrAnalysis = { abnormal: true, severity: "elevated", confidence: 0.7 };
-        }
-        // Analyze SpO2 levels
-        const currentSpO2 = afterData.spo2;
-        let spo2Analysis = {
-            abnormal: false,
-            severity: "normal",
-            confidence: 0.6,
-        };
-        if (currentSpO2 < 90) {
-            spo2Analysis = {
-                abnormal: true,
-                severity: "critical",
-                confidence: 1.0,
-            };
-        }
-        else if (currentSpO2 < 94) {
-            spo2Analysis = { abnormal: true, severity: "low", confidence: 0.8 };
-        }
-        // Analyze movement (simple spike detection)
-        const currentMovement = afterData.movementLevel || 0;
-        let movementAnalysis = {
-            abnormal: false,
-            severity: "normal",
-            confidence: 0.6,
-        };
-        if (currentMovement > 80) {
-            movementAnalysis = {
-                abnormal: true,
-                severity: "high",
-                confidence: 0.7,
-            };
-        }
-        // Count abnormal metrics
-        const abnormalMetrics = [
-            hrAnalysis,
-            spo2Analysis,
-            movementAnalysis,
-        ].filter((a) => a.abnormal);
-        const abnormalCount = abnormalMetrics.length;
-        // Apply trigger logic
-        let triggered = false;
-        let requiresUserConfirmation = true;
-        let overallConfidence = 0.6;
-        let reason = "normal";
-        if (spo2Analysis.abnormal && spo2Analysis.severity === "critical") {
-            // Critical SpO2 always triggers immediately
-            triggered = true;
-            requiresUserConfirmation = false;
-            overallConfidence = 1.0;
-            reason = "criticalSpO2";
-        }
-        else if (abnormalCount >= 2) {
-            // Multiple abnormal metrics - auto-trigger
-            triggered = true;
-            requiresUserConfirmation = false;
-            overallConfidence = 0.85;
-            reason = "multipleAbnormal";
-        }
-        else if (abnormalCount === 1) {
-            // Single abnormal metric - request user confirmation
-            triggered = true;
-            requiresUserConfirmation = true;
-            overallConfidence = 0.65;
-            reason =
-                abnormalMetrics[0].severity === "critical"
-                    ? "singleCritical"
-                    : "singleAbnormal";
-        }
-        if (triggered) {
-            console.log(`Anxiety detected: ${reason} (confidence: ${overallConfidence})`);
-            // Store alert
-            const alertData = {
-                deviceId,
-                userId: deviceInfo.userId,
-                timestamp: Date.now(),
-                reason,
-                confidence: overallConfidence,
-                requiresUserConfirmation,
-                metrics: {
-                    heartRate: currentHR,
-                    baselineHR: restingHR,
-                    spO2: currentSpO2,
-                    movement: currentMovement,
-                },
-                analysis: {
-                    heartRate: hrAnalysis,
-                    spO2: spo2Analysis,
-                    movement: movementAnalysis,
-                },
-            };
-            await admin
-                .database()
-                .ref(`/devices/${deviceId}/anxiety_alerts`)
-                .push(alertData);
-            // Send notification
-            const notificationTitle = requiresUserConfirmation
-                ? "Are you feeling anxious?"
-                : "Anxiety Alert Detected";
-            const notificationBody = requiresUserConfirmation
-                ? `We detected some changes in your metrics. HR: ${currentHR} BPM, SpO2: ${currentSpO2}%`
-                : `Multiple concerning metrics detected. Please check your wellbeing.`;
-            const message = {
-                data: {
-                    type: "anxiety_detection",
-                    reason,
-                    confidence: overallConfidence.toString(),
-                    requiresConfirmation: requiresUserConfirmation.toString(),
-                    heartRate: currentHR.toString(),
-                    spO2: currentSpO2.toString(),
-                    deviceId,
-                    timestamp: Date.now().toString(),
-                },
-                notification: {
-                    title: notificationTitle,
-                    body: notificationBody,
-                },
-                topic: `user_${deviceInfo.userId}_anxiety_alerts`,
-            };
-            await admin.messaging().send(message);
-            console.log("Notification sent successfully");
-        }
-        return {
-            processed: true,
-            triggered,
-            reason,
-            confidence: overallConfidence,
-        };
-    }
-    catch (error) {
-        console.error("Error in anxiety detection:", error);
-        return null;
-    }
-});
 // ========================
 // BATTERY MONITORING FUNCTIONS
 // ========================

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
+// ...existing code...
 // package_info_plus removed from About to avoid runtime plugin issues
 import 'profile.dart';
 import 'providers/notification_provider.dart';
 import 'providers/auth_provider.dart';
 import 'utils/settings_helper.dart';
 import 'auth.dart'; // Import for AuthScreen
-import 'services/notification_service.dart';
+// ...existing code...
 import 'screens/baseline_recording_screen.dart';
 // Import for logout navigation
 
@@ -20,164 +19,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Anxiety prevention reminder settings
-  bool _anxietyRemindersEnabled = false;
-  // Breathing exercise reminder settings
-  bool _breathingRemindersEnabled = false;
-  final NotificationService _notificationService = NotificationService();
+  // ...existing code...
 
   @override
   void initState() {
     super.initState();
-    _loadReminderSettings();
-    _loadBreathingReminderSettings();
-  }
-
-  // Load the anxiety reminder settings
-  Future<void> _loadReminderSettings() async {
-    final bool enabled = await _notificationService.isAnxietyReminderEnabled();
-
-    setState(() {
-      _anxietyRemindersEnabled = enabled;
-    });
-  }
-
-  // Save the anxiety reminder settings
-  Future<void> _saveReminderSettings() async {
-    await _notificationService.setAnxietyReminderEnabled(
-      _anxietyRemindersEnabled,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_anxietyRemindersEnabled
-              ? 'Wellness reminders enabled'
-              : 'Wellness reminders disabled'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  // Load the breathing reminder settings
-  Future<void> _loadBreathingReminderSettings() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final enabled = prefs.getBool('breathing_reminders_enabled') ?? false;
-
-      setState(() {
-        _breathingRemindersEnabled = enabled;
-      });
-
-      // If reminders were enabled, make sure they're still scheduled
-      if (enabled) {
-        await _scheduleBreathingReminders();
-      }
-    } catch (e) {
-      debugPrint('Error loading breathing reminder settings: $e');
-    }
-  }
-
-  // Save the breathing reminder settings
-  Future<void> _saveBreathingReminderSettings() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(
-          'breathing_reminders_enabled', _breathingRemindersEnabled);
-
-      if (_breathingRemindersEnabled) {
-        // Schedule breathing exercise reminders using AwesomeNotifications
-        await _scheduleBreathingReminders();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  '🫁 Breathing reminders enabled - you\'ll receive a daily breathing exercise reminder'),
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        // Cancel all breathing reminder notifications
-        await _cancelBreathingReminders();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Breathing reminders disabled'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Error saving breathing reminder settings: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error updating breathing reminder settings'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _scheduleBreathingReminders() async {
-    try {
-      // Cancel any existing breathing reminders first
-      await _cancelBreathingReminders();
-
-      // DISABLED LOCAL SCHEDULING - Using cloud-based reminders instead
-      // This prevents duplicate breathing reminders (local + cloud)
-      debugPrint('ℹ️ Breathing reminders handled by Firebase cloud functions');
-      debugPrint('ℹ️ Local scheduling disabled to prevent duplicates');
-
-      // Store preference for user settings, but don't schedule locally
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('breathing_reminders_enabled', true);
-
-      /* COMMENTED OUT - CAUSES DUPLICATE NOTIFICATIONS WITH CLOUD FUNCTIONS
-      // Schedule repeating notifications every 30 minutes
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: 100, // Unique ID for breathing reminders
-          channelKey: 'wellness_reminders',
-          title: '🫁 Breathing Exercise Reminder',
-          body:
-              'Take a moment to relax and breathe. Your mental health matters.',
-          notificationLayout: NotificationLayout.Default,
-          category: NotificationCategory.Reminder,
-          payload: {
-            'type': 'reminder',
-            'related_screen': 'breathing_screen',
-          },
-        ),
-        schedule: NotificationInterval(
-          interval: const Duration(minutes: 30), // 30 minutes
-          timeZone: await AwesomeNotifications().getLocalTimeZoneIdentifier(),
-          preciseAlarm: true,
-          repeats: true,
-        ),
-      );
-      */
-
-      debugPrint(
-          '✅ Breathing reminder preference saved (cloud-based reminders active)');
-    } catch (e) {
-      debugPrint('❌ Error managing breathing reminders: $e');
-    }
-  }
-
-  Future<void> _cancelBreathingReminders() async {
-    try {
-      await AwesomeNotifications().cancel(100); // Cancel by ID
-      debugPrint('✅ Breathing exercise reminders cancelled');
-    } catch (e) {
-      debugPrint('❌ Error cancelling breathing reminders: $e');
-    }
   }
 
   @override
@@ -439,10 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             );
                           },
                         ),
-                        // Add anxiety prevention reminder settings
-                        _buildAnxietyReminderTile(),
-                        // Add breathing exercise reminder settings
-                        _buildBreathingReminderTile(),
+                        // ...existing code...
                         _buildSettingsTile(
                           icon: Icons.psychology,
                           title: 'About AnxieEase',
@@ -463,101 +306,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Build anxiety prevention reminder settings tile
-  Widget _buildAnxietyReminderTile() {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 8,
-      ),
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2D9254).withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(
-          Icons.watch_later_outlined,
-          color: const Color(0xFF2D9254),
-          size: 24,
-        ),
-      ),
-      title: Text(
-        'Wellness Reminder',
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-      ),
-      subtitle: Text(
-        _anxietyRemindersEnabled
-            ? 'Receive wellness messages'
-            : 'Reminders are disabled',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: 14,
-              color: Colors.black.withOpacity(0.6),
-            ),
-      ),
-      trailing: Switch(
-        value: _anxietyRemindersEnabled,
-        onChanged: (value) {
-          setState(() {
-            _anxietyRemindersEnabled = value;
-          });
-          _saveReminderSettings();
-        },
-        activeColor: const Color(0xFF2D9254),
-      ),
-    );
-  }
-
-  // Build breathing exercise reminder settings tile
-  Widget _buildBreathingReminderTile() {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 8,
-      ),
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Icon(
-          Icons.air,
-          color: Colors.blue,
-          size: 24,
-        ),
-      ),
-      title: Text(
-        'Breathing Exercise Reminder',
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-      ),
-      subtitle: Text(
-        _breathingRemindersEnabled
-            ? 'Receive a daily breathing exercise reminder'
-            : 'Breathing reminders are disabled',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: 14,
-              color: Colors.black.withOpacity(0.6),
-            ),
-      ),
-      trailing: Switch(
-        value: _breathingRemindersEnabled,
-        onChanged: (value) {
-          setState(() {
-            _breathingRemindersEnabled = value;
-          });
-          _saveBreathingReminderSettings();
-        },
-        activeColor: Colors.blue,
-      ),
-    );
-  }
+  // ...existing code...
 
   Widget _buildSettingsSection(String title, List<Widget> items) {
     return Column(
