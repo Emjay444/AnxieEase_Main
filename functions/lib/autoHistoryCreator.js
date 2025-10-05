@@ -2,41 +2,32 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.autoCreateDeviceHistory = void 0;
 const functions = require("firebase-functions/v1");
-const admin = require("firebase-admin");
-const db = admin.database();
+// admin import removed as this function is now disabled
 /**
- * Auto-create history from current data updates
- * This function runs when /devices/AnxieEase001/current is updated
- * and automatically saves a copy to /devices/AnxieEase001/history
+ * DISABLED: Auto-create history (prevents timestamp duplicates)
+ *
+ * This function has been disabled to prevent timestamp duplicate creation.
+ * The device now handles its own history in native format (YYYY_MM_DD_HH_MM_SS)
+ * and smartDeviceDataSync handles user session copying.
+ *
+ * IMPORTANT: Do not create timestamp-based history entries to avoid duplication!
  */
 exports.autoCreateDeviceHistory = functions.database
     .ref("/devices/AnxieEase001/current")
     .onWrite(async (change, context) => {
-    // Only process if data was created or updated (not deleted)
-    if (!change.after.exists()) {
-        console.log("📱 Device current data deleted - no history to create");
-        return null;
+    // DISABLED: This function no longer creates device history to prevent duplicates
+    console.log("📱 autoCreateDeviceHistory: DISABLED to prevent timestamp duplicates");
+    console.log("� Device native history (YYYY_MM_DD format) is handled by the wearable itself");
+    console.log("💡 User session history is handled by smartDeviceDataSync");
+    // Log that this function was triggered but took no action
+    if (change.after.exists()) {
+        console.log("✅ Device current data updated - letting device handle native history format");
+        console.log("🚫 NOT creating timestamp duplicate in device history");
     }
-    const currentData = change.after.val();
-    const timestamp = Date.now();
-    console.log(`📚 Auto-creating history entry for timestamp: ${timestamp}`);
-    try {
-        // Save current data to history
-        const historyRef = db.ref(`/devices/AnxieEase001/history/${timestamp}`);
-        await historyRef.set(Object.assign(Object.assign({}, currentData), { timestamp: timestamp, source: "auto_history_creator", created_from_current: true }));
-        console.log(`✅ History entry created successfully at ${timestamp}`);
-        return { success: true, timestamp };
-    }
-    catch (error) {
-        console.error("❌ Error creating history entry:", error);
-        // Log error for debugging
-        await db.ref("/system/errors").push({
-            type: "auto_history_creation_error",
-            timestamp: admin.database.ServerValue.TIMESTAMP,
-            error: error instanceof Error ? error.message : String(error),
-            currentData: currentData,
-        });
-        throw error;
-    }
+    return {
+        success: true,
+        action: "disabled_to_prevent_duplicates",
+        message: "Device handles native format, smartDeviceDataSync handles user sessions"
+    };
 });
 //# sourceMappingURL=autoHistoryCreator.js.map

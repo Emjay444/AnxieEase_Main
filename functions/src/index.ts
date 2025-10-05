@@ -26,10 +26,17 @@ export {
   monitorFirebaseUsage,
 } from "./dataCleanup";
 
-// Import and export device data copy functions for multi-user support
+// Import and export SMART device data sync (eliminates redundancy)
 export {
-  copyDeviceDataToUserSession,
-  copyDeviceCurrentToUserSession,
+  smartDeviceDataSync,
+  removeTimestampDuplicates,
+  monitorDuplicationPrevention,
+} from "./smartDeviceDataSync";
+
+// Import legacy device functions for compatibility (assignment functions still needed)
+// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession 
+// as they create timestamp duplicates. smartDeviceDataSync now handles this properly.
+export {
   assignDeviceToUser,
   getDeviceAssignment,
   cleanupOldSessions,

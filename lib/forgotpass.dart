@@ -181,7 +181,7 @@ class _ForgotpassState extends State<Forgotpass>
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          "Don't worry! It happens. Enter your email and we'll send you a reset link.",
+                          "Don’t worry! It happens. Enter your email and we’ll send you an OTP.",
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
@@ -210,26 +210,104 @@ class _ForgotpassState extends State<Forgotpass>
 
   // Simplified Lock Icon
   Widget _buildLockIcon() {
-    return Container(
-      width: 120,
-      height: 120,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white.withOpacity(0.2),
+    // Modernized lock icon with gradient ring, subtle glow and a smooth scale-in
+    const primary = Color(0xFF3AA772);
+    const secondary = Color(0xFF2D9254);
+
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: 0.92, end: 1.0),
+      builder: (context, scale, child) => Transform.scale(
+        scale: scale,
+        child: child,
       ),
-      child: Center(
-        child: Container(
-          width: 90,
-          height: 90,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white,
-          ),
-          child: const Icon(
-            Icons.lock_outline_rounded,
-            size: 50,
-            color: Color(0xFF3AA772),
-          ),
+      child: SizedBox(
+        width: 130,
+        height: 130,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Soft ambient glow
+            Container(
+              width: 116,
+              height: 116,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withOpacity(0.35),
+                    blurRadius: 36,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+
+            // Gradient halo ring
+            Container(
+              width: 120,
+              height: 120,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: SweepGradient(
+                  colors: [
+                    Color(0x263AA772), // primary 15%
+                    Color(0x7F3AA772), // primary 50%
+                    Color(0x992D9254), // secondary 60%
+                    Color(0x7F3AA772), // primary 50%
+                    Color(0x263AA772), // primary 15%
+                  ],
+                  stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                ),
+              ),
+            ),
+
+            // Inner white 'glass' plate
+            Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+            ),
+
+            // Specular highlight
+            Positioned(
+              top: 30,
+              left: 46,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.9),
+                ),
+              ),
+            ),
+
+            // Gradient-filled lock glyph
+            ShaderMask(
+              shaderCallback: (Rect bounds) => const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [primary, secondary],
+              ).createShader(bounds),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 54,
+                color: Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );

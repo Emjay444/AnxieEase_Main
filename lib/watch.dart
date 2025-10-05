@@ -46,17 +46,10 @@ class _WatchScreenState extends State<WatchScreen>
   bool isConnected = false; // Start disconnected
   bool _hasRealtimeData = false;
   bool _isDeviceSetup = false;
-  bool _isStale = false; // Mark when device data is stale (>5 min)
-  DateTime? _lastSeenAt; // Track last seen from Supabase/Firebase
-
-  // Connection states - start as disconnected
 
   // Firebase references and listeners
   StreamSubscription? _iotDataSubscription;
   late DatabaseReference _currentDataRef;
-
-  // Firebase validation timer
-  Timer? _firebaseValidationTimer;
 
   // Safe converters to avoid type issues and preserve last-known values
   double? _asDouble(dynamic v) {
@@ -140,102 +133,46 @@ class _WatchScreenState extends State<WatchScreen>
       _currentDataRef =
           FirebaseDatabase.instance.ref().child('devices/$deviceId/current');
 
-      // Listen to real-time current data updates
+      debugPrint(
+          '📱 WatchScreen: Initialized Firebase reference for device: $deviceId');
+      debugPrint('📱 WatchScreen: Firebase path: devices/$deviceId/current');
+
+      // Test Firebase connection by doing a one-time read
+      _testFirebaseConnection();
+
+      // Listen to real-time current data updates - SIMPLIFIED VERSION
       _iotDataSubscription = _currentDataRef.onValue.listen((event) {
         if (event.snapshot.value != null) {
           try {
             final data = event.snapshot.value as Map<dynamic, dynamic>;
+            debugPrint('📱 WatchScreen: Raw Firebase data: $data');
+
             setState(() {
-              // Extract sensor data
-              final bodyTempParsed = _asDouble(data['bodyTemp']);
-              if (bodyTempParsed != null) bodyTempValue = bodyTempParsed;
+              // Simply extract and display all data without any suppression logic
+              heartRateValue = _asDouble(data['heartRate']) ?? 0.0;
+              bodyTempValue = _asDouble(data['bodyTemp']) ?? 0.0;
+              ambientTempValue = _asDouble(data['ambientTemp']) ?? 0.0;
+              batteryPercentage = _asDouble(data['battPerc']) ?? 0.0;
+              isDeviceWorn = _asBool(data['worn']) ?? false;
 
-              final ambientTempParsed = _asDouble(data['ambientTemp']);
-              if (ambientTempParsed != null)
-                ambientTempValue = ambientTempParsed;
+              // Always show as connected if we receive any data
+              isConnected = true;
+              _hasRealtimeData = true;
 
-              final hrParsed = _asDouble(data['heartRate']);
-              if (hrParsed != null) heartRateValue = hrParsed;
-
-              // Extract device status and battery data
-              final battParsed = _asDouble(data['battPerc']);
-              if (battParsed != null) {
-                batteryPercentage = battParsed;
-              }
-
-              final wornParsed = _asBool(data['worn']);
-              if (wornParsed != null) {
-                isDeviceWorn = wornParsed;
-              }
-
-              // Determine payload timestamp freshness if available
-              final ts = data['timestamp'];
-              DateTime? payloadTime;
-              if (ts is int) {
-                payloadTime = DateTime.fromMillisecondsSinceEpoch(ts);
-              } else if (ts is String) {
-                final parsed = int.tryParse(ts);
-                if (parsed != null) {
-                  payloadTime = DateTime.fromMillisecondsSinceEpoch(parsed);
-                }
-              }
-              if (payloadTime != null) {
-                _lastSeenAt = payloadTime;
-                final diffMin =
-                    DateTime.now().difference(payloadTime).inMinutes;
-                _isStale = diffMin > 5;
-              }
-
-              // Mark that we have received live data
-              final wasFirstData = !_hasRealtimeData;
-              _hasRealtimeData = (hrParsed != null) ||
-                  (bodyTempParsed != null) ||
-                  (battParsed != null);
-
-              // Update connection status with freshness guard
-              if (_hasRealtimeData) {
-                // If payload is stale, treat as disconnected and clear vitals
-                if (_isStale) {
-                  isConnected = false;
-                  isDeviceWorn = false;
-                  heartRateValue = null;
-                  bodyTempValue = null;
-                  ambientTempValue = null;
-                  // Keep ambient/battery optional, but avoid implying live data
-                  debugPrint(
-                      '📱 WatchScreen: Stale Firebase payload - marking disconnected');
-                } else {
-                  // Freshness unknown or recent by payload; verify with Supabase last_seen_at as well
-                  // Use safe default as disconnected until verified fresh to avoid showing stale vitals
-                  if (_lastSeenAt == null) {
-                    isConnected = false;
-                    isDeviceWorn = false;
-                    heartRateValue = null;
-                    bodyTempValue = null;
-                    ambientTempValue = null;
-                  }
-                  _checkDeviceFreshness();
-                  if (wasFirstData) {
-                    debugPrint(
-                        '📱 WatchScreen: Firebase data received - checking device freshness');
-                  }
-                }
-              } else {
-                // Fallback to IoT service connection status only if not stale
-                isConnected = _isStale ? false : _iotSensorService.isConnected;
-              }
-
-              // If not worn, clear vitals to avoid misleading UI
-              if (!isDeviceWorn) {
-                heartRateValue = null;
-              }
+              debugPrint(
+                  '📱 WatchScreen: HR: $heartRateValue, Temp: $bodyTempValue, Battery: $batteryPercentage%, Worn: $isDeviceWorn');
             });
-            // Update pulse speed based on latest values
+
+            // Update pulse animation
             _updatePulseAnimation();
           } catch (e) {
-            debugPrint('Error parsing IoT data: $e');
+            debugPrint('❌ WatchScreen: Error parsing Firebase data: $e');
           }
+        } else {
+          debugPrint('📱 WatchScreen: Firebase snapshot value is null');
         }
+      }, onError: (error) {
+        debugPrint('❌ WatchScreen: Firebase listener error: $error');
       });
 
       setState(() {
@@ -259,6 +196,23 @@ class _WatchScreenState extends State<WatchScreen>
     } else {
       _pulseController.stop();
       _pulseController.reset();
+    }
+  }
+
+  // Test Firebase connection
+  Future<void> _testFirebaseConnection() async {
+    try {
+      debugPrint('🔥 WatchScreen: Testing Firebase connection...');
+      final snapshot = await _currentDataRef.get();
+
+      if (snapshot.exists) {
+        debugPrint('🔥 WatchScreen: Firebase connection successful!');
+        debugPrint('🔥 WatchScreen: Data exists: ${snapshot.value}');
+      } else {
+        debugPrint('🔥 WatchScreen: Firebase connected but no data at path');
+      }
+    } catch (e) {
+      debugPrint('❌ WatchScreen: Firebase connection test failed: $e');
     }
   }
 
@@ -340,71 +294,6 @@ class _WatchScreenState extends State<WatchScreen>
       _isDeviceSetup = false;
       debugPrint('Device setup check: No assigned device (error: $e)');
     }
-  }
-
-  /// Check if assigned device data is fresh (has been seen recently)
-  void _checkDeviceFreshness() {
-    final adminDeviceService = AdminDeviceManagementService();
-
-    adminDeviceService.getCurrentAssignmentInfo().then((deviceInfo) {
-      if (deviceInfo != null) {
-        final lastSeenStr = deviceInfo['last_seen_at'] as String?;
-
-        if (lastSeenStr != null) {
-          final lastSeen = DateTime.parse(lastSeenStr);
-          final minutesSinceLastSeen =
-              DateTime.now().difference(lastSeen).inMinutes;
-
-          if (mounted) {
-            setState(() {
-              // If device hasn't been seen in over 5 minutes, mark as disconnected
-              if (minutesSinceLastSeen > 5) {
-                isConnected = false;
-                _hasRealtimeData = false;
-                _isStale = true;
-                _lastSeenAt = lastSeen;
-                // Clear vitals and worn state to avoid misleading UI
-                isDeviceWorn = false;
-                heartRateValue = null;
-                debugPrint(
-                    'Device freshness check: Device stale - last seen $minutesSinceLastSeen minutes ago');
-              } else {
-                isConnected = true;
-                _isStale = false;
-                _lastSeenAt = lastSeen;
-                debugPrint('Device freshness check: Device recently active');
-              }
-            });
-          }
-        } else {
-          // No last_seen_at data, assume disconnected
-          if (mounted) {
-            setState(() {
-              isConnected = false;
-              _hasRealtimeData = false;
-              _isStale = true;
-              // Clear vitals and worn state to avoid misleading UI
-              isDeviceWorn = false;
-              heartRateValue = null;
-            });
-            debugPrint(
-                'Device freshness check: No last seen data - assuming disconnected');
-          }
-        }
-      }
-    }).catchError((error) {
-      debugPrint('Device freshness check error: $error');
-      if (mounted) {
-        setState(() {
-          isConnected = false;
-          _hasRealtimeData = false;
-          _isStale = true;
-          // Clear vitals and worn state to avoid misleading UI
-          isDeviceWorn = false;
-          heartRateValue = null;
-        });
-      }
-    });
   }
 
   void _startPeriodicRefresh() {
@@ -502,7 +391,7 @@ class _WatchScreenState extends State<WatchScreen>
     _fadeController.dispose();
     _refreshTimer?.cancel();
     _iotDataSubscription?.cancel();
-    _firebaseValidationTimer?.cancel();
+
     _iotSensorService.removeListener(_onIoTSensorChanged);
     super.dispose();
   }
@@ -613,7 +502,6 @@ class _WatchScreenState extends State<WatchScreen>
           children: [
             // Low battery warning banner
             if (isConnected &&
-                !_isStale &&
                 batteryPercentage != null &&
                 batteryPercentage! <= 10 &&
                 batteryPercentage! > 0)
@@ -949,7 +837,7 @@ class _WatchScreenState extends State<WatchScreen>
 
   Widget _buildBatteryStatusItem() {
     final battery = batteryPercentage ?? 0;
-    final isDisconnected = !isConnected || _isStale;
+    final isDisconnected = !isConnected;
     final isLowBattery = battery <= 10;
     final isCriticalBattery = battery <= 5;
     // Treat disconnected or stale as offline for battery display
@@ -1346,14 +1234,14 @@ class _WatchScreenState extends State<WatchScreen>
 
   Color _getConnectionStatusColor() {
     if (!isConnected) return Colors.red;
-    if (_isStale) return Colors.orange;
+
     if (!isDeviceWorn) return Colors.orange;
     return Colors.green;
   }
 
   String _getConnectionStatusText() {
     if (!isConnected) return 'Disconnected';
-    if (_isStale) return 'Stale Data';
+
     if (!isDeviceWorn) return 'Not Worn';
     return 'Active';
   }

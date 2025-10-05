@@ -20,6 +20,8 @@ catch (_c) { }
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
 const rateLimit = new Map(); // userId -> lastNotificationTime
+// Sustained anxiety detection configuration
+const MIN_SUSTAINED_DURATION_SECONDS = 90; // Require 90+ seconds of continuous elevation (1.5 minutes)
 /**
  * Real-time anxiety detection with user-specific analysis
  * Triggers when device current data is updated
@@ -100,7 +102,7 @@ exports.realTimeSustainedAnxietyDetection = functions.database
             });
         }
         else {
-            console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 60s required)`);
+            console.log(`✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < ${MIN_SUSTAINED_DURATION_SECONDS}s required)`);
         }
         return null;
     }
@@ -204,7 +206,9 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
         const movementIntensity = calculateMovementIntensity(accelX, accelY, accelZ);
         // Check if this looks like exercise (to prevent false positives)
         const isExercise = isExercisePattern(movementIntensity, point.heartRate, baselineHR);
-        if (point.heartRate >= anxietyThreshold && point.worn !== 0 && !isExercise) {
+        if (point.heartRate >= anxietyThreshold &&
+            point.worn !== 0 &&
+            !isExercise) {
             // Heart rate is elevated AND it doesn't look like exercise
             console.log(`📊 Valid anxiety point: HR=${point.heartRate}, Movement=${movementIntensity.toFixed(1)}, Exercise=${isExercise}`);
             if (currentSustainedStart === null) {
@@ -242,8 +246,8 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
             bestElevatedPoints = [...currentElevatedPoints];
         }
     }
-    // Check if we have 60+ seconds of sustained elevation for true anxiety detection
-    if (longestSustainedDuration >= 60 && bestElevatedPoints.length > 0) {
+    // Check if we have required duration of sustained elevation for true anxiety detection
+    if (longestSustainedDuration >= MIN_SUSTAINED_DURATION_SECONDS && bestElevatedPoints.length > 0) {
         const avgHR = bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
             bestElevatedPoints.length;
         const percentageAbove = Math.round(((avgHR - baselineHR) / baselineHR) * 100);

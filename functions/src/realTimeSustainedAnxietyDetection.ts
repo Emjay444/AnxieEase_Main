@@ -22,6 +22,9 @@ try {
 const RATE_LIMIT_WINDOW_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
 const rateLimit = new Map<string, number>(); // userId -> lastNotificationTime
 
+// Sustained anxiety detection configuration
+const MIN_SUSTAINED_DURATION_SECONDS = 90; // Require 90+ seconds of continuous elevation (1.5 minutes)
+
 /**
  * Real-time anxiety detection with user-specific analysis
  * Triggers when device current data is updated
@@ -150,7 +153,7 @@ export const realTimeSustainedAnxietyDetection = functions.database
         });
       } else {
         console.log(
-          `✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < 60s required)`
+          `✅ User ${userId}: Heart rate elevated but not sustained (${sustainedAnalysis.durationSeconds}s < ${MIN_SUSTAINED_DURATION_SECONDS}s required)`
         );
       }
 
@@ -390,8 +393,8 @@ function analyzeUserSustainedAnxiety(
     }
   }
 
-  // Check if we have 60+ seconds of sustained elevation for true anxiety detection
-  if (longestSustainedDuration >= 60 && bestElevatedPoints.length > 0) {
+  // Check if we have required duration of sustained elevation for true anxiety detection
+  if (longestSustainedDuration >= MIN_SUSTAINED_DURATION_SECONDS && bestElevatedPoints.length > 0) {
     const avgHR =
       bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
       bestElevatedPoints.length;

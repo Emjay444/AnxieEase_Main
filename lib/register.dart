@@ -28,6 +28,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
+  // Multi-step UI state
+  int _currentStep = 0; // 0: Personal, 1: Contact, 2: Account
+
   DateTime? _selectedBirthDate;
   String? _selectedSex;
 
@@ -39,18 +42,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // Form validation
   final _formKey = GlobalKey<FormState>();
-  final Map<String, String> _fieldErrors = {
-    'firstName': '',
-    'middleName': '',
-    'lastName': '',
-    'birthDate': '',
-    'sex': '',
-    'contactNumber': '',
-    'emergencyContact': '',
-    'email': '',
-    'password': '',
-    'confirmPassword': '',
-    'terms': '',
+  final Map<String, String?> _fieldErrors = {
+    'firstName': null,
+    'middleName': null, // Optional field starts with null
+    'lastName': null,
+    'birthDate': null,
+    'sex': null,
+    'contactNumber': null, // Optional field starts with null
+    'emergencyContact': null, // Optional field starts with null
+    'email': null,
+    'password': null,
+    'confirmPassword': null,
+    'terms': null,
   };
 
   // Track if form has been submitted to only show errors after submission attempt
@@ -66,82 +69,98 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     // Add listeners to name field controllers to validate input in real-time
     firstNameController.addListener(() {
-      if (firstNameController.text.isNotEmpty) {
-        setState(() {
-          if (!_isValidName(firstNameController.text)) {
-            _fieldErrors['firstName'] =
-                'Numbers and special characters are not allowed';
-          } else {
-            _fieldErrors['firstName'] = '';
-          }
-        });
-      }
+      setState(() {
+        final text = firstNameController.text.trim();
+        if (text.isEmpty) {
+          // Keep or set required only if form already submitted; otherwise no error yet
+          _fieldErrors['firstName'] =
+              _formSubmitted ? 'First name is required' : null;
+        } else if (text.length < 2) {
+          _fieldErrors['firstName'] =
+              'First name must be at least 2 characters';
+        } else if (!_isValidName(text)) {
+          _fieldErrors['firstName'] =
+              'Numbers and special characters are not allowed';
+        } else {
+          _fieldErrors['firstName'] = null;
+        }
+      });
     });
 
     middleNameController.addListener(() {
-      if (middleNameController.text.isNotEmpty) {
-        setState(() {
+      setState(() {
+        if (middleNameController.text.isNotEmpty) {
           if (!_isValidName(middleNameController.text)) {
             _fieldErrors['middleName'] =
                 'Numbers and special characters are not allowed';
           } else {
-            _fieldErrors['middleName'] = '';
+            _fieldErrors['middleName'] = null;
           }
-        });
-      }
+        } else {
+          // Clear error when field is empty since it's optional
+          _fieldErrors['middleName'] = null;
+        }
+      });
     });
 
     lastNameController.addListener(() {
-      if (lastNameController.text.isNotEmpty) {
-        setState(() {
-          if (!_isValidName(lastNameController.text)) {
-            _fieldErrors['lastName'] =
-                'Numbers and special characters are not allowed';
-          } else {
-            _fieldErrors['lastName'] = '';
-          }
-        });
-      }
+      setState(() {
+        final text = lastNameController.text.trim();
+        if (text.isEmpty) {
+          _fieldErrors['lastName'] =
+              _formSubmitted ? 'Last name is required' : null;
+        } else if (text.length < 2) {
+          _fieldErrors['lastName'] = 'Last name must be at least 2 characters';
+        } else if (!_isValidName(text)) {
+          _fieldErrors['lastName'] =
+              'Numbers and special characters are not allowed';
+        } else {
+          _fieldErrors['lastName'] = null;
+        }
+      });
     });
 
-    // Add listener for contact number validation
+    // Add listener for contact number validation (required)
     contactNumberController.addListener(() {
-      if (contactNumberController.text.isNotEmpty) {
-        setState(() {
-          if (!_isValidPhoneNumber(contactNumberController.text)) {
-            _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
-          } else {
-            _fieldErrors['contactNumber'] = '';
-          }
-        });
-      }
+      setState(() {
+        if (contactNumberController.text.trim().isEmpty) {
+          _fieldErrors['contactNumber'] = 'Contact number is required';
+        } else if (!_isValidPhoneNumber(contactNumberController.text.trim())) {
+          _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
+        } else {
+          _fieldErrors['contactNumber'] = null;
+        }
+      });
     });
 
-    // Add listener for emergency contact validation
+    // Add listener for emergency contact validation (required)
     emergencyContactController.addListener(() {
-      if (emergencyContactController.text.isNotEmpty) {
-        setState(() {
-          if (!_isValidPhoneNumber(emergencyContactController.text)) {
-            _fieldErrors['emergencyContact'] =
-                'Please enter a valid phone number';
-          } else {
-            _fieldErrors['emergencyContact'] = '';
-          }
-        });
-      }
+      setState(() {
+        if (emergencyContactController.text.trim().isEmpty) {
+          _fieldErrors['emergencyContact'] =
+              'Emergency contact number is required';
+        } else if (!_isValidPhoneNumber(
+            emergencyContactController.text.trim())) {
+          _fieldErrors['emergencyContact'] =
+              'Please enter a valid phone number';
+        } else {
+          _fieldErrors['emergencyContact'] = null;
+        }
+      });
     });
 
     // Add listener for email validation
     emailController.addListener(() {
-      if (emailController.text.isNotEmpty) {
-        setState(() {
-          if (!_isValidEmail(emailController.text)) {
-            _fieldErrors['email'] = 'Please enter a valid email address';
-          } else {
-            _fieldErrors['email'] = '';
-          }
-        });
-      }
+      setState(() {
+        final text = emailController.text.trim();
+        if (text.isEmpty) {
+          _fieldErrors['email'] = _formSubmitted ? 'Email is required' : null;
+        } else if (!_isValidEmail(text)) {
+          _fieldErrors['email'] = 'Please enter a valid email address';
+        } else {
+          _fieldErrors['email'] = null;
+        }
+      });
     });
 
     // Add listener for password validation
@@ -181,31 +200,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     // Add listener for confirm password validation
-    confirmPasswordController.addListener(() {
-      if (confirmPasswordController.text.isNotEmpty) {
-        setState(() {
-          if (passwordController.text != confirmPasswordController.text) {
-            _fieldErrors['confirmPassword'] = 'Passwords do not match';
-          } else {
-            _fieldErrors['confirmPassword'] = '';
-          }
-        });
-      }
+    passwordController.addListener(() {
+      setState(() {
+        final text = passwordController.text;
+        if (text.isEmpty) {
+          _fieldErrors['password'] =
+              _formSubmitted ? 'Password is required' : null;
+        } else if (!_isPasswordValid(text)) {
+          final validation = _validatePassword(text);
+          List<String> missingRequirements = [];
+          if (!validation['length']!) missingRequirements.add('8+ characters');
+          if (!validation['uppercase']!)
+            missingRequirements.add('uppercase letter');
+          if (!validation['lowercase']!)
+            missingRequirements.add('lowercase letter');
+          if (!validation['number']!) missingRequirements.add('number');
+          if (!validation['special']!)
+            missingRequirements.add('special character');
+          _fieldErrors['password'] =
+              'Password must contain: ${missingRequirements.join(', ')}';
+        } else {
+          _fieldErrors['password'] = null;
+        }
+      });
     });
-  }
-
-  @override
-  void dispose() {
-    firstNameController.dispose();
-    middleNameController.dispose();
-    lastNameController.dispose();
-    birthDateController.dispose();
-    contactNumberController.dispose();
-    emergencyContactController.dispose();
-    emailController.dispose();
-    passwordController.dispose();
-    confirmPasswordController.dispose();
-    super.dispose();
   }
 
   // Validate if string contains only letters and spaces
@@ -275,7 +293,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _resetFieldErrors() {
     setState(() {
       for (var key in _fieldErrors.keys) {
-        _fieldErrors[key] = '';
+        _fieldErrors[key] = null;
       }
     });
   }
@@ -324,7 +342,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           _fieldErrors['birthDate'] =
               'Please enter a valid birth date (13-120 years old)';
         } else {
-          _fieldErrors['birthDate'] = '';
+          _fieldErrors['birthDate'] = null;
         }
       });
     }
@@ -354,6 +372,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _fieldErrors['middleName'] =
           'Numbers and special characters are not allowed';
       isValid = false;
+    } else {
+      // Clear error if middle name is empty (optional) or valid
+      _fieldErrors['middleName'] = null;
     }
 
     // Last Name validation
@@ -385,18 +406,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
       isValid = false;
     }
 
-    // Contact number validation
-    if (contactNumberController.text.trim().isNotEmpty &&
-        !_isValidPhoneNumber(contactNumberController.text.trim())) {
+    // Contact number validation (required)
+    if (contactNumberController.text.trim().isEmpty) {
+      _fieldErrors['contactNumber'] = 'Contact number is required';
+      isValid = false;
+    } else if (!_isValidPhoneNumber(contactNumberController.text.trim())) {
       _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
       isValid = false;
+    } else {
+      _fieldErrors['contactNumber'] = null;
     }
 
-    // Emergency contact validation
-    if (emergencyContactController.text.trim().isNotEmpty &&
-        !_isValidPhoneNumber(emergencyContactController.text.trim())) {
+    // Emergency contact validation (required)
+    if (emergencyContactController.text.trim().isEmpty) {
+      _fieldErrors['emergencyContact'] = 'Emergency contact number is required';
+      isValid = false;
+    } else if (!_isValidPhoneNumber(emergencyContactController.text.trim())) {
       _fieldErrors['emergencyContact'] = 'Please enter a valid phone number';
       isValid = false;
+    } else {
+      _fieldErrors['emergencyContact'] = null;
     }
 
     // Email validation
@@ -582,8 +611,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     bool isPhoneNumber = label.toLowerCase().contains('contact') ||
         label.toLowerCase().contains('phone');
 
-    // Check if there's an error with this field
-    bool hasError = errorText?.isNotEmpty == true;
+    // Debug print for middle name field
+    if (label.contains('Middle Name')) {
+      print(
+          'Middle Name Debug - errorText: "$errorText", hasError: ${errorText != null && errorText.isNotEmpty}, controller.text: "${controller.text}", controller.text.isEmpty: ${controller.text.isEmpty}');
+    }
+
+    // Check if there's an error with this field - handle both null and empty string cases
+    bool hasError = errorText != null && errorText.isNotEmpty;
+
+    // Special handling for optional fields - don't show error styling when empty
+    bool isOptionalField = label.toLowerCase().contains('optional');
 
     // Only show error text if form has been submitted or if the field has been edited and has an error
     String? displayErrorText =
@@ -591,8 +629,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ? errorText
             : null;
 
-    // Always use error styling if there's an error, even if we're not showing the error text yet
-    bool useErrorStyling = hasError && controller.text.isNotEmpty;
+    // Use error styling if there's an error and the field has content
+    // For optional fields, never show error styling when empty
+    bool useErrorStyling = hasError &&
+        controller.text.isNotEmpty &&
+        !(isOptionalField && controller.text.isEmpty);
 
     return Container(
       decoration: BoxDecoration(
@@ -872,99 +913,107 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     key: _formKey,
                     child: Column(
                       children: [
-                        buildInputField(
-                          firstNameController,
-                          "First Name",
-                          errorText: _fieldErrors['firstName'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          middleNameController,
-                          "Middle Name (Optional)",
-                          errorText: _fieldErrors['middleName'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          lastNameController,
-                          "Last Name",
-                          errorText: _fieldErrors['lastName'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          birthDateController,
-                          "Birth Date",
-                          errorText: _fieldErrors['birthDate'],
-                          isDatePicker: true,
-                        ),
-                        const SizedBox(height: 15),
-                        // Sex dropdown
-                        _buildSexDropdown(),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          contactNumberController,
-                          "Contact Number",
-                          errorText: _fieldErrors['contactNumber'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          emergencyContactController,
-                          "Emergency Contact Number",
-                          errorText: _fieldErrors['emergencyContact'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          emailController,
-                          "Email",
-                          errorText: _fieldErrors['email'],
-                        ),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          passwordController,
-                          "Password",
-                          errorText: _fieldErrors['password'],
-                        ),
-                        _buildPasswordStrengthIndicator(
-                            passwordController.text),
-                        const SizedBox(height: 15),
-                        buildInputField(
-                          confirmPasswordController,
-                          "Confirm Password",
-                          errorText: _fieldErrors['confirmPassword'],
-                        ),
-                        const SizedBox(height: 15),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: agreeToTerms,
-                                  onChanged: (bool? value) {
-                                    setState(() {
-                                      agreeToTerms = value ?? false;
-                                    });
-                                  },
-                                  activeColor: Colors.green,
-                                ),
-                                const Expanded(
-                                  child: ClickableTermsText(),
-                                ),
-                              ],
-                            ),
-                            if (_formSubmitted &&
-                                (_fieldErrors['terms']?.isNotEmpty ?? false))
-                              Padding(
-                                padding: const EdgeInsets.only(left: 12.0),
-                                child: Text(
-                                  _fieldErrors['terms']!,
-                                  style: const TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 12,
+                        _buildStepIndicator(),
+                        const SizedBox(height: 12),
+                        if (_currentStep == 0) ...[
+                          // Personal
+                          buildInputField(
+                            firstNameController,
+                            "First Name",
+                            errorText: _fieldErrors['firstName'],
+                          ),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            middleNameController,
+                            "Middle Name (Optional)",
+                            errorText: _fieldErrors['middleName'],
+                          ),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            lastNameController,
+                            "Last Name",
+                            errorText: _fieldErrors['lastName'],
+                          ),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            birthDateController,
+                            "Birth Date",
+                            errorText: _fieldErrors['birthDate'],
+                            isDatePicker: true,
+                          ),
+                          const SizedBox(height: 15),
+                          _buildSexDropdown(),
+                        ] else if (_currentStep == 1) ...[
+                          // Contact
+                          buildInputField(
+                            contactNumberController,
+                            "Contact Number",
+                            errorText: _fieldErrors['contactNumber'],
+                          ),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            emergencyContactController,
+                            "Emergency Contact Number",
+                            errorText: _fieldErrors['emergencyContact'],
+                          ),
+                        ] else ...[
+                          // Account
+                          buildInputField(
+                            emailController,
+                            "Email",
+                            errorText: _fieldErrors['email'],
+                          ),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            passwordController,
+                            "Password",
+                            errorText: _fieldErrors['password'],
+                          ),
+                          _buildPasswordStrengthIndicator(
+                              passwordController.text),
+                          const SizedBox(height: 15),
+                          buildInputField(
+                            confirmPasswordController,
+                            "Confirm Password",
+                            errorText: _fieldErrors['confirmPassword'],
+                          ),
+                          const SizedBox(height: 15),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: agreeToTerms,
+                                    onChanged: (bool? value) {
+                                      setState(() {
+                                        agreeToTerms = value ?? false;
+                                      });
+                                    },
+                                    activeColor: Colors.green,
+                                  ),
+                                  const Expanded(
+                                    child: ClickableTermsText(),
+                                  ),
+                                ],
+                              ),
+                              if (_formSubmitted &&
+                                  (_fieldErrors['terms']?.isNotEmpty ?? false))
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 12.0),
+                                  child: Text(
+                                    _fieldErrors['terms'] ?? '',
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        _buildStepNavigation(authProvider),
                         const SizedBox(height: 10),
                         GestureDetector(
                           onTap: widget.onSwitch,
@@ -976,34 +1025,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: authProvider.isLoading
-                              ? null
-                              : () => _submit(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF3AA772),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 100, vertical: 15),
-                            elevation: 3,
-                          ),
-                          child: authProvider.isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  "Sign Up",
-                                  style: TextStyle(
-                                      fontSize: 18, color: Colors.white),
-                                ),
-                        ),
                         const SizedBox(height: 30),
                       ],
                     ),
@@ -1023,6 +1044,197 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
   }
+
+  Widget _buildStepIndicator() {
+    // Dot-based indicator: active step is a pill, others small circles
+    Widget dot(int index) {
+      final bool active = index == _currentStep;
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: active ? 28 : 10,
+        height: 10,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF2D9254) : Colors.grey.shade400,
+          borderRadius: BorderRadius.circular(100),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [dot(0), dot(1), dot(2)],
+    );
+  }
+
+  Widget _buildStepNavigation(AuthProvider authProvider) {
+    final isFirst = _currentStep == 0;
+    final isLast = _currentStep == 2;
+
+    Future<bool> validateCurrentStep() async {
+      // Run partial validation for current step only, set errors accordingly
+      _resetFieldErrors();
+      bool ok = true;
+      if (_currentStep == 0) {
+        // Personal
+        if (firstNameController.text.trim().isEmpty) {
+          _fieldErrors['firstName'] = 'First name is required';
+          ok = false;
+        } else if (firstNameController.text.trim().length < 2) {
+          _fieldErrors['firstName'] =
+              'First name must be at least 2 characters';
+          ok = false;
+        } else if (!_isValidName(firstNameController.text.trim())) {
+          _fieldErrors['firstName'] =
+              'Numbers and special characters are not allowed';
+          ok = false;
+        }
+
+        if (lastNameController.text.trim().isEmpty) {
+          _fieldErrors['lastName'] = 'Last name is required';
+          ok = false;
+        } else if (lastNameController.text.trim().length < 2) {
+          _fieldErrors['lastName'] = 'Last name must be at least 2 characters';
+          ok = false;
+        } else if (!_isValidName(lastNameController.text.trim())) {
+          _fieldErrors['lastName'] =
+              'Numbers and special characters are not allowed';
+          ok = false;
+        }
+
+        if (_selectedBirthDate == null) {
+          _fieldErrors['birthDate'] = 'Birth date is required';
+          ok = false;
+        }
+        if (_selectedSex == null) {
+          _fieldErrors['sex'] = 'Please select a sex';
+          ok = false;
+        }
+      } else if (_currentStep == 1) {
+        // Contact
+        if (contactNumberController.text.trim().isEmpty) {
+          _fieldErrors['contactNumber'] = 'Contact number is required';
+          ok = false;
+        } else if (!_isValidPhoneNumber(contactNumberController.text.trim())) {
+          _fieldErrors['contactNumber'] = 'Please enter a valid phone number';
+          ok = false;
+        }
+        if (emergencyContactController.text.trim().isEmpty) {
+          _fieldErrors['emergencyContact'] =
+              'Emergency contact number is required';
+          ok = false;
+        } else if (!_isValidPhoneNumber(
+            emergencyContactController.text.trim())) {
+          _fieldErrors['emergencyContact'] =
+              'Please enter a valid phone number';
+          ok = false;
+        }
+      } else {
+        // Account
+        if (emailController.text.trim().isEmpty) {
+          _fieldErrors['email'] = 'Email is required';
+          ok = false;
+        } else if (!_isValidEmail(emailController.text.trim())) {
+          _fieldErrors['email'] = 'Please enter a valid email address';
+          ok = false;
+        }
+
+        if (passwordController.text.isEmpty) {
+          _fieldErrors['password'] = 'Password is required';
+          ok = false;
+        } else if (!_isPasswordValid(passwordController.text)) {
+          final validation = _validatePassword(passwordController.text);
+          List<String> missingRequirements = [];
+          if (!validation['length']!) missingRequirements.add('8+ characters');
+          if (!validation['uppercase']!)
+            missingRequirements.add('uppercase letter');
+          if (!validation['lowercase']!)
+            missingRequirements.add('lowercase letter');
+          if (!validation['number']!) missingRequirements.add('number');
+          if (!validation['special']!)
+            missingRequirements.add('special character');
+          _fieldErrors['password'] =
+              'Password must contain: ${missingRequirements.join(', ')}';
+          ok = false;
+        }
+
+        if (confirmPasswordController.text.isEmpty) {
+          _fieldErrors['confirmPassword'] = 'Please confirm your password';
+          ok = false;
+        } else if (passwordController.text != confirmPasswordController.text) {
+          _fieldErrors['confirmPassword'] = 'Passwords do not match';
+          ok = false;
+        }
+
+        if (!agreeToTerms) {
+          _fieldErrors['terms'] = 'You must agree to the Terms & Privacy';
+          ok = false;
+        }
+      }
+      setState(() {});
+      return ok;
+    }
+
+    return Row(
+      children: [
+        if (!isFirst)
+          Expanded(
+            child: OutlinedButton(
+              onPressed: authProvider.isLoading
+                  ? null
+                  : () => setState(() => _currentStep -= 1),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: const Text('Back'),
+            ),
+          ),
+        if (!isFirst) const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: authProvider.isLoading
+                ? null
+                : () async {
+                    // Force-show validation messages for empty fields
+                    setState(() => _formSubmitted = true);
+                    final ok = await validateCurrentStep();
+                    if (!ok) return; // stay on step, errors are shown
+
+                    // Clear submit flag when proceeding
+                    if (!isLast) {
+                      setState(() {
+                        _formSubmitted = false;
+                        _currentStep += 1;
+                      });
+                    } else {
+                      // Final submit (full validation remains in _submit)
+                      _submit(context);
+                    }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3AA772),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: authProvider.isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Text(isLast ? 'Sign Up' : 'Next'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Removed _isCurrentStepReady(); Next button validates on press
 
   Widget _buildSexDropdown() {
     // Check if there's an error with this field
@@ -1077,9 +1289,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         onChanged: (String? newValue) {
           setState(() {
             _selectedSex = newValue;
-            if (_fieldErrors['sex']?.isNotEmpty == true) {
-              _fieldErrors['sex'] = '';
-            }
+            // Clear error when user selects a sex
+            _fieldErrors['sex'] = null;
           });
         },
         items: _sexOptions.map<DropdownMenuItem<String>>((String value) {

@@ -20,7 +20,9 @@ interface DeviceAssignment {
 
 /**
  * Interface for sensor data from the wearable device
+ * COMMENTED OUT - Only used by disabled functions
  */
+/*
 interface SensorData {
   heartRate: number;
   spo2: number;
@@ -38,13 +40,19 @@ interface SensorData {
   pitch?: number;
   roll?: number;
 }
+*/
 
 /**
+ * DISABLED: This function creates timestamp duplicates in user sessions
+ * REPLACED BY: smartDeviceDataSync which prevents duplicates
+ * 
  * Cloud Function: Copy device history data to user sessions
  *
  * Triggers when new data is written to /devices/AnxieEase001/history/{timestamp}
  * Automatically copies the data to the assigned user's session history
  */
+/*
+// DISABLED - Creates timestamp duplicates
 export const copyDeviceDataToUserSession = functions.database
   .ref("/devices/AnxieEase001/history/{timestamp}")
   .onCreate(async (snapshot, context) => {
@@ -138,13 +146,19 @@ export const copyDeviceDataToUserSession = functions.database
       throw error;
     }
   });
+*/
 
 /**
+ * DISABLED: This function also creates timestamp duplicates
+ * REPLACED BY: smartDeviceDataSync and realTimeSustainedAnxietyDetection
+ * 
  * Cloud Function: Copy device current data to user session (real-time)
  *
  * Triggers when current data is updated on the device
  * Copies to user's current session for real-time monitoring
  */
+/*
+// DISABLED - Creates timestamp duplicates
 export const copyDeviceCurrentToUserSession = functions.database
   .ref("/devices/AnxieEase001/current")
   .onWrite(async (change, context) => {
@@ -238,6 +252,7 @@ export const copyDeviceCurrentToUserSession = functions.database
       throw error;
     }
   });
+*/
 
 /**
  * Cloud Function: Manage device assignment

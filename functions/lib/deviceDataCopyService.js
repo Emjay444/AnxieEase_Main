@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = void 0;
+exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin if not already initialized
@@ -9,136 +9,238 @@ if (!admin.apps.length) {
 }
 const db = admin.database();
 /**
+ * Interface for sensor data from the wearable device
+ * COMMENTED OUT - Only used by disabled functions
+ */
+/*
+interface SensorData {
+  heartRate: number;
+  spo2: number;
+  bodyTemp: number;
+  ambientTemp: number;
+  battPerc: number;
+  worn: number;
+  timestamp: number;
+  accelX?: number;
+  accelY?: number;
+  accelZ?: number;
+  gyroX?: number;
+  gyroY?: number;
+  gyroZ?: number;
+  pitch?: number;
+  roll?: number;
+}
+*/
+/**
+ * DISABLED: This function creates timestamp duplicates in user sessions
+ * REPLACED BY: smartDeviceDataSync which prevents duplicates
+ *
  * Cloud Function: Copy device history data to user sessions
  *
  * Triggers when new data is written to /devices/AnxieEase001/history/{timestamp}
  * Automatically copies the data to the assigned user's session history
  */
-exports.copyDeviceDataToUserSession = functions.database
-    .ref("/devices/AnxieEase001/history/{timestamp}")
-    .onCreate(async (snapshot, context) => {
+/*
+// DISABLED - Creates timestamp duplicates
+export const copyDeviceDataToUserSession = functions.database
+  .ref("/devices/AnxieEase001/history/{timestamp}")
+  .onCreate(async (snapshot, context) => {
     const timestamp = context.params.timestamp;
-    const sensorData = snapshot.val();
+    const sensorData = snapshot.val() as SensorData;
+
     console.log(`📊 New device data received at timestamp: ${timestamp}`);
+
     try {
-        // Get device assignment information
-        const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
-        const assignmentSnapshot = await assignmentRef.once("value");
-        if (!assignmentSnapshot.exists()) {
-            console.log("⚠️ No device assignment found - data will only stay in device history");
-            return null;
-        }
-        const rawAssignment = assignmentSnapshot.val();
-        const assignedUser = (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.assignedUser) || (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.userId);
-        const activeSessionId = (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.activeSessionId) || (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.sessionId);
-        if (!assignedUser || !activeSessionId) {
-            console.log("⚠️ Device not assigned to any user or no active session - skipping copy");
-            return null;
-        }
-        console.log(`👤 Device assigned to user: ${assignedUser}`);
-        console.log(`📋 Active session: ${activeSessionId}`);
-        // Validate sensor data
-        if (!sensorData || typeof sensorData !== "object") {
-            console.error("❌ Invalid sensor data received:", sensorData);
-            return null;
-        }
-        // Copy data to user's session history
-        const userSessionHistoryRef = db.ref(`/users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`);
-        // Add metadata about the copy operation
-        const enrichedData = Object.assign(Object.assign({}, sensorData), { deviceId: "AnxieEase001", copiedAt: admin.database.ServerValue.TIMESTAMP, sessionId: activeSessionId, userId: assignedUser });
-        await userSessionHistoryRef.set(enrichedData);
-        console.log(`✅ Data successfully copied to user session`);
-        console.log(`📍 Location: /users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`);
-        // Update session metadata with latest activity
-        const sessionMetadataRef = db.ref(`/users/${assignedUser}/sessions/${activeSessionId}/metadata`);
-        await sessionMetadataRef.update({
-            lastActivity: admin.database.ServerValue.TIMESTAMP,
-            lastDataTimestamp: parseInt(timestamp),
-            totalDataPoints: admin.database.ServerValue.increment(1),
-        });
-        return {
-            success: true,
-            userId: assignedUser,
-            sessionId: activeSessionId,
-        };
+      // Get device assignment information
+      const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
+      const assignmentSnapshot = await assignmentRef.once("value");
+
+      if (!assignmentSnapshot.exists()) {
+        console.log(
+          "⚠️ No device assignment found - data will only stay in device history"
+        );
+        return null;
+      }
+
+      const rawAssignment = assignmentSnapshot.val() as any;
+      const assignedUser = rawAssignment?.assignedUser || rawAssignment?.userId;
+      const activeSessionId =
+        rawAssignment?.activeSessionId || rawAssignment?.sessionId;
+
+      if (!assignedUser || !activeSessionId) {
+        console.log(
+          "⚠️ Device not assigned to any user or no active session - skipping copy"
+        );
+        return null;
+      }
+
+      console.log(`👤 Device assigned to user: ${assignedUser}`);
+      console.log(`📋 Active session: ${activeSessionId}`);
+
+      // Validate sensor data
+      if (!sensorData || typeof sensorData !== "object") {
+        console.error("❌ Invalid sensor data received:", sensorData);
+        return null;
+      }
+
+      // Copy data to user's session history
+      const userSessionHistoryRef = db.ref(
+        `/users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`
+      );
+
+      // Add metadata about the copy operation
+      const enrichedData = {
+        ...sensorData,
+        deviceId: "AnxieEase001",
+        copiedAt: admin.database.ServerValue.TIMESTAMP,
+        sessionId: activeSessionId,
+        userId: assignedUser,
+      };
+
+      await userSessionHistoryRef.set(enrichedData);
+
+      console.log(`✅ Data successfully copied to user session`);
+      console.log(
+        `📍 Location: /users/${assignedUser}/sessions/${activeSessionId}/history/${timestamp}`
+      );
+
+      // Update session metadata with latest activity
+      const sessionMetadataRef = db.ref(
+        `/users/${assignedUser}/sessions/${activeSessionId}/metadata`
+      );
+
+      await sessionMetadataRef.update({
+        lastActivity: admin.database.ServerValue.TIMESTAMP,
+        lastDataTimestamp: parseInt(timestamp),
+        totalDataPoints: admin.database.ServerValue.increment(1),
+      });
+
+      return {
+        success: true,
+        userId: assignedUser,
+        sessionId: activeSessionId,
+      };
+    } catch (error) {
+      console.error("❌ Error copying device data to user session:", error);
+
+      // Log error details for debugging
+      await db.ref("/system/errors").push({
+        type: "device_data_copy_error",
+        timestamp: admin.database.ServerValue.TIMESTAMP,
+        deviceTimestamp: timestamp,
+        error: error instanceof Error ? error.message : String(error),
+        data: sensorData,
+      });
+
+      throw error;
     }
-    catch (error) {
-        console.error("❌ Error copying device data to user session:", error);
-        // Log error details for debugging
-        await db.ref("/system/errors").push({
-            type: "device_data_copy_error",
-            timestamp: admin.database.ServerValue.TIMESTAMP,
-            deviceTimestamp: timestamp,
-            error: error instanceof Error ? error.message : String(error),
-            data: sensorData,
-        });
-        throw error;
-    }
-});
+  });
+*/
 /**
+ * DISABLED: This function also creates timestamp duplicates
+ * REPLACED BY: smartDeviceDataSync and realTimeSustainedAnxietyDetection
+ *
  * Cloud Function: Copy device current data to user session (real-time)
  *
  * Triggers when current data is updated on the device
  * Copies to user's current session for real-time monitoring
  */
-exports.copyDeviceCurrentToUserSession = functions.database
-    .ref("/devices/AnxieEase001/current")
-    .onWrite(async (change, context) => {
+/*
+// DISABLED - Creates timestamp duplicates
+export const copyDeviceCurrentToUserSession = functions.database
+  .ref("/devices/AnxieEase001/current")
+  .onWrite(async (change, context) => {
     // Only process if data was created or updated (not deleted)
     if (!change.after.exists()) {
-        console.log("📱 Device current data deleted - no action needed");
-        return null;
+      console.log("📱 Device current data deleted - no action needed");
+      return null;
     }
-    const currentData = change.after.val();
+
+    const currentData = change.after.val() as SensorData;
     console.log(`📊 Device current data updated`);
+
     try {
-        // Get device assignment information
-        const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
-        const assignmentSnapshot = await assignmentRef.once("value");
-        if (!assignmentSnapshot.exists()) {
-            console.log("⚠️ No device assignment found - current data stays in device only");
-            return null;
+      // Get device assignment information
+      const assignmentRef = db.ref("/devices/AnxieEase001/assignment");
+      const assignmentSnapshot = await assignmentRef.once("value");
+
+      if (!assignmentSnapshot.exists()) {
+        console.log(
+          "⚠️ No device assignment found - current data stays in device only"
+        );
+        return null;
+      }
+
+      const rawAssignment = assignmentSnapshot.val() as any;
+      const assignedUser = rawAssignment?.assignedUser || rawAssignment?.userId;
+      const activeSessionId =
+        rawAssignment?.activeSessionId || rawAssignment?.sessionId;
+
+      if (!assignedUser || !activeSessionId) {
+        console.log(
+          "⚠️ Device not assigned or no active session - skipping current data copy"
+        );
+        return null;
+      }
+
+      // Copy current data to user's session (current)
+      const userSessionCurrentRef = db.ref(
+        `/users/${assignedUser}/sessions/${activeSessionId}/current`
+      );
+
+      const enrichedCurrentData = {
+        ...currentData,
+        deviceId: "AnxieEase001",
+        lastUpdated: admin.database.ServerValue.TIMESTAMP,
+        sessionId: activeSessionId,
+        userId: assignedUser,
+      };
+
+      await userSessionCurrentRef.set(enrichedCurrentData);
+
+      console.log(
+        `✅ Current data copied to user session: ${assignedUser}/${activeSessionId}`
+      );
+
+      // Also append to user's session history to build sustained analysis window
+      try {
+        let ts = currentData.timestamp || Date.now();
+
+        // Convert string timestamp to numeric if needed
+        if (typeof ts === "string") {
+          // Convert "2025-09-26 21:40:23" format to milliseconds
+          ts = new Date(ts).getTime();
+          console.log(`🔄 Converted string timestamp to numeric: ${ts}`);
         }
-        const rawAssignment = assignmentSnapshot.val();
-        const assignedUser = (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.assignedUser) || (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.userId);
-        const activeSessionId = (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.activeSessionId) || (rawAssignment === null || rawAssignment === void 0 ? void 0 : rawAssignment.sessionId);
-        if (!assignedUser || !activeSessionId) {
-            console.log("⚠️ Device not assigned or no active session - skipping current data copy");
-            return null;
-        }
-        // Copy current data to user's session (current)
-        const userSessionCurrentRef = db.ref(`/users/${assignedUser}/sessions/${activeSessionId}/current`);
-        const enrichedCurrentData = Object.assign(Object.assign({}, currentData), { deviceId: "AnxieEase001", lastUpdated: admin.database.ServerValue.TIMESTAMP, sessionId: activeSessionId, userId: assignedUser });
-        await userSessionCurrentRef.set(enrichedCurrentData);
-        console.log(`✅ Current data copied to user session: ${assignedUser}/${activeSessionId}`);
-        // Also append to user's session history to build sustained analysis window
-        try {
-            let ts = currentData.timestamp || Date.now();
-            // Convert string timestamp to numeric if needed
-            if (typeof ts === "string") {
-                // Convert "2025-09-26 21:40:23" format to milliseconds
-                ts = new Date(ts).getTime();
-                console.log(`🔄 Converted string timestamp to numeric: ${ts}`);
-            }
-            const userSessionHistoryRef = db.ref(`/users/${assignedUser}/sessions/${activeSessionId}/history/${ts}`);
-            const enrichedHistoryData = Object.assign(Object.assign({}, currentData), { deviceId: "AnxieEase001", timestamp: ts, copiedAt: admin.database.ServerValue.TIMESTAMP, sessionId: activeSessionId, userId: assignedUser });
-            await userSessionHistoryRef.set(enrichedHistoryData);
-            console.log(`📝 Appended current data to history at ${ts}`);
-        }
-        catch (err) {
-            console.warn("⚠️ Failed to append current to history:", err);
-        }
-        return {
-            success: true,
-            userId: assignedUser,
-            sessionId: activeSessionId,
+
+        const userSessionHistoryRef = db.ref(
+          `/users/${assignedUser}/sessions/${activeSessionId}/history/${ts}`
+        );
+        const enrichedHistoryData = {
+          ...currentData,
+          deviceId: "AnxieEase001",
+          timestamp: ts, // Use numeric timestamp
+          copiedAt: admin.database.ServerValue.TIMESTAMP,
+          sessionId: activeSessionId,
+          userId: assignedUser,
         };
+        await userSessionHistoryRef.set(enrichedHistoryData);
+        console.log(`📝 Appended current data to history at ${ts}`);
+      } catch (err) {
+        console.warn("⚠️ Failed to append current to history:", err);
+      }
+
+      return {
+        success: true,
+        userId: assignedUser,
+        sessionId: activeSessionId,
+      };
+    } catch (error) {
+      console.error("❌ Error copying current data to user session:", error);
+      throw error;
     }
-    catch (error) {
-        console.error("❌ Error copying current data to user session:", error);
-        throw error;
-    }
-});
+  });
+*/
 /**
  * Cloud Function: Manage device assignment
  *

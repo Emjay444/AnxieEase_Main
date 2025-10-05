@@ -31,9 +31,9 @@ class IoTSensorService extends ChangeNotifier {
   static const int _minInterval = 5; // Minimum 5 seconds
   static const int _maxInterval = 15; // Maximum 15 seconds
 
-  // REAL DEVICE MODE: Disable automatic mock data generation
+  // TEMPORARILY ENABLE MOCK DATA for testing watch.dart data fetching
   bool _enableMockDataGeneration =
-      false; // Set to true only for testing without real device
+      true; // Set to true for testing without real device
   final String _deviceId = 'AnxieEase001';
   final String _userId = 'user_001';
 
@@ -408,18 +408,19 @@ class IoTSensorService extends ChangeNotifier {
         'accelZ': double.parse(accelZ.toStringAsFixed(2)),
         'ambientTemp': double.parse(_ambientTemperature.toStringAsFixed(1)),
         'battPerc': _isDeviceShutdown ? 0 : _batteryLevel.clamp(1, 100).round(),
-        'bodyTemp': _isDeviceWorn
-            ? double.parse(_bodyTemperature.toStringAsFixed(1))
-            : 0,
+        'bodyTemp': double.parse(
+            _bodyTemperature.toStringAsFixed(1)), // Always send during testing
         'gyroX': double.parse(gyroX.toStringAsFixed(2)),
         'gyroY': double.parse(gyroY.toStringAsFixed(2)),
         'gyroZ': double.parse(gyroZ.toStringAsFixed(2)),
-        'heartRate': _isDeviceWorn ? _heartRate.round() : 0,
+        'heartRate':
+            _heartRate.round(), // Always send heart rate during testing
         'pitch': double.parse(pitch.toStringAsFixed(1)),
         'roll': double.parse(roll.toStringAsFixed(1)),
-        'spo2': _isDeviceWorn ? double.parse(_spo2.toStringAsFixed(1)) : 0,
+        'spo2': double.parse(
+            _spo2.toStringAsFixed(1)), // Always send during testing
         'timestamp': ServerValue.timestamp,
-        'worn': _isDeviceWorn ? 1 : 0,
+        'worn': 1, // Always worn during testing
       };
 
       // Upload to Firebase Realtime Database

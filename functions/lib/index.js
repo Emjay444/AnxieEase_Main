@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.copyDeviceCurrentToUserSession = exports.copyDeviceDataToUserSession = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -23,10 +23,15 @@ var dataCleanup_1 = require("./dataCleanup");
 Object.defineProperty(exports, "cleanupHealthData", { enumerable: true, get: function () { return dataCleanup_1.cleanupHealthData; } });
 Object.defineProperty(exports, "aggregateHealthDataHourly", { enumerable: true, get: function () { return dataCleanup_1.aggregateHealthDataHourly; } });
 Object.defineProperty(exports, "monitorFirebaseUsage", { enumerable: true, get: function () { return dataCleanup_1.monitorFirebaseUsage; } });
-// Import and export device data copy functions for multi-user support
+// Import and export SMART device data sync (eliminates redundancy)
+var smartDeviceDataSync_1 = require("./smartDeviceDataSync");
+Object.defineProperty(exports, "smartDeviceDataSync", { enumerable: true, get: function () { return smartDeviceDataSync_1.smartDeviceDataSync; } });
+Object.defineProperty(exports, "removeTimestampDuplicates", { enumerable: true, get: function () { return smartDeviceDataSync_1.removeTimestampDuplicates; } });
+Object.defineProperty(exports, "monitorDuplicationPrevention", { enumerable: true, get: function () { return smartDeviceDataSync_1.monitorDuplicationPrevention; } });
+// Import legacy device functions for compatibility (assignment functions still needed)
+// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession 
+// as they create timestamp duplicates. smartDeviceDataSync now handles this properly.
 var deviceDataCopyService_1 = require("./deviceDataCopyService");
-Object.defineProperty(exports, "copyDeviceDataToUserSession", { enumerable: true, get: function () { return deviceDataCopyService_1.copyDeviceDataToUserSession; } });
-Object.defineProperty(exports, "copyDeviceCurrentToUserSession", { enumerable: true, get: function () { return deviceDataCopyService_1.copyDeviceCurrentToUserSession; } });
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
 Object.defineProperty(exports, "getDeviceAssignment", { enumerable: true, get: function () { return deviceDataCopyService_1.getDeviceAssignment; } });
 Object.defineProperty(exports, "cleanupOldSessions", { enumerable: true, get: function () { return deviceDataCopyService_1.cleanupOldSessions; } });

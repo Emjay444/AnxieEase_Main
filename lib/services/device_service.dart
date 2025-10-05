@@ -704,7 +704,10 @@ class DeviceService extends ChangeNotifier {
         _recentReadings.removeAt(0);
       }
 
-      // Run anxiety detection if we have valid data and baseline
+      // CLIENT-SIDE ANXIETY DETECTION DISABLED
+      // Using server-side detection only (realTimeSustainedAnxietyDetection with 90s threshold)
+      // This reduces false positives and battery usage while maintaining all FCM notifications
+      /*
       if (metrics.isWorn &&
           metrics.heartRate != null &&
           metrics.spo2 != null &&
@@ -712,6 +715,7 @@ class DeviceService extends ChangeNotifier {
           _currentBaseline != null) {
         _runAnxietyDetection(metrics);
       }
+      */
 
       notifyListeners();
 
@@ -930,7 +934,9 @@ class DeviceService extends ChangeNotifier {
     }
   }
 
-  /// Run comprehensive anxiety detection on current metrics
+  /// CLIENT-SIDE ANXIETY DETECTION DISABLED
+  /// Using server-side detection only for better accuracy and fewer false positives
+  /*
   void _runAnxietyDetection(HealthMetrics metrics) {
     try {
       if (_currentBaseline == null) {
@@ -963,8 +969,11 @@ class DeviceService extends ChangeNotifier {
       AppLogger.e('DeviceService: Error in anxiety detection', e as Object?);
     }
   }
+  */
 
-  /// Handle anxiety detection results
+  /// CLIENT-SIDE ANXIETY DETECTION METHODS DISABLED
+  /// All anxiety detection now handled server-side for better accuracy
+  /*
   Future<void> _handleAnxietyDetectionResult(
       AnxietyDetectionResult result, HealthMetrics metrics) async {
     try {
@@ -985,7 +994,9 @@ class DeviceService extends ChangeNotifier {
           e as Object?);
     }
   }
+  */
 
+  /*
   /// Store anxiety alert in Firebase
   Future<void> _storeAnxietyAlert(AnxietyDetectionResult result,
       HealthMetrics metrics, int timestamp) async {
@@ -1017,7 +1028,9 @@ class DeviceService extends ChangeNotifier {
       AppLogger.e('DeviceService: Failed to store anxiety alert', e as Object?);
     }
   }
+  */
 
+  /*
   /// Send anxiety notification with enhanced content
   Future<void> _sendAnxietyNotification(
       AnxietyDetectionResult result, HealthMetrics metrics) async {
@@ -1058,7 +1071,7 @@ class DeviceService extends ChangeNotifier {
           'Confidence: ${(result.confidenceLevel * 100).toStringAsFixed(0)}%');
 
       // Store confirmation request for analytics
-      await _storeNotificationEvent('confirmation_request', result, metrics);
+      await _storeNotificationEvent('anxiety_alert', result, metrics);
 
       // TODO: Show user prompt or notification asking for confirmation
       // This could be:
@@ -1071,7 +1084,9 @@ class DeviceService extends ChangeNotifier {
           'DeviceService: Failed to request user confirmation', e as Object?);
     }
   }
+  */
 
+  /*
   /// Generate notification content based on detection result
   Map<String, String> _generateNotificationContent(
       AnxietyDetectionResult result, HealthMetrics metrics) {
@@ -1123,7 +1138,9 @@ class DeviceService extends ChangeNotifier {
         };
     }
   }
+  */
 
+  /*
   /// Store notification event for analytics and history
   Future<void> _storeNotificationEvent(String eventType,
       AnxietyDetectionResult result, HealthMetrics metrics) async {
@@ -1158,6 +1175,7 @@ class DeviceService extends ChangeNotifier {
           'DeviceService: Failed to store notification event', e as Object?);
     }
   }
+  */
 
   /// Store alert data
   Future<void> _storeAlert(HealthMetrics metrics, int timestamp,
