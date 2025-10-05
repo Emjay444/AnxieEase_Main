@@ -137,7 +137,10 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
       await _deviceService.initialize();
 
       if (!_deviceService.hasLinkedDevice) {
-        Navigator.pop(context);
+        setState(() {
+          _errorMessage = 'No device linked. Please link a device in settings before recording baseline.';
+          _hasDeviceAssignment = false;
+        });
         return;
       }
     } catch (e) {
