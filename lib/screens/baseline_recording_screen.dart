@@ -138,7 +138,8 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
 
       if (!_deviceService.hasLinkedDevice) {
         setState(() {
-          _errorMessage = 'No device linked. Please link a device in settings before recording baseline.';
+          _errorMessage =
+              'No device linked. Please link a device in settings before recording baseline.';
           _hasDeviceAssignment = false;
         });
         return;
