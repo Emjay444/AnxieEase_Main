@@ -1428,7 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     itemBuilder: (context, index) {
                       final notification = snapshot.data![index];
                       final DateTime createdAt =
-                          DateTime.parse(notification['created_at']);
+                          DateTime.parse(notification['created_at']).toLocal();
                       final String timeAgo = timeago.format(createdAt);
 
                       IconData icon;
@@ -1444,9 +1444,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           mLower.contains('great to see you feeling') ||
                           mLower.contains('good vibes');
 
+                      // Check if this is a dismissed anxiety detection notification
+                      final isDismissed =
+                          tLower.contains('anxiety detection dismissed') ||
+                              tLower.contains('dismissed') &&
+                                  tLower.contains('anxiety');
+
                       if (isPositiveMood) {
                         icon = Icons.sentiment_very_satisfied;
                         type = 'positive';
+                      } else if (isDismissed) {
+                        icon = Icons.check_circle;
+                        type = 'dismissed';
                       } else
                         switch (notification['type']) {
                           case 'alert':
@@ -1457,9 +1466,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             icon = Icons.notifications_active;
                             type = 'info';
                             break;
+                          case 'anxiety_log':
+                            // Check if this is a dismissed detection
+                            if (isDismissed) {
+                              icon = Icons.check_circle;
+                              type = 'dismissed';
+                            } else {
+                              icon = Icons.check_circle;
+                              type = 'positive';
+                            }
+                            break;
                           case 'log':
                             icon = Icons.check_circle;
-                            type = 'warning';
+                            type = 'positive';
                             break;
                           default:
                             icon = Icons.notifications;
@@ -1525,13 +1544,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         nMessage.contains('great to see you feeling') ||
         nMessage.contains('good vibes');
 
+    // Check if this is a dismissed anxiety detection notification
+    final isDismissedContent = nTitle.contains('anxiety detection dismissed') ||
+        (nTitle.contains('dismissed') && nTitle.contains('anxiety'));
+
+    // Check if this is anxiety symptoms logged (should be orange)
+    final isAnxietySymptomsLogged = nTitle.contains('anxiety symptoms logged');
+    
+    // Check if this is other log content (should be green)
+    final isOtherLogContent = (nTitle.contains('symptoms logged') && !isAnxietySymptomsLogged) ||
+        nTitle.contains('journal entry') ||
+        type == 'positive'; // This covers our mapping from the switch statement above
+
     // Effective values used for rendering
     IconData renderIcon = icon;
     String effectiveType = type;
     if (isPositiveContent) {
       renderIcon = Icons.sentiment_very_satisfied;
       effectiveType = 'positive';
+    } else if (isDismissedContent) {
+      renderIcon = Icons.check_circle;
+      effectiveType = 'dismissed';
+    } else if (isAnxietySymptomsLogged) {
+      renderIcon = Icons.warning;
+      effectiveType = 'warning';
+    } else if (isOtherLogContent) {
+      renderIcon = Icons.check_circle;
+      effectiveType = 'positive';
     }
+
     Color getTypeColor() {
       switch (effectiveType) {
         case 'warning':
@@ -1542,6 +1583,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           return Colors.blue;
         case 'positive':
           return Colors.green;
+        case 'dismissed':
+          return Colors
+              .grey; // Changed from red to grey for dismissed notifications
         default:
           return Colors.grey;
       }
@@ -1557,6 +1601,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           return const Color(0xFFFFF8E1); // Light yellow background
         case 'positive':
           return const Color(0xFFE8F5E8); // Light green background
+        case 'dismissed':
+          return const Color(0xFFF5F5F5); // Light grey background for dismissed
         default:
           return const Color(0xFFF5F5F5); // Light grey background
       }
@@ -1568,16 +1614,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             title.contains('🚨') ||
             title.contains('Alert');
 
-    // Check if this is a reminder notification or positive mood (should not be clickable)
+    // Check if this is a reminder notification, positive mood, or dismissed notification (should not be clickable for anxiety dialog)
     bool isReminder = effectiveType == 'reminder' ||
         effectiveType == 'positive' ||
+        effectiveType == 'dismissed' ||
         isPositiveContent ||
+        isDismissedContent ||
         title.contains('Anxiety Check-in') ||
         title.contains('Anxiety Prevention') ||
         title.contains('Wellness Reminder') ||
         title.contains('Mental Health Moment') ||
         title.contains('Relaxation Reminder') ||
-        title.contains('Positive Mood');
+        title.contains('Positive Mood') ||
+        title.contains('Anxiety Detection Dismissed');
 
     // Wrap in GestureDetector only if it's not a reminder
     Widget notificationCard = Container(
@@ -1696,15 +1745,129 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
 
-    // Wrap in GestureDetector only if it's not a reminder
-    if (!isReminder) {
+    // Handle different tap behaviors based on notification type
+    if (effectiveType == 'dismissed' || isDismissedContent) {
+      // For dismissed notifications, show already dismissed dialog
+      return GestureDetector(
+        onTap: () => _showDismissedNotificationDialog(title, message, time),
+        child: notificationCard,
+      );
+    } else if (!isReminder) {
+      // For regular notifications, navigate to details
       return GestureDetector(
         onTap: () => _navigateToNotificationDetails(notification),
         child: notificationCard,
       );
     } else {
+      // For reminders, no tap action
       return notificationCard;
     }
+  }
+
+  // Show dialog for dismissed notifications
+  void _showDismissedNotificationDialog(
+      String title, String message, String time) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: Colors.grey[600],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Already Dismissed',
+                  style: TextStyle(fontSize: 18),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You have already dismissed this anxiety detection as a false alarm.',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.grey.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.grey[600],
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Your Response:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Not experiencing anxiety - False detection',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Time: $time',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Thank you for the feedback. This helps improve our detection accuracy.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Navigate to notifications screen and open specific notification
@@ -1750,314 +1913,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return 'moderate';
     if (titleLower.contains('mild') || title.contains('🟢')) return 'mild';
     return 'mild'; // default
-  }
-
-  void _showNotificationDetails(
-      String title, String message, String time, String type, IconData icon) {
-    Color getTypeColor() {
-      switch (type) {
-        case 'warning':
-          return Colors.orange;
-        case 'alert':
-          return Colors.red;
-        case 'info':
-          return Colors.blue;
-        default:
-          return Colors.grey;
-      }
-    }
-
-    // Helper function to categorize notifications - not displayed to user
-    String getSeverityLevel() {
-      if (title.contains('🟢') || title.contains('Mild')) return 'Mild';
-      if (title.contains('🟠') || title.contains('Moderate')) return 'Moderate';
-      if (title.contains('🔴') || title.contains('Severe')) return 'Severe';
-      if (title.contains('Mood Pattern')) return 'Informational';
-      return 'Normal';
-    }
-
-    String getRecommendation() {
-      if (title.contains('Mood Pattern')) {
-        return 'Consider using calming exercises to help manage anxiety when feeling anxious or fearful.';
-      } else if (title.contains('High Stress')) {
-        return 'Try breathing exercises to help reduce stress levels and promote relaxation.';
-      } else if (title.contains('Symptom')) {
-        return 'Monitor your symptoms and use appropriate techniques to manage your anxiety.';
-      } else {
-        return 'Consider using the breathing exercises and other tools available in the app.';
-      }
-    }
-
-    List<String> getActionItems() {
-      if (title.contains('Mood Pattern')) {
-        return [
-          'Use breathing exercises',
-          'Practice mindfulness meditation',
-          'Record your triggers in journal',
-          'Try progressive muscle relaxation'
-        ];
-      } else if (title.contains('High Stress')) {
-        return [
-          'Practice 4-7-8 breathing technique',
-          'Take a short break from current activities',
-          'Use guided meditation',
-          'Find a quiet space to relax'
-        ];
-      } else if (title.contains('Symptom')) {
-        return [
-          'Track your symptoms in the journal',
-          'Use appropriate breathing techniques',
-          'Consider relaxation exercises',
-          'Monitor changes in symptoms'
-        ];
-      } else if (getSeverityLevel() == 'Severe') {
-        // For severe alerts, show safety plan with crisis hotlines
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        final emergencyContact = authProvider.currentUser?.emergencyContact;
-
-        return [
-          'Consider finding nearest clinic',
-          'NCMH: (Landline) 1553, (Mobile) 0917-899-8727',
-          'DOH Hopeline: 0917-558-4673',
-          'Emergency Contact: ${emergencyContact ?? "Not set - update in profile"}',
-          'Use breathing exercises',
-          'Monitor symptoms',
-          'Practice self-care activities'
-        ];
-      } else {
-        return [
-          'Use breathing exercises',
-          'Monitor symptoms',
-          'Practice self-care activities',
-          'Use the app resources'
-        ];
-      }
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-
-              // Header
-              Container(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: getTypeColor().withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        icon,
-                        color: getTypeColor(),
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E2432),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            time,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Details Section
-                      const Text(
-                        'Details',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          message,
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 16,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Recommendation Section
-                      const Text(
-                        'Recommendation',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue[100]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.lightbulb_outline,
-                                color: Colors.blue[600]),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                getRecommendation(),
-                                style: TextStyle(
-                                  color: Colors.blue[800],
-                                  fontSize: 16,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Action Items Section
-                      Text(
-                        getSeverityLevel() == 'Severe'
-                            ? 'Safety Plan'
-                            : 'Suggested Actions',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2432),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...getActionItems()
-                          .map((action) => Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey[200]!),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle_outline,
-                                      color: getTypeColor(),
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        action,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Color(0xFF1E2432),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ))
-                          .toList(),
-
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Action Button - Updated to match the See All screen
-              Container(
-                padding: const EdgeInsets.all(24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // Navigate to breathing exercise screen
-                      Navigator.pushNamed(context, '/breathing');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: getTypeColor(),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Try Breathing Exercise',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildBreathingCard(bool isActive) {

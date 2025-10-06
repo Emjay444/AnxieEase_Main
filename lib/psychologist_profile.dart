@@ -1102,15 +1102,26 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         filteredAppointments = _appointments.where((apt) {
           switch (_selectedFilter) {
             case 'Pending':
-              return apt.status == AppointmentStatus.pending;
+              // True pending: pending status with no response message
+              return apt.status == AppointmentStatus.pending &&
+                  (apt.responseMessage == null || apt.responseMessage!.isEmpty);
             case 'Accepted':
+              // Accepted: either officially accepted/approved OR pending with positive response
               return apt.status == AppointmentStatus.accepted ||
-                  apt.status == AppointmentStatus.approved;
+                  apt.status == AppointmentStatus.approved ||
+                  (apt.status == AppointmentStatus.pending &&
+                      apt.responseMessage != null &&
+                      apt.responseMessage!.isNotEmpty &&
+                      !apt.responseMessage!.toLowerCase().contains('declined'));
             case 'Expired':
               return apt.status == AppointmentStatus.expired;
             case 'Unavailable':
+              // Unavailable: officially denied/cancelled OR pending with decline response
               return apt.status == AppointmentStatus.denied ||
-                  apt.status == AppointmentStatus.cancelled;
+                  apt.status == AppointmentStatus.cancelled ||
+                  (apt.status == AppointmentStatus.pending &&
+                      apt.responseMessage != null &&
+                      apt.responseMessage!.toLowerCase().contains('declined'));
             case 'Completed':
               return apt.status == AppointmentStatus.completed;
             default:
@@ -1285,8 +1296,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
 
             // Cancelled appointments
             if (cancelledAppointments.isNotEmpty) ...[
-              _buildAppointmentCategory('Recent Cancelled/Unavailable',
-                  cancelledAppointments, Colors.grey),
+              _buildAppointmentCategory(
+                  'Unavailable', cancelledAppointments, Colors.grey),
               const SizedBox(height: 16),
             ],
           ],

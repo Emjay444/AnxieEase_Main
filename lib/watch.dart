@@ -233,7 +233,7 @@ class _WatchScreenState extends State<WatchScreen>
           final batteryLevel = deviceInfo['battery_level'] as num?;
 
           if (lastSeenStr != null) {
-            final lastSeen = DateTime.parse(lastSeenStr);
+            final lastSeen = DateTime.parse(lastSeenStr).toLocal();
             final minutesSinceLastSeen =
                 DateTime.now().difference(lastSeen).inMinutes;
 

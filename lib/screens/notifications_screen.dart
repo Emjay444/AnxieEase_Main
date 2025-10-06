@@ -326,8 +326,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         message.toLowerCase().contains('great to see you feeling') ||
         message.toLowerCase().contains('good vibes');
 
+    // Check if this is a dismissed notification
+    final isDismissed =
+        title.toLowerCase().contains('anxiety detection dismissed') ||
+            (title.toLowerCase().contains('dismissed') &&
+                title.toLowerCase().contains('anxiety'));
+
     // Check for confirmation requirements - either from FCM data or title patterns
     final shouldShowConfirmation = !isPositiveMood &&
+        !isDismissed &&
         (
             // Check for caring message patterns
             title.toLowerCase().contains('gentle check-in') ||
@@ -342,7 +349,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 title.contains('Anxiety Alert') ||
                 title.contains('anxiety detected'));
 
-    if (shouldShowConfirmation) {
+    if (isDismissed) {
+      // Show already dismissed dialog for dismissed notifications
+      _showAlreadyDismissedDialog(notification);
+    } else if (shouldShowConfirmation) {
       // Show anxiety confirmation dialog
       await _showAnxietyConfirmationDialog(notification);
     } else {
@@ -826,6 +836,106 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         debugPrint('Error marking notification as completed: $e');
       }
     }
+  }
+
+  // Show dialog for already dismissed notifications
+  void _showAlreadyDismissedDialog(Map<String, dynamic> notification) {
+    final String formattedTime = _getDisplayTime(notification['created_at']);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: Colors.grey[600],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text('Already Dismissed'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You have already dismissed this anxiety detection as a false alarm.',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.grey.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.sentiment_satisfied,
+                          color: Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Your Response:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Not experiencing anxiety - False detection',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Time: $formattedTime',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Thank you for the feedback. This helps improve our detection accuracy.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Show dialog for already answered notifications
@@ -1687,14 +1797,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final String type = notification['type'] ?? '';
     final bool isAnswered = _isNotificationAnswered(notification);
 
-    // Check if this is a reminder notification that should not have a popup modal
-    bool isReminder = type == 'reminder' ||
-        title.contains('Anxiety Check-in') ||
-        title.contains('Anxiety Prevention') ||
-        title.contains('Wellness Reminder') ||
-        title.contains('Mental Health Moment') ||
-        title.contains('Relaxation Reminder');
-
     // Detect positive mood from content
     final tLower = title.toLowerCase();
     final mLower = (notification['message']?.toString() ?? '').toLowerCase();
@@ -1702,13 +1804,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         mLower.contains('great to see you feeling') ||
         mLower.contains('good vibes');
 
+    // Detect dismissed notifications
+    final isDismissed = tLower.contains('anxiety detection dismissed') ||
+        (tLower.contains('dismissed') && tLower.contains('anxiety'));
+
+    // Check if this is a reminder notification that should not have a popup modal
+    bool isReminder = type == 'reminder' ||
+        isPositiveMood ||
+        isDismissed ||
+        title.contains('Anxiety Check-in') ||
+        title.contains('Anxiety Prevention') ||
+        title.contains('Wellness Reminder') ||
+        title.contains('Mental Health Moment') ||
+        title.contains('Relaxation Reminder') ||
+        title.contains('Positive Mood') ||
+        title.contains('Anxiety Detection Dismissed');
+
     final Color accent = () {
       if (isPositiveMood) return Colors.green;
+      if (isDismissed) return Colors.grey;
+      
+      // Check if this is anxiety symptoms logged specifically
+      if (title.toLowerCase().contains('anxiety symptoms logged')) {
+        return Colors.orange;
+      }
+      
       switch (type) {
         case 'alert':
           return _severityColorFromTitle(title);
         case 'reminder':
           return Colors.blue;
+        case 'anxiety_log':
+          if (isDismissed) return Colors.grey;
+          return Colors.green;
         case 'log':
           return Colors.green;
         default:
@@ -1784,12 +1912,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isAnswered
+            color: (isAnswered || isDismissed)
                 ? Colors.grey.withOpacity(0.1)
                 : (isRead ? Colors.white : Colors.teal.withOpacity(0.04)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isAnswered
+              color: (isAnswered || isDismissed)
                   ? Colors.grey.withOpacity(0.3)
                   : (isRead
                       ? Colors.grey.withOpacity(0.15)
@@ -1812,7 +1940,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: isAnswered
+                  color: (isAnswered || isDismissed)
                       ? Colors.grey.withOpacity(0.2)
                       : accent.withOpacity(0.1),
                   shape: BoxShape.circle,
@@ -1822,8 +1950,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   children: [
                     Center(
                         child: _getNotificationIcon(
-                            isPositiveMood ? 'positive' : type,
-                            isAnswered ? Colors.grey : accent)),
+                            isPositiveMood
+                                ? 'positive'
+                                : (isDismissed ? 'dismissed' : type),
+                            isAnswered || isDismissed ? Colors.grey : accent)),
                     if (!isRead)
                       Positioned(
                         right: -2,
@@ -1857,7 +1987,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               fontSize: 15,
                               fontWeight:
                                   isRead ? FontWeight.w600 : FontWeight.bold,
-                              color: isAnswered
+                              color: (isAnswered || isDismissed)
                                   ? Colors.grey[600]
                                   : const Color(0xFF1E2432),
                               height: 1.25,
@@ -1880,8 +2010,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 color: Colors.grey[600],
                               ),
                             ),
+                          )
+                        else if (isDismissed)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'DISMISSED',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[600],
+                              ),
+                            ),
                           ),
-                        if (!isReminder && !isAnswered)
+                        if (!isReminder && !isAnswered && !isDismissed)
                           Icon(
                             Icons.arrow_forward_ios,
                             size: 12,
@@ -1894,7 +2041,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       notification['message'],
                       style: TextStyle(
                         fontSize: 13.5,
-                        color: isAnswered ? Colors.grey[500] : Colors.grey[700],
+                        color: (isAnswered || isDismissed)
+                            ? Colors.grey[500]
+                            : Colors.grey[700],
                         height: 1.4,
                       ),
                     ),
@@ -1937,6 +2086,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icon(Icons.check_circle, color: accent, size: 24);
       case 'positive':
         return Icon(Icons.sentiment_very_satisfied, color: accent, size: 24);
+      case 'dismissed':
+        return Icon(Icons.check_circle, color: accent, size: 24);
       default:
         return Icon(Icons.notifications, color: accent, size: 24);
     }
@@ -1968,7 +2119,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     };
     final now = DateTime.now();
     for (final n in _notifications) {
-      final created = DateTime.parse(n['created_at']);
+      final created = DateTime.parse(n['created_at']).toLocal();
       final difference = now.difference(created).inDays;
       if (difference == 0) {
         groups['Today']!.add(n);
