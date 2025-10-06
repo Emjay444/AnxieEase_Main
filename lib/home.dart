@@ -1550,11 +1550,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Check if this is anxiety symptoms logged (should be orange)
     final isAnxietySymptomsLogged = nTitle.contains('anxiety symptoms logged');
-    
+
     // Check if this is other log content (should be green)
-    final isOtherLogContent = (nTitle.contains('symptoms logged') && !isAnxietySymptomsLogged) ||
+    final isOtherLogContent = (nTitle.contains('symptoms logged') &&
+            !isAnxietySymptomsLogged) ||
         nTitle.contains('journal entry') ||
-        type == 'positive'; // This covers our mapping from the switch statement above
+        type ==
+            'positive'; // This covers our mapping from the switch statement above
 
     // Effective values used for rendering
     IconData renderIcon = icon;

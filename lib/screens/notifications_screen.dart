@@ -1823,12 +1823,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final Color accent = () {
       if (isPositiveMood) return Colors.green;
       if (isDismissed) return Colors.grey;
-      
+
       // Check if this is anxiety symptoms logged specifically
       if (title.toLowerCase().contains('anxiety symptoms logged')) {
         return Colors.orange;
       }
-      
+
       switch (type) {
         case 'alert':
           return _severityColorFromTitle(title);
