@@ -34,7 +34,7 @@ export {
 } from "./smartDeviceDataSync";
 
 // Import legacy device functions for compatibility (assignment functions still needed)
-// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession 
+// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession
 // as they create timestamp duplicates. smartDeviceDataSync now handles this properly.
 export {
   assignDeviceToUser,
@@ -54,8 +54,10 @@ export {
   clearAnxietyRateLimits,
 } from "./realTimeSustainedAnxietyDetection";
 
-// Import auto-cleanup functions (remove testing functions)
+// Import auto-cleanup functions
 export { autoCleanup } from "./autoCleanup";
+export { manualCleanup } from "./autoCleanup";
+export { getCleanupStats } from "./autoCleanup";
 
 // Import device assignment sync functions (remove testing functions)
 export {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -45,9 +45,13 @@ Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, ge
 var realTimeSustainedAnxietyDetection_1 = require("./realTimeSustainedAnxietyDetection");
 Object.defineProperty(exports, "realTimeSustainedAnxietyDetection", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.realTimeSustainedAnxietyDetection; } });
 Object.defineProperty(exports, "clearAnxietyRateLimits", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.clearAnxietyRateLimits; } });
-// Import auto-cleanup functions (remove testing functions)
+// Import auto-cleanup functions
 var autoCleanup_1 = require("./autoCleanup");
 Object.defineProperty(exports, "autoCleanup", { enumerable: true, get: function () { return autoCleanup_1.autoCleanup; } });
+var autoCleanup_2 = require("./autoCleanup");
+Object.defineProperty(exports, "manualCleanup", { enumerable: true, get: function () { return autoCleanup_2.manualCleanup; } });
+var autoCleanup_3 = require("./autoCleanup");
+Object.defineProperty(exports, "getCleanupStats", { enumerable: true, get: function () { return autoCleanup_3.getCleanupStats; } });
 // Import device assignment sync functions (remove testing functions)
 var deviceAssignmentSync_1 = require("./deviceAssignmentSync");
 Object.defineProperty(exports, "syncDeviceAssignment", { enumerable: true, get: function () { return deviceAssignmentSync_1.syncDeviceAssignment; } });
