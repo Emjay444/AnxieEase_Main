@@ -29,7 +29,7 @@ Object.defineProperty(exports, "smartDeviceDataSync", { enumerable: true, get: f
 Object.defineProperty(exports, "removeTimestampDuplicates", { enumerable: true, get: function () { return smartDeviceDataSync_1.removeTimestampDuplicates; } });
 Object.defineProperty(exports, "monitorDuplicationPrevention", { enumerable: true, get: function () { return smartDeviceDataSync_1.monitorDuplicationPrevention; } });
 // Import legacy device functions for compatibility (assignment functions still needed)
-// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession 
+// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession
 // as they create timestamp duplicates. smartDeviceDataSync now handles this properly.
 var deviceDataCopyService_1 = require("./deviceDataCopyService");
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });

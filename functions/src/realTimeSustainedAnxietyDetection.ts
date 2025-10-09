@@ -765,7 +765,7 @@ function getUserNotificationContent(alertData: any) {
     case "critical":
       return {
         title: `🚨 Critical Alert - ${confidence}`,
-        body: `URGENT: Your heart rate has been critically elevated at ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. This indicates a severe anxiety episode. Please seek immediate support if needed.`,
+        body: `URGENT: Your heart rate has been critically elevated at ${alertData.heartRate} BPM (${percentageText} above your baseline). This indicates a severe anxiety episode. Please seek immediate support if needed.`,
         color: "#FF0000", // RED for critical
         sound: "critical_alert",
         requiresConfirmation: false, // Critical = definitive anxiety, no confirmation needed
@@ -774,7 +774,7 @@ function getUserNotificationContent(alertData: any) {
     case "severe":
       return {
         title: `� Severe Alert - ${confidence}`,
-        body: `Hi there! I noticed your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Are you experiencing any anxiety or stress right now?`,
+        body: `Hi there! I noticed your heart rate was elevated to ${alertData.heartRate} BPM (${percentageText} above your baseline). Are you experiencing any anxiety or stress right now?`,
         color: "#FFA500", // ORANGE for severe
         sound: "severe_alert",
         requiresConfirmation: true,
@@ -783,7 +783,7 @@ function getUserNotificationContent(alertData: any) {
     case "moderate":
       return {
         title: `🟡 Moderate Alert - ${confidence}`,
-        body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. How are you feeling? Is everything alright?`,
+        body: `Your heart rate increased to ${alertData.heartRate} BPM (${percentageText} above your baseline). How are you feeling? Is everything alright?`,
         color: "#FFFF00", // YELLOW for moderate
         sound: "moderate_alert",
         requiresConfirmation: true,
@@ -792,7 +792,7 @@ function getUserNotificationContent(alertData: any) {
     case "mild":
       return {
         title: `🟢 Mild Alert - ${confidence}`,
-        body: `I noticed a slight increase in your heart rate to ${alertData.heartRate} BPM (${percentageText} above your baseline) for ${alertData.duration}s. Are you experiencing any anxiety or is this just normal activity?`,
+        body: `I noticed a slight increase in your heart rate to ${alertData.heartRate} BPM (${percentageText} above your baseline). Are you experiencing any anxiety or is this just normal activity?`,
         color: "#4CAF50", // GREEN for mild (not orange!)
         sound: "mild_alert",
         requiresConfirmation: true,
