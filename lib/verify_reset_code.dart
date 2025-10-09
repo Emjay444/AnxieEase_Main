@@ -13,7 +13,7 @@ class VerifyResetCodeScreen extends StatefulWidget {
 }
 
 class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
-  with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final List<TextEditingController> _codeControllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
@@ -484,8 +484,8 @@ class VerifyResetCodeScreenWithOptionalEmail extends StatefulWidget {
 }
 
 class _VerifyResetCodeScreenWithOptionalEmailState
-  extends State<VerifyResetCodeScreenWithOptionalEmail>
-  with WidgetsBindingObserver {
+    extends State<VerifyResetCodeScreenWithOptionalEmail>
+    with WidgetsBindingObserver {
   final TextEditingController _emailController = TextEditingController();
   final List<TextEditingController> _codeControllers =
       List.generate(6, (_) => TextEditingController());

@@ -394,7 +394,10 @@ function analyzeUserSustainedAnxiety(
   }
 
   // Check if we have required duration of sustained elevation for true anxiety detection
-  if (longestSustainedDuration >= MIN_SUSTAINED_DURATION_SECONDS && bestElevatedPoints.length > 0) {
+  if (
+    longestSustainedDuration >= MIN_SUSTAINED_DURATION_SECONDS &&
+    bestElevatedPoints.length > 0
+  ) {
     const avgHR =
       bestElevatedPoints.reduce((sum, p) => sum + p.heartRate, 0) /
       bestElevatedPoints.length;
