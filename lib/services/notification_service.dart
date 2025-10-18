@@ -788,12 +788,14 @@ class NotificationService extends ChangeNotifier {
         dbType = 'reminder';
       }
 
-      await _supabaseService.createNotification(
+      final createdAtUtc = DateTime.now().toUtc();
+      await _supabaseService.createNotificationWithTimestamp(
         title: title,
         message: message,
         type: dbType,
         severity: severity, // Pass severity to Supabase
         relatedScreen: severity == 'severe' ? 'breathing_screen' : 'metrics',
+        createdAt: createdAtUtc,
       );
       debugPrint('💾 Saved severity notification to Supabase: $title');
 
@@ -826,14 +828,17 @@ class NotificationService extends ChangeNotifier {
     required String type,
     String? relatedScreen,
     String? relatedId,
+    DateTime? createdAt,
   }) async {
     try {
-      await _supabaseService.createNotification(
+      final createdAtUtc = (createdAt ?? DateTime.now()).toUtc();
+      await _supabaseService.createNotificationWithTimestamp(
         title: title,
         message: message,
         type: type,
         relatedScreen: relatedScreen,
         relatedId: relatedId,
+        createdAt: createdAtUtc,
       );
       _onNotificationAdded?.call();
     } catch (e) {
@@ -1133,12 +1138,14 @@ class NotificationService extends ChangeNotifier {
     // Only if user is authenticated
     final user = _supabaseService.client.auth.currentUser;
     if (user != null) {
-      await _supabaseService.createNotification(
+      final createdAtUtc = DateTime.now().toUtc();
+      await _supabaseService.createNotificationWithTimestamp(
         title: message['title'] ?? 'Anxiety Check-in',
         message:
             message['body'] ?? 'Take a moment to check how you\'re feeling.',
         type: 'reminder',
         relatedScreen: 'breathing',
+        createdAt: createdAtUtc,
       );
     } else {
       debugPrint(

@@ -419,45 +419,6 @@ class _WatchScreenState extends State<WatchScreen>
       ),
       backgroundColor: const Color(0xFF3AA772),
       elevation: 0,
-      actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 16),
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: isConnected ? Colors.green : Colors.orange,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  if (_isDeviceSetup &&
-                      _iotSensorService.deviceId.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      _iotSensorService.deviceId,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1242,7 +1203,7 @@ class _WatchScreenState extends State<WatchScreen>
   String _getConnectionStatusText() {
     if (!isConnected) return 'Disconnected';
 
-    if (!isDeviceWorn) return 'Not Worn';
+    if (!isDeviceWorn) return 'Disconnected';
     return 'Active';
   }
 

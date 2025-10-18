@@ -5,6 +5,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
@@ -923,6 +924,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       itemCount: symptoms.length,
+                      itemExtent: 76.0, // Fixed height for better performance
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemBuilder: (context, index) {
                         final symptom = symptoms.keys.elementAt(index);
                         return Container(
@@ -1161,6 +1164,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       itemCount: activities.length,
+                      itemExtent: 88.0, // Fixed height for better performance
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemBuilder: (context, index) {
                         final activity = activities[index];
                         return Container(
@@ -1425,11 +1430,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount:
                         snapshot.data!.length > 3 ? 3 : snapshot.data!.length,
+                    // Removed itemExtent - notification cards have variable heights due to text wrapping
                     itemBuilder: (context, index) {
                       final notification = snapshot.data![index];
                       final DateTime createdAt =
                           DateTime.parse(notification['created_at']).toLocal();
                       final String timeAgo = timeago.format(createdAt);
+
+                      // Check if notification is answered
+                      final message = notification['message']?.toString() ?? '';
+                      final isAnswered = message.contains('[ANSWERED]');
 
                       IconData icon;
                       String type;
@@ -1450,12 +1460,118 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               tLower.contains('dismissed') &&
                                   tLower.contains('anxiety');
 
+                      // Check if this is an actual anxiety alert (should NOT be treated as wellness)
+                      final isAnxietyAlert = (notification['type'] == 'alert' &&
+                              (tLower.contains('anxiety') ||
+                                  tLower.contains('alert'))) ||
+                          tLower.contains('anxiety alert') ||
+                          tLower.contains('anxiety detected') ||
+                          tLower.contains('mild anxiety') ||
+                          tLower.contains('moderate anxiety') ||
+                          tLower.contains('severe anxiety');
+
+                      // Check if this is a wellness/breathing reminder (but NOT an anxiety alert)
+                      final isWellnessReminder = !isAnxietyAlert &&
+                          (tLower.contains('peaceful') ||
+                              tLower.contains('afternoon reset') ||
+                              tLower.contains('grounding') ||
+                              tLower.contains('good morning') ||
+                              tLower.contains('rise & shine') ||
+                              tLower.contains('morning mindfulness') ||
+                              tLower.contains('breathe & begin') ||
+                              tLower.contains('new day energy') ||
+                              tLower.contains('morning gratitude') ||
+                              tLower.contains('hydration first') ||
+                              tLower.contains('gentle awakening') ||
+                              tLower.contains('midday reset') ||
+                              tLower.contains('afternoon check-in') ||
+                              tLower.contains('energy boost') ||
+                              tLower.contains('stress relief') ||
+                              tLower.contains('midday motivation') ||
+                              tLower.contains('tension release') ||
+                              tLower.contains('progress check') ||
+                              tLower.contains('evening reflection') ||
+                              tLower.contains('wind down time') ||
+                              tLower.contains('night gratitude') ||
+                              tLower.contains('sleep preparation') ||
+                              tLower.contains('day\'s end wisdom') ||
+                              tLower.contains('transition ritual') ||
+                              tLower.contains('tomorrow\'s promise') ||
+                              tLower.contains('gentle night') ||
+                              tLower.contains('self-compassion') ||
+                              tLower.contains('daily breathing exercise') ||
+                              tLower.contains('breathe & reset') ||
+                              tLower.contains('mindful breathing') ||
+                              tLower.contains('breathing break') ||
+                              tLower.contains('deep breath moment') ||
+                              tLower.contains('wellness reminder') ||
+                              tLower.contains('breathing') ||
+                              tLower.contains('mental health moment') ||
+                              tLower.contains('relaxation reminder') ||
+                              tLower.contains('mindfulness') ||
+                              tLower.contains('self-care') ||
+                              mLower.contains('body scan') ||
+                              mLower.contains('breathe') ||
+                              mLower.contains('grounding') ||
+                              mLower.contains('relax') ||
+                              notification['type'] == 'wellness_reminder' ||
+                              notification['type'] == 'breathing_reminder');
+
                       if (isPositiveMood) {
                         icon = Icons.sentiment_very_satisfied;
                         type = 'positive';
                       } else if (isDismissed) {
                         icon = Icons.check_circle;
                         type = 'dismissed';
+                      } else if (isWellnessReminder) {
+                        // Use caring, wellness-focused icons based on content
+                        if (tLower.contains('breathing') ||
+                            mLower.contains('breathe') ||
+                            tLower.contains('inhale') ||
+                            tLower.contains('exhale')) {
+                          icon = Icons.air; // Breathing exercises
+                        } else if (tLower.contains('peaceful') ||
+                            tLower.contains('evening') ||
+                            tLower.contains('night') ||
+                            tLower.contains('sleep')) {
+                          icon = Icons.nightlight_round; // Evening/peaceful
+                        } else if (tLower.contains('morning') ||
+                            tLower.contains('awakening') ||
+                            tLower.contains('rise')) {
+                          icon = Icons.wb_sunny; // Morning
+                        } else if (tLower.contains('reset') ||
+                            tLower.contains('midday') ||
+                            tLower.contains('afternoon check-in')) {
+                          icon = Icons.self_improvement; // Reset/mindfulness
+                        } else if (tLower.contains('grounding') ||
+                            tLower.contains('feet') ||
+                            tLower.contains('earth')) {
+                          icon = Icons.spa; // Grounding
+                        } else if (tLower.contains('gratitude') ||
+                            tLower.contains('grateful') ||
+                            tLower.contains('thanks')) {
+                          icon = Icons.favorite; // Gratitude
+                        } else if (tLower.contains('relax') ||
+                            tLower.contains('tension') ||
+                            tLower.contains('wind down')) {
+                          icon = Icons.spa; // Relaxation
+                        } else if (tLower.contains('motivation') ||
+                            tLower.contains('energy') ||
+                            tLower.contains('boost')) {
+                          icon = Icons.bolt; // Energy/motivation
+                        } else if (tLower.contains('hydration') ||
+                            tLower.contains('water')) {
+                          icon = Icons.water_drop; // Hydration
+                        } else if (tLower.contains('reflection') ||
+                            tLower.contains('check')) {
+                          icon = Icons.psychology; // Reflection/check-in
+                        } else if (tLower.contains('wisdom') ||
+                            tLower.contains('compassion')) {
+                          icon = Icons.auto_awesome; // Wisdom/compassion
+                        } else {
+                          icon = Icons.favorite; // General wellness/care
+                        }
+                        type = 'wellness';
                       } else
                         switch (notification['type']) {
                           case 'alert':
@@ -1491,6 +1607,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         time: timeAgo,
                         type: type,
                         icon: icon,
+                        isAnswered: isAnswered,
                         notification:
                             notification, // Pass full notification data
                       );
@@ -1534,8 +1651,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String time,
     required String type,
     required IconData icon,
+    bool isAnswered = false,
     Map<String, dynamic>? notification, // Add notification parameter
   }) {
+    final originalType =
+        notification?['type']?.toString().toLowerCase() ?? type.toLowerCase();
+
     // Local overrides: detect positive mood from content to force green styling
     final nTitle = (notification?['title']?.toString() ?? title).toLowerCase();
     final nMessage =
@@ -1558,6 +1679,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         type ==
             'positive'; // This covers our mapping from the switch statement above
 
+    // Check if this content is a true anxiety alert (never treat as wellness)
+    final isAnxietyContent = (originalType == 'alert' &&
+            (nTitle.contains('anxiety') || nTitle.contains('alert'))) ||
+        nTitle.contains('anxiety alert') ||
+        nTitle.contains('anxiety detected') ||
+        nTitle.contains('mild anxiety') ||
+        nTitle.contains('moderate anxiety') ||
+        nTitle.contains('severe anxiety');
+
+    // Check if this is a wellness/breathing reminder (should be teal/caring)
+    final isWellnessContent = !isAnxietyContent &&
+        (originalType == 'wellness_reminder' ||
+            originalType == 'breathing_reminder' ||
+            originalType == 'wellness' ||
+            nTitle.contains('peaceful') ||
+            nTitle.contains('afternoon reset') ||
+            nTitle.contains('grounding') ||
+            nTitle.contains('good morning') ||
+            nTitle.contains('rise & shine') ||
+            nTitle.contains('morning mindfulness') ||
+            nTitle.contains('breathe & begin') ||
+            nTitle.contains('new day energy') ||
+            nTitle.contains('morning gratitude') ||
+            nTitle.contains('hydration first') ||
+            nTitle.contains('gentle awakening') ||
+            nTitle.contains('midday reset') ||
+            nTitle.contains('afternoon check-in') ||
+            nTitle.contains('energy boost') ||
+            nTitle.contains('stress relief') ||
+            nTitle.contains('midday motivation') ||
+            nTitle.contains('tension release') ||
+            nTitle.contains('progress check') ||
+            nTitle.contains('evening reflection') ||
+            nTitle.contains('wind down time') ||
+            nTitle.contains('night gratitude') ||
+            nTitle.contains('sleep preparation') ||
+            nTitle.contains("day's end wisdom") ||
+            nTitle.contains('transition ritual') ||
+            nTitle.contains("tomorrow's promise") ||
+            nTitle.contains('gentle night') ||
+            nTitle.contains('self-compassion') ||
+            nTitle.contains('daily breathing exercise') ||
+            nTitle.contains('breathe & reset') ||
+            nTitle.contains('mindful breathing') ||
+            nTitle.contains('breathing break') ||
+            nTitle.contains('deep breath moment') ||
+            nTitle.contains('wellness reminder') ||
+            nTitle.contains('breathing') ||
+            nTitle.contains('mental health moment') ||
+            nTitle.contains('relaxation reminder') ||
+            nTitle.contains('mindfulness') ||
+            nTitle.contains('self-care') ||
+            nMessage.contains('body scan') ||
+            nMessage.contains('breathe') ||
+            nMessage.contains('grounding') ||
+            nMessage.contains('relax'));
+
     // Effective values used for rendering
     IconData renderIcon = icon;
     String effectiveType = type;
@@ -1573,6 +1751,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } else if (isOtherLogContent) {
       renderIcon = Icons.check_circle;
       effectiveType = 'positive';
+    } else if (isWellnessContent) {
+      // Use caring icons based on content
+      if (nTitle.contains('peaceful') || nTitle.contains('evening')) {
+        renderIcon = Icons.nightlight_round;
+      } else if (nTitle.contains('reset') || nTitle.contains('afternoon')) {
+        renderIcon = Icons.self_improvement;
+      } else if (nTitle.contains('grounding') || nTitle.contains('moment')) {
+        renderIcon = Icons.spa;
+      } else if (nTitle.contains('breathing') || nMessage.contains('breathe')) {
+        renderIcon = Icons.air;
+      } else {
+        renderIcon = Icons.favorite;
+      }
+      effectiveType = 'wellness';
+    }
+
+    // Helper function to get severity-based color for anxiety alerts
+    Color _getSeverityColor(String title) {
+      final titleLower = title.toLowerCase();
+      if (titleLower.contains('critical') ||
+          title.contains('🚨') ||
+          title.contains('🔴')) {
+        return Colors.red; // Critical = Red
+      }
+      if (titleLower.contains('severe') || title.contains('🟠')) {
+        return Colors.orange; // Severe = Orange
+      }
+      if (titleLower.contains('moderate') || title.contains('🟡')) {
+        return Colors.yellow; // Moderate = Yellow
+      }
+      if (titleLower.contains('mild') || title.contains('🟢')) {
+        return Colors.green; // Mild = Green
+      }
+      return Colors.green; // Default to green for generic alerts
     }
 
     Color getTypeColor() {
@@ -1580,11 +1792,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         case 'warning':
           return Colors.orange;
         case 'alert':
-          return Colors.red;
+          return _getSeverityColor(
+              title); // Use severity-based colors for alerts
         case 'info':
           return Colors.blue;
         case 'positive':
           return Colors.green;
+        case 'wellness':
+          return const Color(0xFF26A69A); // Soft teal - caring and calming
         case 'dismissed':
           return Colors
               .grey; // Changed from red to grey for dismissed notifications
@@ -1596,13 +1811,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     Color getBackgroundColor() {
       switch (effectiveType) {
         case 'alert':
-          return const Color(0xFFFFF3E0); // Light orange/red background
+          // Use severity-based background colors
+          final titleLower = title.toLowerCase();
+          if (titleLower.contains('critical') ||
+              title.contains('🚨') ||
+              title.contains('🔴')) {
+            return const Color(0xFFFFEBEE); // Light red background for critical
+          }
+          if (titleLower.contains('severe') || title.contains('🟠')) {
+            return const Color(
+                0xFFFFF3E0); // Light orange background for severe
+          }
+          if (titleLower.contains('moderate') || title.contains('🟡')) {
+            return const Color(
+                0xFFFFFDE7); // Light yellow background for moderate
+          }
+          return const Color(0xFFE8F5E9); // Light green background for mild
         case 'info':
           return const Color(0xFFE3F2FD); // Light blue background
         case 'warning':
           return const Color(0xFFFFF8E1); // Light yellow background
         case 'positive':
           return const Color(0xFFE8F5E8); // Light green background
+        case 'wellness':
+          return const Color(
+              0xFFE0F2F1); // Very light teal - soft and nurturing
         case 'dismissed':
           return const Color(0xFFF5F5F5); // Light grey background for dismissed
         default:
@@ -1616,11 +1849,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             title.contains('🚨') ||
             title.contains('Alert');
 
-    // Check if this is a reminder notification, positive mood, or dismissed notification (should not be clickable for anxiety dialog)
+    // Check if this is a reminder notification, positive mood, wellness, or dismissed notification (should not be clickable for anxiety dialog)
     bool isReminder = effectiveType == 'reminder' ||
         effectiveType == 'positive' ||
+        effectiveType == 'wellness' ||
         effectiveType == 'dismissed' ||
         isPositiveContent ||
+        isWellnessContent ||
         isDismissedContent ||
         title.contains('Anxiety Check-in') ||
         title.contains('Anxiety Prevention') ||
@@ -1635,14 +1870,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isHighPriority ? getBackgroundColor() : Colors.white,
+        color: isAnswered
+            ? Colors.grey[100]
+            : (isHighPriority ? getBackgroundColor() : Colors.white),
         borderRadius: BorderRadius.circular(16),
-        border: isHighPriority
+        border: isHighPriority && !isAnswered
             ? Border.all(color: getTypeColor().withOpacity(0.3), width: 1)
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
+            color: Colors.grey.withOpacity(isAnswered ? 0.05 : 0.08),
             spreadRadius: 0,
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -1655,12 +1892,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: getTypeColor().withOpacity(0.15),
+              color: isAnswered
+                  ? Colors.grey[200]
+                  : getTypeColor().withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               renderIcon,
-              color: getTypeColor(),
+              color: isAnswered ? Colors.grey[400] : getTypeColor(),
               size: 24,
             ),
           ),
@@ -1679,11 +1918,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
-                          color: const Color(0xFF1E2432),
+                          color: isAnswered
+                              ? Colors.grey[400]
+                              : const Color(0xFF1E2432),
                           height: 1.3,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       time,
                       style: TextStyle(
@@ -1698,14 +1942,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Text(
                   message,
                   style: TextStyle(
-                    color: Colors.grey[650],
+                    color: isAnswered ? Colors.grey[400] : Colors.grey[650],
                     fontSize: 13,
                     height: 1.4,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (!isReminder) ...[
+                if (isAnswered) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'ANSWERED',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ],
+                if (!isReminder && !isAnswered) ...[
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -1754,6 +2017,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         onTap: () => _showDismissedNotificationDialog(title, message, time),
         child: notificationCard,
       );
+    } else if (effectiveType == 'wellness' &&
+        (nTitle.contains('breathing') ||
+            nTitle.contains('breathe') ||
+            nMessage.contains('breathing') ||
+            nMessage.contains('breathe'))) {
+      // For breathing reminders, navigate to breathing screen
+      return GestureDetector(
+        onTap: () {
+          Navigator.pushNamed(context, '/breathing');
+        },
+        child: notificationCard,
+      );
     } else if (!isReminder) {
       // For regular notifications, navigate to details
       return GestureDetector(
@@ -1761,7 +2036,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: notificationCard,
       );
     } else {
-      // For reminders, no tap action
+      // For other reminders, no tap action
       return notificationCard;
     }
   }
@@ -2708,28 +2983,24 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   // Method to load the profile image from the application documents directory
+  // OPTIMIZED: Use listSync with filtering instead of async iteration
   Future<File?> _loadProfileImage(String? userId) async {
     if (userId == null) return null;
 
     try {
       final directory = await getApplicationDocumentsDirectory();
       final dir = Directory(directory.path);
-      List<FileSystemEntity> profileImages = [];
 
-      // Collect all profile images for this user
-      await for (var entity in dir.list()) {
-        if (entity is File) {
-          final filename = path.basename(entity.path);
-          if (filename.startsWith('profile_$userId')) {
-            profileImages.add(entity);
-          }
-        }
-      }
+      // PERFORMANCE: Use synchronous list with filter instead of async iteration
+      final profileImages = dir.listSync().whereType<File>().where((file) {
+        final filename = path.basename(file.path);
+        return filename.startsWith('profile_$userId');
+      }).toList();
 
       if (profileImages.isNotEmpty) {
         // Sort to get the most recent one (assuming timestamp in filename)
         profileImages.sort((a, b) => b.path.compareTo(a.path));
-        final latestImage = profileImages.first as File;
+        final latestImage = profileImages.first;
 
         debugPrint(
             'Found most recent profile image for home screen: ${latestImage.path}');
@@ -3373,31 +3644,19 @@ class _HomeContentState extends State<HomeContent> {
                               radius: screenWidth * 0.06,
                               backgroundColor: const Color(0xFF3AA772),
                               child: ClipOval(
-                                child: Image.network(
-                                  avatarUrl,
+                                child: CachedNetworkImage(
+                                  imageUrl: avatarUrl,
                                   key: ValueKey('home_avatar_${avatarUrl}'),
                                   width: screenWidth * 0.12,
                                   height: screenWidth * 0.12,
                                   fit: BoxFit.cover,
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                        value: loadingProgress
-                                                    .expectedTotalBytes !=
-                                                null
-                                            ? loadingProgress
-                                                    .cumulativeBytesLoaded /
-                                                loadingProgress
-                                                    .expectedTotalBytes!
-                                            : null,
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (context, error, stackTrace) {
+                                  placeholder: (context, url) => Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) {
                                     debugPrint(
                                         'Error loading network avatar: $error');
                                     // Fallback to first letter if network image fails

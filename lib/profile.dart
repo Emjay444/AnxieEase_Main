@@ -1093,6 +1093,11 @@ class _ProfilePageState extends State<ProfilePage> {
                               label: 'Sex',
                               value: _selectedSex ?? 'Not specified',
                             ),
+                            _infoTile(
+                              icon: Icons.email_outlined,
+                              label: 'Email',
+                              value: _emailController.text,
+                            ),
                           ],
                         )
                       : (_editSectionIndex == 0
@@ -1133,6 +1138,11 @@ class _ProfilePageState extends State<ProfilePage> {
                                   icon: Icons.wc_outlined,
                                   value: _selectedSex ?? 'Not specified',
                                 ),
+                                _fixedInfoRow(
+                                  label: 'Email',
+                                  icon: Icons.email_outlined,
+                                  value: _emailController.text,
+                                ),
                               ],
                             )
                           : _editSectionCard(
@@ -1161,11 +1171,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                     LengthLimitingTextInputFormatter(11),
                                   ],
                                 ),
-                                _fixedInfoRow(
-                                  label: 'Email',
-                                  icon: Icons.email_outlined,
-                                  value: _emailController.text,
-                                ),
                               ],
                             )),
                   const SizedBox(height: 16),
@@ -1186,11 +1191,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           value: _emergencyContactController.text.trim().isEmpty
                               ? '-'
                               : _emergencyContactController.text.trim(),
-                        ),
-                        _infoTile(
-                          icon: Icons.email_outlined,
-                          label: 'Email',
-                          value: _emailController.text,
                         ),
                       ],
                     ),

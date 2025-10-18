@@ -1794,7 +1794,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final String formattedDate = _dateFormatter.format(createdAt);
     final bool isRead = notification['read'] ?? false;
     final String title = notification['title'] ?? '';
-    final String type = notification['type'] ?? '';
+    final String type = (notification['type'] ?? '').toString();
+    final String typeLower = type.toLowerCase();
     final bool isAnswered = _isNotificationAnswered(notification);
 
     // Detect positive mood from content
@@ -1808,28 +1809,95 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final isDismissed = tLower.contains('anxiety detection dismissed') ||
         (tLower.contains('dismissed') && tLower.contains('anxiety'));
 
+    // Detect anxiety alerts explicitly so they keep alert styling/behavior
+    final isAnxietyAlert = (typeLower == 'alert' &&
+            (tLower.contains('anxiety') || tLower.contains('alert'))) ||
+        tLower.contains('anxiety alert') ||
+        tLower.contains('anxiety detected') ||
+        tLower.contains('mild anxiety') ||
+        tLower.contains('moderate anxiety') ||
+        tLower.contains('severe anxiety');
+
+    // Identify caring wellness/breathing reminders
+    final wellnessKeywords = <String>{
+      'peaceful',
+      'afternoon reset',
+      'grounding',
+      'good morning',
+      'rise & shine',
+      'morning mindfulness',
+      'breathe & begin',
+      'new day energy',
+      'morning gratitude',
+      'hydration first',
+      'gentle awakening',
+      'midday reset',
+      'afternoon check-in',
+      'energy boost',
+      'stress relief',
+      'midday motivation',
+      'tension release',
+      'progress check',
+      'evening reflection',
+      'wind down time',
+      'night gratitude',
+      'sleep preparation',
+      "day's end wisdom",
+      'transition ritual',
+      "tomorrow's promise",
+      'gentle night',
+      'self-compassion',
+      'daily breathing exercise',
+      'breathe & reset',
+      'mindful breathing',
+      'breathing break',
+      'deep breath moment',
+      'breathe', // Added for simple breathing reminders
+      'breathing', // Added for breathing reminders
+      'box breathing', // Added for specific breathing exercises
+      'wellness reminder',
+      'mental health moment',
+      'relaxation reminder',
+      'mindfulness',
+      'self-care',
+      'gratitude',
+      'relax'
+    };
+    final matchesWellnessKeyword = wellnessKeywords.any(
+      (keyword) => tLower.contains(keyword) || mLower.contains(keyword),
+    );
+    final isWellnessReminder = !isAnxietyAlert &&
+        (typeLower == 'wellness_reminder' ||
+            typeLower == 'breathing_reminder' ||
+            typeLower == 'wellness' ||
+            matchesWellnessKeyword);
+
     // Check if this is a reminder notification that should not have a popup modal
-    bool isReminder = type == 'reminder' ||
+    bool isReminder = typeLower == 'reminder' ||
+        typeLower == 'wellness_reminder' ||
+        typeLower == 'breathing_reminder' ||
+        isWellnessReminder ||
         isPositiveMood ||
         isDismissed ||
-        title.contains('Anxiety Check-in') ||
-        title.contains('Anxiety Prevention') ||
-        title.contains('Wellness Reminder') ||
-        title.contains('Mental Health Moment') ||
-        title.contains('Relaxation Reminder') ||
-        title.contains('Positive Mood') ||
-        title.contains('Anxiety Detection Dismissed');
+        tLower.contains('anxiety check-in') ||
+        tLower.contains('anxiety prevention') ||
+        tLower.contains('wellness reminder') ||
+        tLower.contains('mental health moment') ||
+        tLower.contains('relaxation reminder') ||
+        tLower.contains('positive mood') ||
+        tLower.contains('anxiety detection dismissed');
 
     final Color accent = () {
       if (isPositiveMood) return Colors.green;
       if (isDismissed) return Colors.grey;
+      if (isWellnessReminder) return const Color(0xFF26A69A);
 
       // Check if this is anxiety symptoms logged specifically
-      if (title.toLowerCase().contains('anxiety symptoms logged')) {
+      if (tLower.contains('anxiety symptoms logged')) {
         return Colors.orange;
       }
 
-      switch (type) {
+      switch (typeLower) {
         case 'alert':
           return _severityColorFromTitle(title);
         case 'reminder':
@@ -1839,6 +1907,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           return Colors.green;
         case 'log':
           return Colors.green;
+        case 'wellness_reminder':
+        case 'breathing_reminder':
+        case 'wellness':
+          return const Color(0xFF26A69A);
         default:
           return Colors.teal;
       }
@@ -1903,9 +1975,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       },
       child: InkWell(
-        onTap: isReminder
-            ? (!isRead ? () => _markNotificationAsRead(notification) : null)
-            : () => _handleNotificationTap(notification),
+        // For breathing reminders, navigate to breathing screen
+        // For other reminders/wellness, disable tapping to avoid opening modal
+        onTap: (typeLower == 'breathing_reminder' ||
+                tLower.contains('breathing') ||
+                tLower.contains('breathe'))
+            ? () async {
+                // Mark as read if unread
+                if (!isRead) {
+                  await _markNotificationAsRead(notification);
+                }
+                // Navigate to breathing screen
+                if (mounted) {
+                  Navigator.pushNamed(context, '/breathing');
+                }
+              }
+            : (isReminder ? null : () => _handleNotificationTap(notification)),
+        // Allow long-press convenience to mark reminder as read without opening anything
+        onLongPress: isReminder && !isRead
+            ? () => _markNotificationAsRead(notification)
+            : null,
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
@@ -1949,11 +2038,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   clipBehavior: Clip.none,
                   children: [
                     Center(
-                        child: _getNotificationIcon(
-                            isPositiveMood
-                                ? 'positive'
-                                : (isDismissed ? 'dismissed' : type),
-                            isAnswered || isDismissed ? Colors.grey : accent)),
+                      child: _getNotificationIcon(
+                        isPositiveMood
+                            ? 'positive'
+                            : (isDismissed
+                                ? 'dismissed'
+                                : (isWellnessReminder
+                                    ? 'wellness'
+                                    : typeLower)),
+                        isAnswered || isDismissed ? Colors.grey : accent,
+                        notification: notification,
+                      ),
+                    ),
                     if (!isRead)
                       Positioned(
                         right: -2,
@@ -2076,7 +2172,60 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _getNotificationIcon(String type, Color accent) {
+  Widget _getNotificationIcon(String type, Color accent,
+      {Map<String, dynamic>? notification}) {
+    final tLower = notification != null
+        ? (notification['title']?.toString().toLowerCase() ?? '')
+        : '';
+    final mLower = notification != null
+        ? (notification['message']?.toString().toLowerCase() ?? '')
+        : '';
+
+    if (type == 'wellness') {
+      if (tLower.contains('breathing') ||
+          mLower.contains('breathe') ||
+          tLower.contains('inhale') ||
+          tLower.contains('exhale')) {
+        return Icon(Icons.air, color: accent, size: 24);
+      } else if (tLower.contains('peaceful') ||
+          tLower.contains('evening') ||
+          tLower.contains('night') ||
+          tLower.contains('sleep')) {
+        return Icon(Icons.nightlight_round, color: accent, size: 24);
+      } else if (tLower.contains('morning') ||
+          tLower.contains('rise') ||
+          tLower.contains('awakening')) {
+        return Icon(Icons.wb_sunny, color: accent, size: 24);
+      } else if (tLower.contains('reset') ||
+          tLower.contains('midday') ||
+          tLower.contains('afternoon')) {
+        return Icon(Icons.self_improvement, color: accent, size: 24);
+      } else if (tLower.contains('grounding') ||
+          tLower.contains('feet') ||
+          tLower.contains('earth')) {
+        return Icon(Icons.spa, color: accent, size: 24);
+      } else if (tLower.contains('gratitude') ||
+          tLower.contains('grateful') ||
+          tLower.contains('thanks')) {
+        return Icon(Icons.favorite, color: accent, size: 24);
+      } else if (tLower.contains('relax') ||
+          tLower.contains('tension') ||
+          tLower.contains('wind down')) {
+        return Icon(Icons.spa, color: accent, size: 24);
+      } else if (tLower.contains('motivation') ||
+          tLower.contains('energy') ||
+          tLower.contains('boost')) {
+        return Icon(Icons.bolt, color: accent, size: 24);
+      } else if (tLower.contains('hydration') || tLower.contains('water')) {
+        return Icon(Icons.water_drop, color: accent, size: 24);
+      } else if (tLower.contains('reflection') || tLower.contains('check')) {
+        return Icon(Icons.psychology, color: accent, size: 24);
+      } else if (tLower.contains('wisdom') || tLower.contains('compassion')) {
+        return Icon(Icons.auto_awesome, color: accent, size: 24);
+      }
+      return Icon(Icons.favorite, color: accent, size: 24);
+    }
+
     switch (type) {
       case 'alert':
         return Icon(Icons.warning_rounded, color: accent, size: 24);

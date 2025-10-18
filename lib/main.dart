@@ -552,15 +552,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   /// Set up multiple strategies to ensure pending notifications are synced reliably
+  /// OPTIMIZED: Reduced from 6 strategies to 3 for better performance
   Future<void> _setupMultipleSyncStrategies() async {
-    debugPrint('🔄 Setting up multiple sync strategies...');
+    debugPrint('🔄 Setting up streamlined sync strategies...');
 
-    // Strategy 0: Immediate sync attempt (before auth is fully ready)
-    debugPrint('🔄 Strategy 0: Immediate sync attempt...');
-    await _debugLocalNotifications(); // Debug what's in local storage
-    _syncPendingNotifications();
-
-    // Strategy 1: AuthProvider listener (immediate when auth ready)
+    // Strategy 1: AuthProvider listener (primary - immediate when auth ready)
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
@@ -577,7 +573,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           hasAlreadySynced = true;
           debugPrint(
               '✅ Strategy 1: Auth ready after launch → syncing pending notifications');
-          await _debugLocalNotifications(); // Debug what's in local storage
           await _syncPendingNotifications();
 
           // CRITICAL FIX: Validate and refresh FCM token after auth is ready
@@ -588,51 +583,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       debugPrint('⚠️ Could not attach auth listener for pending sync: $e');
     }
 
-    // Strategy 2: Aggressive early retry (1 second)
-    Future.delayed(const Duration(seconds: 1), () async {
-      debugPrint('🔄 Strategy 2: Early sync attempt after 1 second...');
-      await _debugLocalNotifications(); // Debug what's in local storage
-      await _syncPendingNotifications();
-    });
-
-    // Strategy 3: Standard retry sync (3 seconds)
+    // Strategy 2: Quick fallback (3 seconds) - in case auth takes time
     Future.delayed(const Duration(seconds: 3), () async {
-      debugPrint('🔄 Strategy 3: Standard sync attempt after 3 seconds...');
-      await _debugLocalNotifications(); // Debug what's in local storage
+      debugPrint('🔄 Strategy 2: Quick fallback sync after 3 seconds...');
       await _syncPendingNotifications();
-
-      // Validate FCM token after initial setup
       await _validateAndRefreshAssignmentToken();
     });
 
-    // Strategy 4: Extended retry (8 seconds)
-    Future.delayed(const Duration(seconds: 8), () async {
-      debugPrint('🔄 Strategy 4: Extended sync attempt after 8 seconds...');
-      await _debugLocalNotifications(); // Debug what's in local storage
+    // Strategy 3: Final safety net (10 seconds) - catch any edge cases
+    Future.delayed(const Duration(seconds: 10), () async {
+      debugPrint('🔄 Strategy 3: Final safety net sync after 10 seconds...');
       await _syncPendingNotifications();
     });
-
-    // Strategy 5: Final fallback (15 seconds)
-    Future.delayed(const Duration(seconds: 15), () async {
-      debugPrint('🔄 Strategy 5: Final fallback sync after 15 seconds...');
-      await _debugLocalNotifications(); // Debug what's in local storage
-      await _syncPendingNotifications();
-    });
-
-    // Strategy 6: Periodic sync every 30 seconds for the first 2 minutes
-    for (int i = 1; i <= 4; i++) {
-      Future.delayed(Duration(seconds: 30 * i), () async {
-        debugPrint('🔄 Strategy 6.$i: Periodic sync at ${30 * i} seconds...');
-        await _debugLocalNotifications();
-        await _syncPendingNotifications();
-      });
-    }
 
     // CRITICAL FIX: Set up periodic FCM token refresh to prevent token loss
+    // OPTIMIZED: Reduced frequency for better performance
     _setupPeriodicTokenRefresh();
   }
 
   // NEW: Set up periodic FCM token refresh
+  // OPTIMIZED: Reduced frequency from every 30s to every 2 minutes during startup
   void _setupPeriodicTokenRefresh() {
     debugPrint('🔄 Setting up periodic FCM token refresh...');
 
@@ -646,11 +616,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     });
 
-    // Also refresh token every 30 seconds for the first 5 minutes (during critical startup period)
-    for (int i = 1; i <= 10; i++) {
-      Future.delayed(Duration(seconds: 30 * i), () async {
+    // Also refresh token every 2 minutes for the first 10 minutes (during critical startup period)
+    // OPTIMIZED: Reduced from every 30s to every 2 minutes
+    for (int i = 1; i <= 5; i++) {
+      Future.delayed(Duration(minutes: 2 * i), () async {
         try {
-          debugPrint('🔄 Early periodic token refresh ${i}/10...');
+          debugPrint('🔄 Early periodic token refresh ${i}/5...');
           await _validateAndRefreshAssignmentToken();
         } catch (e) {
           debugPrint('❌ Error in early token refresh: $e');
@@ -1246,11 +1217,17 @@ Future<void> _configureFCM() async {
           (message.notification?.title?.toLowerCase().contains('alert') ??
               false);
       if (looksLikeAnxiety) {
+        debugPrint('🔍 Checking if anxiety alert needs storage from tap...');
+        debugPrint('   notificationId: ${message.data['notificationId']}');
+        debugPrint('   timestamp: ${message.data['timestamp']}');
         try {
           final stored = await _storeAnxietyAlertNotification(
               message.notification, message.data);
-          debugPrint(
-              '🧾 Stored tapped anxiety alert from OS notification: $stored');
+          if (stored) {
+            debugPrint('🧾 Stored tapped anxiety alert from FCM tap');
+          } else {
+            debugPrint('🛑 Skipped duplicate from tap (already stored)');
+          }
         } catch (e) {
           debugPrint('⚠️ Could not store tapped anxiety alert: $e');
         }
@@ -1469,7 +1446,83 @@ Future<void> _configureFCM() async {
   }
 }
 
+DateTime _resolveNotificationTimestamp(dynamic rawTimestamp,
+    {required String source}) {
+  final fallback = DateTime.now().toUtc();
+
+  if (rawTimestamp == null) {
+    debugPrint('🕒 [$source] No timestamp provided; using fallback');
+    return fallback;
+  }
+
+  try {
+    if (rawTimestamp is int) {
+      final isSeconds = rawTimestamp < 1000000000000;
+      final millis = isSeconds ? rawTimestamp * 1000 : rawTimestamp;
+      final parsed = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+      debugPrint(
+          '📅 [$source] Parsed int timestamp → ${parsed.toIso8601String()}');
+      return parsed;
+    }
+
+    if (rawTimestamp is double) {
+      final isSeconds = rawTimestamp < 1000000000000;
+      final millis =
+          isSeconds ? (rawTimestamp * 1000).round() : rawTimestamp.round();
+      final parsed = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+      debugPrint(
+          '📅 [$source] Parsed double timestamp → ${parsed.toIso8601String()}');
+      return parsed;
+    }
+
+    final rawString = rawTimestamp.toString().trim();
+    if (rawString.isEmpty) {
+      debugPrint('🕒 [$source] Empty timestamp string; using fallback');
+      return fallback;
+    }
+
+    final numericValue = int.tryParse(rawString);
+    if (numericValue != null) {
+      final isSeconds = rawString.length <= 10;
+      final millis = isSeconds ? numericValue * 1000 : numericValue;
+      final parsed = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+      debugPrint(
+          '📅 [$source] Parsed numeric string → ${parsed.toIso8601String()}');
+      return parsed;
+    }
+
+    final doubleValue = double.tryParse(rawString);
+    if (doubleValue != null) {
+      final isSeconds = doubleValue < 1000000000000;
+      final millis =
+          isSeconds ? (doubleValue * 1000).round() : doubleValue.round();
+      final parsed = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+      debugPrint(
+          '📅 [$source] Parsed decimal string → ${parsed.toIso8601String()}');
+      return parsed;
+    }
+
+    final parsedDate = DateTime.tryParse(rawString);
+    if (parsedDate != null) {
+      final utcDate = parsedDate.isUtc ? parsedDate : parsedDate.toUtc();
+      debugPrint(
+          '📅 [$source] Parsed ISO string → ${utcDate.toIso8601String()}');
+      return utcDate;
+    }
+
+    debugPrint(
+        '🕒 [$source] Unsupported timestamp format ($rawString); using fallback');
+    return fallback;
+  } catch (e) {
+    debugPrint('⚠️ [$source] Failed to parse timestamp ($rawTimestamp): $e');
+    return fallback;
+  }
+}
+
 /// Store anxiety alert notification in Supabase for notifications screen display
+/// Track recently stored notification IDs to prevent duplicates
+final Map<String, DateTime> _storedNotificationIds = {};
+
 Future<bool> _storeAnxietyAlertNotification(
     RemoteNotification? notification, Map<String, dynamic> data) async {
   try {
@@ -1479,6 +1532,27 @@ Future<bool> _storeAnxietyAlertNotification(
     final severity = data['severity'] ?? 'unknown';
     final heartRate = data['heartRate'] ?? 'N/A';
     final baseline = data['baseline'];
+    final notificationId = data['notificationId'] ?? data['timestamp'] ?? '';
+
+    // Deduplication: Check if we've stored this notification in the last 10 seconds
+    if (notificationId.isNotEmpty) {
+      final lastStored = _storedNotificationIds[notificationId];
+      if (lastStored != null) {
+        final timeSinceStored = DateTime.now().difference(lastStored).inSeconds;
+        if (timeSinceStored < 10) {
+          debugPrint(
+              '🛑 Skipping duplicate notification (stored ${timeSinceStored}s ago): $notificationId');
+          return false;
+        }
+      }
+      // Mark as stored
+      _storedNotificationIds[notificationId] = DateTime.now();
+      // Clean up old entries (keep last 50)
+      if (_storedNotificationIds.length > 50) {
+        final oldestKey = _storedNotificationIds.keys.first;
+        _storedNotificationIds.remove(oldestKey);
+      }
+    }
 
     String title = notification?.title ?? 'Anxiety Alert';
     String body =
@@ -1521,13 +1595,29 @@ Future<bool> _storeAnxietyAlertNotification(
     debugPrint('   body: $body');
     debugPrint('   severity: $severity');
 
-    await supabaseService.createNotification(
+    // Use the timestamp from FCM data if available, otherwise use current time
+    final fcmTimestamp =
+        data['timestamp'] ?? data['created_at'] ?? data['createdAt'];
+    final notificationTime =
+        _resolveNotificationTimestamp(fcmTimestamp, source: 'anxiety_alert');
+
+    debugPrint('🕐 Storing notification with timestamp:');
+    debugPrint('   FCM raw timestamp: $fcmTimestamp');
+    debugPrint('   Resolved time (UTC): ${notificationTime.toIso8601String()}');
+    debugPrint(
+        '   Resolved time (local): ${notificationTime.toLocal().toIso8601String()}');
+    debugPrint(
+        '   Current time (UTC): ${DateTime.now().toUtc().toIso8601String()}');
+    debugPrint('   Current time (local): ${DateTime.now().toIso8601String()}');
+
+    await supabaseService.createNotificationWithTimestamp(
       title: title,
       message: body,
       type: 'alert',
       relatedScreen:
           'notifications', // Changed to match where user gets redirected
       relatedId: data['notificationId'],
+      createdAt: notificationTime,
     );
 
     // Trigger notification refresh in home screen
@@ -1561,12 +1651,17 @@ Future<void> _storeWellnessReminderNotification(
     }
 
     // Store in Supabase
-    await supabaseService.createNotification(
+    final rawTimestamp =
+        data['timestamp'] ?? data['scheduled_at'] ?? data['scheduledAt'];
+    final notificationTime = _resolveNotificationTimestamp(rawTimestamp,
+        source: 'wellness_reminder');
+    await supabaseService.createNotificationWithTimestamp(
       title: title,
       message: body,
       type: 'reminder',
       relatedScreen: relatedScreen,
-      relatedId: data['timestamp']?.toString(),
+      relatedId: rawTimestamp?.toString(),
+      createdAt: notificationTime,
     );
 
     // Trigger notification refresh in home screen
@@ -1590,12 +1685,17 @@ Future<void> _storeBreathingReminderNotification(
         'Time for a breathing exercise! Take a moment to relax and breathe.';
 
     // Store in Supabase
-    await supabaseService.createNotification(
+    final rawTimestamp =
+        data['timestamp'] ?? data['scheduled_at'] ?? data['scheduledAt'];
+    final notificationTime = _resolveNotificationTimestamp(rawTimestamp,
+        source: 'breathing_reminder');
+    await supabaseService.createNotificationWithTimestamp(
       title: title,
       message: body,
       type: 'reminder',
       relatedScreen: 'breathing_screen',
-      relatedId: data['timestamp']?.toString(),
+      relatedId: rawTimestamp?.toString(),
+      createdAt: notificationTime,
     );
 
     // Trigger notification refresh in home screen
@@ -2439,7 +2539,16 @@ Future<void> _debugLocalNotifications() async {
 }
 
 /// Sync pending notifications from local storage to Supabase
+bool _isSyncingPendingNotifications = false;
+
 Future<void> _syncPendingNotifications() async {
+  if (_isSyncingPendingNotifications) {
+    debugPrint(
+        '⏳ _syncPendingNotifications already running; skipping re-entry');
+    return;
+  }
+
+  _isSyncingPendingNotifications = true;
   try {
     final timestamp = DateTime.now().toIso8601String();
     debugPrint('🔄 _syncPendingNotifications called at $timestamp');
@@ -2460,7 +2569,6 @@ Future<void> _syncPendingNotifications() async {
         '📋 Total pending notifications found: ${pendingNotifications.length}');
     if (pendingNotifications.isEmpty) {
       debugPrint('📋 No pending notifications to sync');
-      // Don't trigger UI refresh if no notifications - reduces aggressive refreshing
       return;
     }
 
@@ -2525,43 +2633,78 @@ Future<void> _syncPendingNotifications() async {
         }
 
         if (notificationData.isNotEmpty) {
-          final title = notificationData['title'] ?? 'Anxiety Alert';
+          final title = notificationData['title'] ?? 'Notification';
           final message = notificationData['body'] ??
               notificationData['message'] ??
-              'Please check your status.';
+              'You have a new notification.';
           final severity = notificationData['severity'] ?? 'unknown';
+          final notificationType = notificationData['type'] ?? 'alert';
           final timestamp =
               notificationData['timestamp'] ?? DateTime.now().toIso8601String();
           final heartRate = notificationData['heartRate'] ?? '';
           final baseline = notificationData['baseline'] ?? '';
           final duration = notificationData['duration'] ?? '';
           final reason = notificationData['reason'] ?? '';
+          final notificationId = notificationData['notificationId'] ?? '';
 
           debugPrint('💾 Syncing enhanced notification:');
           debugPrint('   Title: $title');
           debugPrint('   Message: $message');
+          debugPrint('   Type: $notificationType');
           debugPrint('   Severity: $severity');
           debugPrint('   Heart Rate: $heartRate');
           debugPrint('   Baseline: $baseline');
           debugPrint('   Duration: $duration');
           debugPrint('   Reason: $reason');
           debugPrint('   Timestamp: $timestamp');
+          if (notificationId.isNotEmpty) {
+            final lastStored = _storedNotificationIds[notificationId];
+            if (lastStored != null) {
+              final secondsSince =
+                  DateTime.now().difference(lastStored).inSeconds;
+              if (secondsSince < 10) {
+                debugPrint(
+                    '🛑 Skipping pending duplicate (stored ${secondsSince}s ago): $notificationId');
+                continue;
+              }
+            }
+          }
 
-          // Store in Supabase with enhanced information in the message
-          final enhancedMessage = message +
-              (heartRate.isNotEmpty ? " | HR: ${heartRate} BPM" : "") +
-              (baseline.isNotEmpty ? " (Baseline: ${baseline} BPM)" : "") +
-              (duration.isNotEmpty ? " for ${duration}s" : "") +
-              (reason.isNotEmpty ? " | ${reason}" : "");
+          final resolvedTimestamp =
+              _resolveNotificationTimestamp(timestamp, source: 'pending_sync');
 
-          await supabaseService.createNotification(
+          // Build enhanced message only for anxiety alerts (not wellness reminders)
+          final isWellnessReminder = notificationType == 'wellness_reminder' ||
+              notificationType == 'reminder';
+          final enhancedMessage = isWellnessReminder
+              ? message
+              : message +
+                  (heartRate.isNotEmpty ? " | HR: ${heartRate} BPM" : "") +
+                  (baseline.isNotEmpty ? " (Baseline: ${baseline} BPM)" : "") +
+                  (duration.isNotEmpty ? " for ${duration}s" : "") +
+                  (reason.isNotEmpty ? " | ${reason}" : "");
+
+          // Determine related screen based on notification type
+          final relatedScreen =
+              isWellnessReminder ? 'breathing_screen' : 'notifications';
+
+          await supabaseService.createNotificationWithTimestamp(
             title: title,
             message: enhancedMessage,
-            type: 'alert',
-            relatedScreen: 'notifications',
+            type: notificationType, // Use actual type (reminder or alert)
+            relatedScreen: relatedScreen,
             relatedId:
                 'bg_${severity}_${DateTime.now().millisecondsSinceEpoch}',
+            createdAt: resolvedTimestamp,
           );
+
+          if (notificationId.isNotEmpty) {
+            _storedNotificationIds[notificationId] = DateTime.now();
+            if (_storedNotificationIds.length > 50) {
+              final oldestKey = _storedNotificationIds.keys.first;
+              _storedNotificationIds.remove(oldestKey);
+            }
+          }
 
           syncedCount++;
           debugPrint('✅ Successfully synced enhanced notification: $title');
@@ -2608,6 +2751,8 @@ Future<void> _syncPendingNotifications() async {
       debugPrint('🔄 Retrying sync after error...');
       await _syncPendingNotifications();
     });
+  } finally {
+    _isSyncingPendingNotifications = false;
   }
 }
 

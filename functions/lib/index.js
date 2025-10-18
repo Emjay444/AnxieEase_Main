@@ -29,7 +29,7 @@ Object.defineProperty(exports, "smartDeviceDataSync", { enumerable: true, get: f
 Object.defineProperty(exports, "removeTimestampDuplicates", { enumerable: true, get: function () { return smartDeviceDataSync_1.removeTimestampDuplicates; } });
 Object.defineProperty(exports, "monitorDuplicationPrevention", { enumerable: true, get: function () { return smartDeviceDataSync_1.monitorDuplicationPrevention; } });
 // Import legacy device functions for compatibility (assignment functions still needed)
-// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession 
+// NOTE: Removed copyDeviceDataToUserSession and copyDeviceCurrentToUserSession
 // as they create timestamp duplicates. smartDeviceDataSync now handles this properly.
 var deviceDataCopyService_1 = require("./deviceDataCopyService");
 Object.defineProperty(exports, "assignDeviceToUser", { enumerable: true, get: function () { return deviceDataCopyService_1.assignDeviceToUser; } });
@@ -70,22 +70,62 @@ exports.onNativeAlertCreate = functions.database
         const alert = snapshot.val();
         if (!alert)
             return null;
+        const deviceId = context.params.deviceId;
         const severity = (alert.severity || "").toLowerCase();
         const heartRate = alert.heartRate;
         const ts = alert.timestamp || Date.now();
-        if (!["mild", "moderate", "severe"].includes(severity)) {
+        const baseline = alert.baseline || 73.2; // Get baseline from alert or use default
+        const userId = alert.userId; // Get userId if provided
+        if (!["mild", "moderate", "severe", "critical"].includes(severity)) {
             console.log(`Skipping alert with invalid severity: ${severity}`);
             return null;
         }
+        // Get the assigned user's FCM token from device assignment
+        let fcmToken = null;
+        try {
+            const assignmentSnapshot = await admin
+                .database()
+                .ref(`/devices/${deviceId}/assignment`)
+                .once("value");
+            if (assignmentSnapshot.exists()) {
+                const assignment = assignmentSnapshot.val();
+                fcmToken = assignment.fcmToken;
+                const assignedUserId = assignment.assignedUser;
+                console.log(`📱 Device ${deviceId} assigned to user: ${assignedUserId}`);
+                console.log(`🔑 FCM Token found: ${fcmToken ? 'Yes' : 'No'}`);
+                if (!fcmToken) {
+                    console.log(`⚠️ No FCM token found for device ${deviceId} assignment`);
+                    return null;
+                }
+            }
+            else {
+                console.log(`⚠️ No assignment found for device ${deviceId}`);
+                return null;
+            }
+        }
+        catch (error) {
+            console.error(`❌ Error fetching device assignment: ${error}`);
+            return null;
+        }
+        // Calculate percentage above baseline
+        const percentageAbove = baseline > 0
+            ? Math.round(((heartRate - baseline) / baseline) * 100)
+            : 0;
         const { title, body } = getNotificationContent(severity, heartRate);
-        // Enhanced notification structure with proper sound support
+        // Enhanced notification structure with proper sound support and complete data
+        // Send to SPECIFIC USER TOKEN as DATA-ONLY (app handles display)
         const message = {
+            token: fcmToken,
             data: {
                 type: "anxiety_alert",
                 severity,
                 heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
+                baseline: baseline.toString(),
+                percentageAbove: percentageAbove.toString(),
                 timestamp: ts.toString(),
                 notificationId: `${severity}_${ts}`,
+                deviceId: deviceId,
+                userId: userId || "",
                 title,
                 message: body,
                 channelId: getChannelIdForSeverity(severity),
@@ -96,11 +136,7 @@ exports.onNativeAlertCreate = functions.database
             },
             android: {
                 priority: "high",
-                notification: {
-                    channelId: getChannelIdForSeverity(severity),
-                    sound: getSoundForSeverity(severity).replace(".mp3", ""),
-                    priority: "max",
-                },
+                // Removed notification config - data-only for app handling
             },
             apns: {
                 headers: {
@@ -110,14 +146,13 @@ exports.onNativeAlertCreate = functions.database
                     aps: {
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
-                        sound: getSoundForSeverity(severity), // iOS can use .mp3
                     },
                 },
             },
-            topic: "anxiety_alerts",
         };
         const response = await admin.messaging().send(message);
-        console.log("✅ FCM sent from onNativeAlertCreate:", response);
+        console.log(`✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`);
+        console.log(`✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`);
         return response;
     }
     catch (error) {

@@ -159,8 +159,8 @@ class _BackgroundConfig {
   // When true, background handler stores notifications in SharedPreferences
   // for later sync into Supabase on app open. Set to false once backend writes
   // alerts directly to Supabase to simplify the client flow.
-  // ✅ DISABLED: Server-side Supabase persistence is working perfectly!
-  static const bool usePendingStorage = false;
+  // ✅ ENABLED: keep storing so the app can sync when reopened without tap.
+  static const bool usePendingStorage = true;
 }
 
 /// Store background-received notification locally using SharedPreferences
@@ -179,19 +179,26 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
     final deviceId = message.data['deviceId'];
     final timestamp = message.data['timestamp'] ??
         DateTime.now().millisecondsSinceEpoch.toString();
+    final notificationId =
+        message.data['notificationId'] ?? 'pending_$timestamp';
 
     // Get title and body from data payload (preferred) or notification payload
     String title = message.data['title'] ??
         message.data['message'] ??
         message.notification?.title ??
-        'Anxiety Alert';
+        'Notification';
     String body = message.data['body'] ??
         message.data['message'] ??
         message.notification?.body ??
-        'Anxiety detected. Please check your status.';
+        'You have a new notification.';
 
-    // Create more descriptive notification based on severity
-    if (severity != 'unknown') {
+    // Determine if this is a wellness reminder
+    final messageType = message.data['type'] ?? '';
+    final isWellnessReminder =
+        messageType == 'wellness_reminder' || messageType == 'reminder';
+
+    // Only override title/body for anxiety alerts (not wellness reminders)
+    if (!isWellnessReminder && severity != 'unknown') {
       switch (severity.toLowerCase()) {
         case 'mild':
           title = '🟢 Mild Anxiety Alert';
@@ -232,6 +239,7 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
       'userId': userId,
       'sessionId': sessionId,
       'deviceId': deviceId,
+      'notificationId': notificationId,
       'timestamp': timestamp,
       'receivedAt': DateTime.now().toIso8601String(),
       'type': message.data['type'] ?? 'anxiety_alert',

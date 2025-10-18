@@ -53,7 +53,11 @@ exports.manualCleanup = functions.https.onRequest(async (req, res) => {
     functions.logger.info("🧹 Manual cleanup triggered...");
     try {
         const results = await performCleanup();
-        res.json({ success: true, message: "Cleanup completed successfully", results });
+        res.json({
+            success: true,
+            message: "Cleanup completed successfully",
+            results,
+        });
     }
     catch (error) {
         functions.logger.error("❌ Manual cleanup failed:", error instanceof Error ? error.message : String(error));
@@ -72,7 +76,7 @@ async function performCleanup() {
         backupsDeleted: 0,
         currentDataCleaned: 0,
         totalSavings: 0,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
     };
     // 1. Clean up old device history
     results.deviceHistoryDeleted = await cleanupDeviceHistory();
@@ -97,7 +101,7 @@ async function performCleanup() {
 }
 async function cleanupDeviceHistory() {
     functions.logger.info("🔍 Cleaning device history...");
-    const cutoffTime = Date.now() - (CLEANUP_CONFIG.DEVICE_HISTORY_RETENTION * 24 * 60 * 60 * 1000);
+    const cutoffTime = Date.now() - CLEANUP_CONFIG.DEVICE_HISTORY_RETENTION * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
     try {
         const historyRef = db.ref("/devices/AnxieEase001/history");
@@ -110,10 +114,10 @@ async function cleanupDeviceHistory() {
                 // If entry has a timestamp field, use it
                 if (entry === null || entry === void 0 ? void 0 : entry.timestamp) {
                     const timestampValue = entry.timestamp;
-                    if (typeof timestampValue === 'number') {
+                    if (typeof timestampValue === "number") {
                         entryTime = timestampValue;
                     }
-                    else if (typeof timestampValue === 'string') {
+                    else if (typeof timestampValue === "string") {
                         // Parse string timestamps like "2025-10-06 14:54:35"
                         entryTime = new Date(timestampValue).getTime();
                     }
@@ -124,7 +128,9 @@ async function cleanupDeviceHistory() {
                 }
                 else if (/^\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}$/.test(key)) {
                     // Device native key: YYYY_MM_DD_HH_MM_SS -> convert to epoch
-                    const [year, month, day, hour, minute, second] = key.split('_').map(Number);
+                    const [year, month, day, hour, minute, second] = key
+                        .split("_")
+                        .map(Number);
                     entryTime = new Date(year, month - 1, day, hour, minute, second).getTime();
                 }
                 if (entryTime > 0 && entryTime < cutoffTime) {
@@ -152,7 +158,7 @@ async function cleanupDeviceHistory() {
 async function cleanupUserSessions() {
     var _a, _b, _c;
     functions.logger.info("🔍 Cleaning user session data...");
-    const sessionRetentionTime = Date.now() - (CLEANUP_CONFIG.USER_SESSION_RETENTION * 24 * 60 * 60 * 1000);
+    const sessionRetentionTime = Date.now() - CLEANUP_CONFIG.USER_SESSION_RETENTION * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
     try {
         const usersRef = db.ref("/users");
@@ -178,7 +184,9 @@ async function cleanupUserSessions() {
                         if (deletedCount >= CLEANUP_CONFIG.MAX_DELETIONS_PER_RUN)
                             break;
                     }
-                    else if (!isCompleted && startTime && startTime < sessionRetentionTime) {
+                    else if (!isCompleted &&
+                        startTime &&
+                        startTime < sessionRetentionTime) {
                         // Old inactive session
                         updates[`/users/${userId}/sessions/${sessionId}`] = null;
                         deletedCount++;
@@ -225,7 +233,7 @@ async function cleanupUserSessions() {
  */
 async function cleanupCurrentData() {
     functions.logger.info("🔍 Cleaning high-frequency current data...");
-    const cutoffTime = Date.now() - (CLEANUP_CONFIG.CURRENT_DATA_RETENTION * 24 * 60 * 60 * 1000); // 5 minutes
+    const cutoffTime = Date.now() - CLEANUP_CONFIG.CURRENT_DATA_RETENTION * 24 * 60 * 60 * 1000; // 5 minutes
     let deletedCount = 0;
     try {
         // Clean device current data
@@ -273,7 +281,7 @@ async function cleanupCurrentData() {
 }
 async function cleanupAnxietyAlerts() {
     functions.logger.info("🔍 Cleaning anxiety alerts...");
-    const cutoffTime = Date.now() - (CLEANUP_CONFIG.ANXIETY_ALERTS_RETENTION * 24 * 60 * 60 * 1000);
+    const cutoffTime = Date.now() - CLEANUP_CONFIG.ANXIETY_ALERTS_RETENTION * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
     try {
         const usersRef = db.ref("/users");
@@ -308,7 +316,7 @@ async function cleanupAnxietyAlerts() {
 async function cleanupOldBackups() {
     var _a;
     functions.logger.info("🔍 Cleaning old backups...");
-    const cutoffTime = Date.now() - (CLEANUP_CONFIG.BACKUP_RETENTION * 24 * 60 * 60 * 1000);
+    const cutoffTime = Date.now() - CLEANUP_CONFIG.BACKUP_RETENTION * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
     try {
         const backupsRef = db.ref("/backups");
@@ -350,17 +358,20 @@ async function logCleanupResults(results) {
 exports.getCleanupStats = functions.https.onRequest(async (req, res) => {
     try {
         const logsRef = db.ref("/system/cleanup_logs");
-        const recentLogs = await logsRef.orderByChild("timestamp").limitToLast(10).once("value");
+        const recentLogs = await logsRef
+            .orderByChild("timestamp")
+            .limitToLast(10)
+            .once("value");
         res.json({
             success: true,
             recentCleanups: recentLogs.val() || {},
-            config: CLEANUP_CONFIG
+            config: CLEANUP_CONFIG,
         });
     }
     catch (error) {
         res.status(500).json({
             success: false,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
         });
     }
 });

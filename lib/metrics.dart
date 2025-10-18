@@ -70,12 +70,23 @@ class MetricsScreen extends StatefulWidget {
 class _MetricsScreenState extends State<MetricsScreen> {
   String selectedMonth =
       DateFormat('MMMM yyyy').format(DateTime.now()); // Default current month
+  int selectedYear = DateTime.now().year; // Default current year
+  String selectedPeriod = 'Monthly'; // 'Weekly' or 'Monthly'
   List<String> availableMonths = [];
+  List<int> availableYears = [];
 
   Map<DateTime, List<DailyLog>> _dailyLogs = {};
   final SupabaseService _supabaseService = SupabaseService();
   bool _isLoading = true;
   bool _hasData = false;
+
+  // Performance optimization: Cache processed chart data
+  String? _lastProcessedKey;
+  Map<String, List<FlSpot>>? _cachedMoodData;
+  Map<String, List<FlSpot>>? _cachedStressData;
+  Map<String, List<FlSpot>>? _cachedSymptomsData;
+  List<MapEntry<String, int>>? _cachedTopSymptoms;
+  List<MapEntry<String, int>>? _cachedTopMoods;
 
   // Get user-specific key for SharedPreferences
   String get _userSpecificLogsKey {
@@ -138,15 +149,35 @@ class _MetricsScreenState extends State<MetricsScreen> {
   void _generateAvailableMonths() {
     final now = DateTime.now();
     availableMonths = [];
+    availableYears = [];
 
-    // Generate last 6 months including current month
-    for (int i = 5; i >= 0; i--) {
-      final monthDate = DateTime(now.year, now.month - i, 1);
-      availableMonths.add(DateFormat('MMMM yyyy').format(monthDate));
+    // Generate all months from January of last year to current month
+    final startDate = DateTime(now.year - 1, 1, 1);
+    DateTime currentDate = startDate;
+
+    while (currentDate.isBefore(now) ||
+        currentDate.month == now.month && currentDate.year == now.year) {
+      availableMonths.add(DateFormat('MMMM yyyy').format(currentDate));
+
+      // Add year to availableYears if not already present
+      if (!availableYears.contains(currentDate.year)) {
+        availableYears.add(currentDate.year);
+      }
+
+      // Move to next month
+      if (currentDate.month == 12) {
+        currentDate = DateTime(currentDate.year + 1, 1, 1);
+      } else {
+        currentDate = DateTime(currentDate.year, currentDate.month + 1, 1);
+      }
     }
 
-    // Set default to current month
-    selectedMonth = availableMonths.last;
+    // Sort years in descending order (newest first)
+    availableYears.sort((a, b) => b.compareTo(a));
+
+    // Set default to current month and year
+    selectedMonth = DateFormat('MMMM yyyy').format(now);
+    selectedYear = now.year;
   }
 
   Future<void> _checkConnectionStatus() async {
@@ -426,6 +457,24 @@ class _MetricsScreenState extends State<MetricsScreen> {
       return;
     }
 
+    // PERFORMANCE OPTIMIZATION: Check if we can use cached data
+    final currentKey = '$selectedPeriod-$selectedMonth-$selectedYear';
+    if (_lastProcessedKey == currentKey &&
+        _cachedMoodData != null &&
+        _cachedStressData != null &&
+        _cachedSymptomsData != null) {
+      // Use cached data instead of recalculating
+      setState(() {
+        _hasData = true;
+        moodData = _cachedMoodData!;
+        stressData = _cachedStressData!;
+        symptomsData = _cachedSymptomsData!;
+        topSymptoms = _cachedTopSymptoms ?? [];
+        topMoods = _cachedTopMoods ?? [];
+      });
+      return;
+    }
+
     // Get dates for weekly and monthly ranges
     final now = DateTime.now();
     Logger.info('Current date: ${now.toString()}, Day of week: ${now.weekday}');
@@ -625,10 +674,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
     // Create weekly data points (Sunday to Saturday)
     for (int i = 0; i < 7; i++) {
-      weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[i] ?? 5.0));
-      weeklyStressSpots.add(FlSpot(i.toDouble(), weeklyStressLevels[i] ?? 5.0));
+      // Add all days, use 0 for days without data to maintain continuity
+      weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[i] ?? 0.0));
+      weeklyStressSpots.add(FlSpot(i.toDouble(), weeklyStressLevels[i] ?? 0.0));
       weeklySymptomSpots
-          .add(FlSpot(i.toDouble(), weeklySymptomCounts[i]?.toDouble() ?? 5.0));
+          .add(FlSpot(i.toDouble(), weeklySymptomCounts[i]?.toDouble() ?? 0.0));
     }
 
     // Create monthly data points
@@ -638,11 +688,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
     int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     for (int i = 0; i < daysInMonth; i++) {
-      monthlyMoodSpots.add(FlSpot(i.toDouble(), monthlyMoodScores[i] ?? 5.0));
+      // Add all days, use 0 for days without data to maintain continuity
+      monthlyMoodSpots.add(FlSpot(i.toDouble(), monthlyMoodScores[i] ?? 0.0));
       monthlyStressSpots
-          .add(FlSpot(i.toDouble(), monthlyStressLevels[i] ?? 5.0));
+          .add(FlSpot(i.toDouble(), monthlyStressLevels[i] ?? 0.0));
       monthlySymptomSpots.add(
-          FlSpot(i.toDouble(), monthlySymptomCounts[i]?.toDouble() ?? 5.0));
+          FlSpot(i.toDouble(), monthlySymptomCounts[i]?.toDouble() ?? 0.0));
     }
 
     // Update state with processed data
@@ -678,6 +729,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
       Logger.info(
           'Top moods: ${topMoods.map((e) => '${e.key}: ${e.value}').join(', ')}');
+
+      // PERFORMANCE OPTIMIZATION: Cache the results
+      _lastProcessedKey = '$selectedPeriod-$selectedMonth-$selectedYear';
+      _cachedMoodData = moodData;
+      _cachedStressData = stressData;
+      _cachedSymptomsData = symptomsData;
+      _cachedTopSymptoms = topSymptoms;
+      _cachedTopMoods = topMoods;
     });
   }
 
@@ -690,9 +749,16 @@ class _MetricsScreenState extends State<MetricsScreen> {
           'interval': 1.0,
         };
       case 'Monthly':
+        final now = DateTime.now();
+        final selectedMonthDate = selectedMonth.isNotEmpty
+            ? DateFormat('MMMM yyyy').parse(selectedMonth)
+            : DateTime(now.year, now.month, 1);
+        final daysInMonth =
+            DateTime(selectedMonthDate.year, selectedMonthDate.month + 1, 0)
+                .day;
         return {
           'minX': 0.0,
-          'maxX': 30.0,
+          'maxX': (daysInMonth - 1).toDouble(),
           'interval': 5.0,
         };
     }
@@ -707,6 +773,13 @@ class _MetricsScreenState extends State<MetricsScreen> {
     setState(() {
       _dailyLogs.clear(); // Clear existing data
       _hasData = false;
+      // Clear cache when refreshing data
+      _lastProcessedKey = null;
+      _cachedMoodData = null;
+      _cachedStressData = null;
+      _cachedSymptomsData = null;
+      _cachedTopSymptoms = null;
+      _cachedTopMoods = null;
     });
     await _loadLogs(); // Reload data from both sources
     if (mounted) {
@@ -721,7 +794,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic> chartProps = getChartProperties('Monthly');
+    final Map<String, dynamic> chartProps = getChartProperties(selectedPeriod);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -785,63 +858,233 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         children: [
                           // Add top spacing so floating label isn't clipped
                           const SizedBox(height: 24),
-                          // Month selector
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                            child: DropdownButtonFormField<String>(
-                              value: selectedMonth,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText: 'Select Month',
-                                labelStyle: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[300]!),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[300]!),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                      color: Color(0xFF6200EE)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                              ),
-                              items: availableMonths.map((String month) {
-                                return DropdownMenuItem<String>(
-                                  value: month,
-                                  child: Text(
-                                    month,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
+
+                          // Period toggle (Weekly/Monthly)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedPeriod = 'Weekly';
+                                      });
+                                      _processLogsData();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: selectedPeriod == 'Weekly'
+                                            ? const Color(0xFF6200EE)
+                                            : Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          'Weekly',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: selectedPeriod == 'Weekly'
+                                                ? Colors.white
+                                                : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                );
-                              }).toList(),
-                              onChanged: (String? newValue) {
-                                if (newValue != null) {
-                                  setState(() {
-                                    selectedMonth = newValue;
-                                  });
-                                  _processLogsData(); // Reprocess data when month changes
-                                }
-                              },
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedPeriod = 'Monthly';
+                                      });
+                                      _processLogsData();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: selectedPeriod == 'Monthly'
+                                            ? const Color(0xFF6200EE)
+                                            : Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          'Monthly',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: selectedPeriod == 'Monthly'
+                                                ? Colors.white
+                                                : Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+
+                          const SizedBox(height: 16),
+
+                          // Filters Row (Year and Month - only show for Monthly)
+                          if (selectedPeriod == 'Monthly')
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Row(
+                                children: [
+                                  // Year selector
+                                  Expanded(
+                                    child: DropdownButtonFormField<int>(
+                                      value: selectedYear,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        labelText: 'Year',
+                                        labelStyle: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[700],
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide(
+                                              color: Colors.grey[300]!),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide(
+                                              color: Colors.grey[300]!),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                              color: Color(0xFF6200EE)),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                      items: availableYears.map((int year) {
+                                        return DropdownMenuItem<int>(
+                                          value: year,
+                                          child: Text(
+                                            year.toString(),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (int? newValue) {
+                                        if (newValue != null) {
+                                          setState(() {
+                                            selectedYear = newValue;
+                                            // Update selected month to first month of selected year if current selection is invalid
+                                            final currentMonthDate =
+                                                DateFormat('MMMM yyyy')
+                                                    .parse(selectedMonth);
+                                            if (currentMonthDate.year !=
+                                                selectedYear) {
+                                              selectedMonth =
+                                                  DateFormat('MMMM yyyy')
+                                                      .format(DateTime(
+                                                          selectedYear, 1, 1));
+                                            }
+                                          });
+                                          _processLogsData();
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Month selector
+                                  Expanded(
+                                    flex: 2,
+                                    child: DropdownButtonFormField<String>(
+                                      value: selectedMonth,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        labelText: 'Month',
+                                        labelStyle: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[700],
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide(
+                                              color: Colors.grey[300]!),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide(
+                                              color: Colors.grey[300]!),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: const BorderSide(
+                                              color: Color(0xFF6200EE)),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                      items: availableMonths
+                                          .where((month) =>
+                                              DateFormat('MMMM yyyy')
+                                                  .parse(month)
+                                                  .year ==
+                                              selectedYear)
+                                          .map((String month) {
+                                        return DropdownMenuItem<String>(
+                                          value: month,
+                                          child: Text(
+                                            DateFormat('MMMM').format(
+                                                DateFormat('MMMM yyyy')
+                                                    .parse(month)),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (String? newValue) {
+                                        if (newValue != null) {
+                                          setState(() {
+                                            selectedMonth = newValue;
+                                          });
+                                          _processLogsData();
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
 
                           const SizedBox(height: 16),
 
@@ -876,11 +1119,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 // Main Charts
                                 _buildMetricCard(
                                   title: 'Mood Score',
-                                  value: moodData['Monthly']!.isEmpty
-                                      ? 5.0
-                                      : _findValueForToday(moodData['Monthly']!,
+                                  value: moodData[selectedPeriod]!.isEmpty
+                                      ? 0.0
+                                      : _findValueForToday(
+                                          moodData[selectedPeriod]!,
                                           DateTime.now().weekday % 7),
-                                  data: moodData['Monthly']!,
+                                  data: moodData[selectedPeriod]!,
                                   color:
                                       const Color(0xFF4CAF50), // Green for mood
                                   gradient: const LinearGradient(
@@ -901,12 +1145,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Stress Level',
-                                  value: stressData['Monthly']!.isEmpty
-                                      ? 5.0
+                                  value: stressData[selectedPeriod]!.isEmpty
+                                      ? 0.0
                                       : _findValueForToday(
-                                          stressData['Monthly']!,
+                                          stressData[selectedPeriod]!,
                                           DateTime.now().weekday % 7),
-                                  data: stressData['Monthly']!,
+                                  data: stressData[selectedPeriod]!,
                                   color: const Color(
                                       0xFFFF5722), // Orange for stress
                                   gradient: const LinearGradient(
@@ -927,12 +1171,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                                 const SizedBox(height: 16),
                                 _buildMetricCard(
                                   title: 'Symptom Count',
-                                  value: symptomsData['Monthly']!.isEmpty
+                                  value: symptomsData[selectedPeriod]!.isEmpty
                                       ? 0.0
                                       : _findValueForToday(
-                                          symptomsData['Monthly']!,
+                                          symptomsData[selectedPeriod]!,
                                           DateTime.now().weekday % 7),
-                                  data: symptomsData['Monthly']!,
+                                  data: symptomsData[selectedPeriod]!,
                                   color: const Color(
                                       0xFF2196F3), // Blue for symptoms
                                   gradient: const LinearGradient(
@@ -973,18 +1217,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
     required Map<String, dynamic> chartProps,
     String? description,
   }) {
-    // Calculate statistics
-    double average = data.isEmpty
-        ? 0.0
-        : data.map((spot) => spot.y).reduce((a, b) => a + b) / data.length;
+    // Filter out zero values (days without data) for statistics calculation
+    final nonZeroData = data.where((spot) => spot.y > 0).toList();
 
-    double maxValue = data.isEmpty
+    // Calculate statistics from non-zero data only
+    double average = nonZeroData.isEmpty
         ? 0.0
-        : data.map((spot) => spot.y).reduce((a, b) => a > b ? a : b);
+        : nonZeroData.map((spot) => spot.y).reduce((a, b) => a + b) /
+            nonZeroData.length;
 
-    double minValue = data.isEmpty
+    double maxValue = nonZeroData.isEmpty
         ? 0.0
-        : data.map((spot) => spot.y).reduce((a, b) => a < b ? a : b);
+        : nonZeroData.map((spot) => spot.y).reduce((a, b) => a > b ? a : b);
+
+    double minValue = nonZeroData.isEmpty
+        ? 0.0
+        : nonZeroData.map((spot) => spot.y).reduce((a, b) => a < b ? a : b);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1058,6 +1306,23 @@ class _MetricsScreenState extends State<MetricsScreen> {
                   )
                 : LineChart(
                     LineChartData(
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                            return touchedSpots.map((LineBarSpot touchedSpot) {
+                              return LineTooltipItem(
+                                '${touchedSpot.y.toStringAsFixed(1)}$unit',
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
@@ -1102,12 +1367,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
                             interval: chartProps['interval'],
                             getTitlesWidget: (value, meta) {
                               final int index = value.toInt();
-                              if (index >= 0 &&
-                                  index < timeLabels['Monthly']!.length) {
+                              final labels = timeLabels[selectedPeriod]!;
+                              if (index >= 0 && index < labels.length) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8),
                                   child: Text(
-                                    timeLabels['Monthly']![index],
+                                    labels[index],
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 12,
@@ -1129,10 +1394,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
                         LineChartBarData(
                           spots: data,
                           isCurved: true,
+                          curveSmoothness:
+                              0.35, // Smooth curve like the reference
+                          preventCurveOverShooting: true,
                           color: color,
                           barWidth: 3,
                           isStrokeCapRound: true,
-                          dotData: const FlDotData(show: false),
+                          dotData: const FlDotData(
+                              show: false), // Hide dots for clean look
                           belowBarData: BarAreaData(
                             show: true,
                             gradient: LinearGradient(
@@ -1154,9 +1423,9 @@ class _MetricsScreenState extends State<MetricsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
+              _buildStatItem('Min', minValue.toStringAsFixed(1), unit, color),
               _buildStatItem('Avg', average.toStringAsFixed(1), unit, color),
               _buildStatItem('Max', maxValue.toStringAsFixed(1), unit, color),
-              _buildStatItem('Min', minValue.toStringAsFixed(1), unit, color),
             ],
           ),
         ],
@@ -1298,24 +1567,25 @@ class _MetricsScreenState extends State<MetricsScreen> {
   double _findValueForToday(List<FlSpot> data, int weekday) {
     // First try to find an exact match for today's weekday
     for (final spot in data) {
-      if (spot.x == weekday.toDouble()) {
+      if (spot.x == weekday.toDouble() && spot.y > 0) {
         Logger.info(
             'Found exact match for weekday $weekday with value ${spot.y}');
         return spot.y;
       }
     }
 
-    // If no exact match, return the first available value (better than default)
-    if (data.isNotEmpty) {
-      Logger.info(
-          'Using first available data point with value ${data.first.y}');
-      return data.first.y;
+    // If no exact match, calculate the average from available non-zero data
+    final nonZeroData = data.where((spot) => spot.y > 0).toList();
+    if (nonZeroData.isNotEmpty) {
+      final average =
+          nonZeroData.map((spot) => spot.y).reduce((a, b) => a + b) /
+              nonZeroData.length;
+      Logger.info('Using average of non-zero data points: $average');
+      return average;
     }
 
-    // Default fallback
-    Logger.info('No data found, using default value');
-    return weekday == 2
-        ? 0.0
-        : 5.0; // For Tuesday (weekday 2), return 0.0, otherwise 5.0
+    // Default fallback - return 0.0 when no data exists
+    Logger.info('No data found, using default value 0.0');
+    return 0.0;
   }
 }

@@ -4,6 +4,7 @@ import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:io';
 import 'dart:async';
+import 'package:intl/intl.dart';
 
 class SupabaseService {
   static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
@@ -1972,6 +1973,79 @@ class SupabaseService {
     }
   }
 
+  // Create notification with custom timestamp (for FCM notifications)
+  Future<void> createNotificationWithTimestamp({
+    required String title,
+    required String message,
+    required String type,
+    String? relatedScreen,
+    String? relatedId,
+    String? severity,
+    required DateTime createdAt,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    bool _isValidUuid(String s) {
+      final regex = RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\$');
+      return regex.hasMatch(s);
+    }
+
+    // Normalize type to match DB enum values
+    String normalizedType = type;
+    const allowedTypes = {
+      'alert',
+      'reminder'
+    }; // conservative set proven to work
+    if (!allowedTypes.contains(normalizedType)) {
+      // map common aliases
+      if (normalizedType == 'anxiety_log' ||
+          normalizedType == 'anxiety_alert' ||
+          normalizedType == 'warning' ||
+          normalizedType == 'info' ||
+          normalizedType == 'system' ||
+          normalizedType == 'appointment_request' ||
+          normalizedType == 'appointment_expiration' ||
+          normalizedType == 'log') {
+        normalizedType = 'alert';
+      } else {
+        debugPrint(
+            '⚠️ createNotificationWithTimestamp: unmapped type "$type", using "alert"');
+        normalizedType = 'alert';
+      }
+    }
+
+    Map<String, dynamic> row = {
+      'user_id': user.id,
+      'title': title,
+      'message': message,
+      'type': normalizedType,
+      'created_at': createdAt.toUtc().toIso8601String(), // Ensure UTC format
+      'read': false,
+    };
+
+    if (relatedScreen != null) row['related_screen'] = relatedScreen;
+    if (relatedId != null && _isValidUuid(relatedId)) {
+      row['related_id'] = relatedId;
+    }
+
+    try {
+      final inserted =
+          await client.from('notifications').insert(row).select().single();
+      debugPrint('💾 createNotificationWithTimestamp inserted id: ' +
+          (inserted['id']?.toString() ?? 'unknown') +
+          ' type: ' +
+          normalizedType +
+          ' timestamp: ' +
+          createdAt.toIso8601String());
+    } catch (e) {
+      debugPrint(
+          '❌ createNotificationWithTimestamp insert failed: ' + e.toString());
+      rethrow;
+    }
+  }
+
   // Additional psychologist methods
   Future<List<Map<String, dynamic>>> getAllPsychologists() async {
     final user = client.auth.currentUser;
@@ -2465,6 +2539,357 @@ class SupabaseService {
       debugPrint('✅ Breathing exercise notification created');
     } catch (e) {
       debugPrint('❌ Error creating breathing notification: $e');
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // JOURNAL MANAGEMENT METHODS
+  // ============================================================
+
+  /// Save a new journal entry
+  Future<Map<String, dynamic>> saveJournal({
+    required String content,
+    String? title,
+    DateTime? date,
+    bool sharedWithPsychologist = false,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      final journalData = {
+        'user_id': user.id,
+        'date': date != null
+            ? DateFormat('yyyy-MM-dd').format(date)
+            : DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        'title': title,
+        'content': content,
+        'shared_with_psychologist': sharedWithPsychologist,
+      };
+
+      final response =
+          await client.from('journals').insert(journalData).select().single();
+
+      debugPrint('✅ Journal saved successfully: ${response['id']}');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Error saving journal: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing journal entry
+  Future<Map<String, dynamic>> updateJournal({
+    required String journalId,
+    String? content,
+    String? title,
+    bool? sharedWithPsychologist,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      final updateData = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (content != null) updateData['content'] = content;
+      if (title != null) updateData['title'] = title;
+      if (sharedWithPsychologist != null) {
+        updateData['shared_with_psychologist'] = sharedWithPsychologist;
+      }
+
+      final response = await client
+          .from('journals')
+          .update(updateData)
+          .eq('id', journalId)
+          .eq('user_id', user.id) // Ensure user owns the journal
+          .select()
+          .single();
+
+      debugPrint('✅ Journal updated successfully: $journalId');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Error updating journal: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle journal sharing with psychologist
+  Future<Map<String, dynamic>> toggleJournalSharing(
+    String journalId,
+    bool shareWithPsychologist,
+  ) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // If trying to share, verify user has an assigned psychologist
+      if (shareWithPsychologist) {
+        final psychologist = await getAssignedPsychologist();
+        if (psychologist == null) {
+          throw Exception(
+              'You must have an assigned psychologist to share journals');
+        }
+      }
+
+      final response = await client
+          .from('journals')
+          .update({
+            'shared_with_psychologist': shareWithPsychologist,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', journalId)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+      debugPrint(
+          '✅ Journal sharing toggled: $journalId -> $shareWithPsychologist');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Error toggling journal sharing: $e');
+      rethrow;
+    }
+  }
+
+  /// Get journals for a specific date
+  Future<List<Map<String, dynamic>>> getJournalsForDate(DateTime date) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      final formattedDate = DateFormat('yyyy-MM-dd').format(date);
+      final response = await client
+          .from('journals')
+          .select()
+          .eq('user_id', user.id)
+          .eq('date', formattedDate)
+          .order('created_at', ascending: false);
+
+      debugPrint('✅ Retrieved ${response.length} journals for $formattedDate');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error getting journals for date: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all journals for the current user
+  Future<List<Map<String, dynamic>>> getAllJournals({
+    int? limit,
+    bool? sharedOnly,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      var query = client.from('journals').select().eq('user_id', user.id);
+
+      if (sharedOnly != null && sharedOnly) {
+        query = query.eq('shared_with_psychologist', true);
+      }
+
+      var orderedQuery = query.order('date', ascending: false);
+
+      if (limit != null) {
+        orderedQuery = orderedQuery.limit(limit);
+      }
+
+      final response = await orderedQuery;
+
+      debugPrint('✅ Retrieved ${response.length} journals');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error getting all journals: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a journal entry
+  Future<void> deleteJournal(String journalId) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      await client
+          .from('journals')
+          .delete()
+          .eq('id', journalId)
+          .eq('user_id', user.id);
+
+      debugPrint('✅ Journal deleted: $journalId');
+    } catch (e) {
+      debugPrint('❌ Error deleting journal: $e');
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // PSYCHOLOGIST JOURNAL ACCESS METHODS
+  // ============================================================
+
+  /// Get shared journals from a specific patient (for psychologists)
+  Future<List<Map<String, dynamic>>> getPatientSharedJournals(
+    String patientId,
+  ) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Verify the current user is a psychologist
+      final psychologist = await client
+          .from('psychologists')
+          .select()
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (psychologist == null) {
+        throw Exception(
+            'Only active psychologists can access patient journals');
+      }
+
+      // Verify the patient is assigned to this psychologist
+      final patient = await client
+          .from('user_profiles')
+          .select()
+          .eq('id', patientId)
+          .eq('assigned_psychologist_id', psychologist['id'])
+          .maybeSingle();
+
+      if (patient == null) {
+        throw Exception(
+            'Patient not assigned to you or patient does not exist');
+      }
+
+      // Get shared journals
+      final response = await client
+          .from('journals')
+          .select('*, user_profiles!inner(first_name, last_name, email)')
+          .eq('user_id', patientId)
+          .eq('shared_with_psychologist', true)
+          .order('date', ascending: false);
+
+      debugPrint(
+          '✅ Retrieved ${response.length} shared journals from patient $patientId');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error getting patient journals: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all shared journals from all assigned patients (for psychologists)
+  Future<List<Map<String, dynamic>>> getAllAssignedPatientsSharedJournals({
+    int? limit,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Verify the current user is a psychologist
+      final psychologist = await client
+          .from('psychologists')
+          .select()
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (psychologist == null) {
+        throw Exception(
+            'Only active psychologists can access patient journals');
+      }
+
+      // Get all shared journals from assigned patients
+      var query = client
+          .from('journals')
+          .select('''
+            *,
+            user_profiles!inner(
+              id,
+              first_name,
+              last_name,
+              email,
+              assigned_psychologist_id
+            )
+          ''')
+          .eq('shared_with_psychologist', true)
+          .eq('user_profiles.assigned_psychologist_id', psychologist['id'])
+          .order('date', ascending: false);
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      final response = await query;
+
+      debugPrint(
+          '✅ Retrieved ${response.length} shared journals from assigned patients');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error getting assigned patients journals: $e');
+      rethrow;
+    }
+  }
+
+  /// Get journal statistics for a patient (for psychologists)
+  Future<Map<String, dynamic>> getPatientJournalStats(String patientId) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Verify psychologist access
+      final psychologist = await client
+          .from('psychologists')
+          .select()
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (psychologist == null) {
+        throw Exception('Only active psychologists can access patient data');
+      }
+
+      // Verify patient is assigned
+      final patient = await client
+          .from('user_profiles')
+          .select()
+          .eq('id', patientId)
+          .eq('assigned_psychologist_id', psychologist['id'])
+          .maybeSingle();
+
+      if (patient == null) {
+        throw Exception('Patient not assigned to you');
+      }
+
+      // Get journal statistics
+      final allJournals = await client
+          .from('journals')
+          .select('id, shared_with_psychologist, date')
+          .eq('user_id', patientId);
+
+      final sharedJournals = allJournals
+          .where((j) => j['shared_with_psychologist'] == true)
+          .toList();
+
+      final stats = {
+        'patient_id': patientId,
+        'patient_name':
+            '${patient['first_name'] ?? ''} ${patient['last_name'] ?? ''}'
+                .trim(),
+        'total_journals': allJournals.length,
+        'shared_journals': sharedJournals.length,
+        'private_journals': allJournals.length - sharedJournals.length,
+        'latest_journal_date':
+            allJournals.isNotEmpty ? allJournals.first['date'] : null,
+      };
+
+      debugPrint('✅ Retrieved journal stats for patient $patientId');
+      return stats;
+    } catch (e) {
+      debugPrint('❌ Error getting patient journal stats: $e');
       rethrow;
     }
   }

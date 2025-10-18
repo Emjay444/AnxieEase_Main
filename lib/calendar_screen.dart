@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'dart:async'; // For Timer debounce
 import 'services/supabase_service.dart';
-import 'providers/notification_provider.dart';
 
 class DailyLog {
   final List<String> feelings;
@@ -14,7 +12,9 @@ class DailyLog {
   final List<String> symptoms;
   final DateTime timestamp;
   final String? journal;
-  String? id; // Added Supabase ID field
+  String? id; // Added Supabase ID field (for wellness_logs)
+  String? journalId; // Separate journal ID for journals table
+  bool sharedWithPsychologist; // Journal sharing status
 
   DailyLog({
     required this.feelings,
@@ -23,6 +23,8 @@ class DailyLog {
     required this.timestamp,
     this.journal,
     this.id,
+    this.journalId,
+    this.sharedWithPsychologist = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +34,8 @@ class DailyLog {
         'timestamp': timestamp.toIso8601String(),
         'journal': journal,
         'id': id,
+        'journalId': journalId,
+        'sharedWithPsychologist': sharedWithPsychologist,
       };
 
   factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
@@ -41,6 +45,8 @@ class DailyLog {
         timestamp: DateTime.parse(json['timestamp']),
         journal: json['journal'],
         id: json['id'],
+        journalId: json['journalId'],
+        sharedWithPsychologist: json['sharedWithPsychologist'] ?? false,
       );
 
   // Convert to format for Supabase wellness_logs table
@@ -98,6 +104,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   Timer? _saveLogsTimer; // debounce timer
   static const Duration _saveLogsDebounce = Duration(milliseconds: 500);
+
+  // Performance optimization: Cache processed events to avoid recalculation
+  final Map<String, List<String>> _eventsCache = {};
+  DateTime? _eventsCacheDate;
 
   // Get user-specific key for SharedPreferences
   String get _userSpecificLogsKey {
@@ -212,6 +222,67 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       print('Added $logsAdded new logs from Supabase');
 
+      // ALSO fetch journals from the separate journals table
+      try {
+        final List<Map<String, dynamic>> journalEntries =
+            await _supabaseService.getAllJournals();
+
+        print('Loaded ${journalEntries.length} journals from journals table');
+
+        int journalsAdded = 0;
+        for (var journalEntry in journalEntries) {
+          final DateTime journalDate = DateTime.parse(journalEntry['date']);
+          final normalizedDate = _normalizeDate(journalDate);
+
+          if (!_dailyLogs.containsKey(normalizedDate)) {
+            _dailyLogs[normalizedDate] = [];
+          }
+
+          // Check if this journal already exists (by journalId)
+          bool journalExists = _dailyLogs[normalizedDate]!
+              .any((log) => log.journalId == journalEntry['id']);
+
+          if (!journalExists) {
+            // Create a journal-only DailyLog entry
+            final journalLog = DailyLog(
+              feelings: [],
+              stressLevel: 0,
+              symptoms: [],
+              timestamp: DateTime.parse(journalEntry['created_at']),
+              journal: journalEntry['content'],
+              journalId: journalEntry['id'],
+              sharedWithPsychologist:
+                  journalEntry['shared_with_psychologist'] ?? false,
+            );
+
+            _dailyLogs[normalizedDate]!.add(journalLog);
+            journalsAdded++;
+          } else {
+            // Update existing entry with journal info if it has the same journalId
+            final existingIndex = _dailyLogs[normalizedDate]!
+                .indexWhere((log) => log.journalId == journalEntry['id']);
+
+            if (existingIndex != -1) {
+              // Update the sharing status if it changed
+              final existing = _dailyLogs[normalizedDate]![existingIndex];
+              if (existing.sharedWithPsychologist !=
+                  (journalEntry['shared_with_psychologist'] ?? false)) {
+                _dailyLogs[normalizedDate]![existingIndex]
+                        .sharedWithPsychologist =
+                    journalEntry['shared_with_psychologist'] ?? false;
+                logsAdded++; // Trigger save
+              }
+            }
+          }
+        }
+
+        print('Added $journalsAdded new journal entries from journals table');
+        logsAdded += journalsAdded;
+      } catch (e) {
+        print('Error loading journals from journals table: $e');
+        // Don't fail the whole sync if journals fail
+      }
+
       // Save updated logs to local storage
       if (logsAdded > 0) {
         _saveLogsDebounced();
@@ -264,6 +335,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     });
     await prefs.setString(_userSpecificLogsKey, jsonEncode(encoded));
+
+    // Clear cache when logs are saved
+    _eventsCache.clear();
   }
 
   void _saveLogsDebounced() {
@@ -294,7 +368,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   List<String> _getEventsForDay(DateTime day) {
-    final logs = _dailyLogs[_normalizeDate(day)];
+    final normalizedDay = _normalizeDate(day);
+    final cacheKey = normalizedDay.toIso8601String();
+
+    // Return cached result if available and cache is still valid
+    if (_eventsCacheDate != null &&
+        _eventsCacheDate!.year == DateTime.now().year &&
+        _eventsCacheDate!.month == DateTime.now().month &&
+        _eventsCache.containsKey(cacheKey)) {
+      return _eventsCache[cacheKey]!;
+    }
+
+    final logs = _dailyLogs[normalizedDay];
     if (logs == null) return [];
 
     Set<String> events = {}; // Using Set to avoid duplicates
@@ -310,7 +395,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
         events.add('journal');
       }
     }
-    return events.toList(); // Convert Set back to List
+
+    final result = events.toList();
+
+    // Cache the result
+    _eventsCache[cacheKey] = result;
+    _eventsCacheDate = DateTime.now();
+
+    return result; // Convert Set back to List
   }
 
   void _deleteLog(DateTime date, int index) {
@@ -437,88 +529,62 @@ class _CalendarScreenState extends State<CalendarScreen> {
         print('Supabase sync completed successfully');
       }
 
-      // Initialize notification variables
-      bool notificationCreated = false;
+      // Create notifications for mood logs
+      final DateTime notificationTime =
+          (logToSync?.timestamp ?? DateTime.now()).toUtc();
 
-      // Create notification for high stress levels
-      if (stressLevel >= 7) {
-        await _supabaseService.createNotification(
+      // Only create ONE notification per log entry - check what was logged
+      bool hasHighStress = stressLevel >= 7;
+      bool hasSymptoms =
+          selectedSymptoms.isNotEmpty && !selectedSymptoms.contains('None');
+      bool hasMoods = selectedMoods.isNotEmpty;
+
+      // Priority: Create only ONE notification based on severity
+      if (hasHighStress) {
+        // High stress takes priority
+        await _supabaseService.createNotificationWithTimestamp(
           title: 'High Stress Level Detected',
           message:
               'Your stress level was recorded as ${stressLevel.toInt()}/10. Consider using breathing exercises.',
           type: 'alert',
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
+          createdAt: notificationTime,
         );
-        notificationCreated = true;
-      }
-
-      // Create notification for anxiety symptoms if there are any
-      if (selectedSymptoms.isNotEmpty && !selectedSymptoms.contains('None')) {
-        final symptomsList = selectedSymptoms.join(", ");
-        await _supabaseService.createNotification(
-          title: 'Anxiety Symptoms Logged',
-          message: 'You reported experiencing: $symptomsList',
-          type: 'log',
-          relatedScreen: 'calendar',
-          relatedId: logToSync?.id,
-        );
-        notificationCreated = true;
-      }
-
-      // Create notification for ALL mood logs (positive and negative)
-      if (selectedMoods.isNotEmpty) {
+      } else if (hasMoods) {
+        // Check if negative mood
         final moodsList = selectedMoods.join(", ");
         final isNegativeMood = selectedMoods.any((mood) =>
             mood.toLowerCase().contains('anxious') ||
             mood.toLowerCase().contains('fearful') ||
             mood.toLowerCase().contains('angry') ||
             mood.toLowerCase().contains('sad') ||
+            mood.toLowerCase().contains('pain') ||
             mood.toLowerCase().contains('confused'));
 
         if (isNegativeMood) {
-          await _supabaseService.createNotification(
+          await _supabaseService.createNotificationWithTimestamp(
             title: 'Mood Pattern Alert',
             message:
                 'You\'ve been feeling $moodsList. Would you like to try some calming exercises?',
             type: 'reminder',
             relatedScreen: 'calendar',
             relatedId: logToSync?.id,
-          );
-        } else {
-          // Positive mood notification
-          await _supabaseService.createNotification(
-            title: 'Positive Mood Logged',
-            message:
-                'Great to see you feeling $moodsList today! Keep up the good vibes.',
-            type: 'log',
-            relatedScreen: 'calendar',
-            relatedId: logToSync?.id,
-            severity: 'positive',
+            createdAt: notificationTime,
           );
         }
-        notificationCreated = true;
-      }
-
-      // Create notification for journal entry if it exists and has content
-      if (journal != null && journal.isNotEmpty) {
-        await _supabaseService.createNotification(
-          title: 'Journal Entry Added',
-          message: 'You\'ve added a new journal entry to your log.',
+        // Don't send notification for positive moods - just save silently
+      } else if (hasSymptoms) {
+        // Only if no high stress or negative mood
+        final symptomsList = selectedSymptoms.join(", ");
+        await _supabaseService.createNotificationWithTimestamp(
+          title: 'Anxiety Symptoms Logged',
+          message: 'You reported experiencing: $symptomsList',
           type: 'log',
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
+          createdAt: notificationTime,
         );
-        notificationCreated = true;
-      }
-
-      // Trigger notification refresh in NotificationProvider if needed
-      if (notificationCreated && mounted) {
-        // Find and refresh the notification provider
-        final notificationProvider =
-            Provider.of<NotificationProvider>(context, listen: false);
-        notificationProvider.triggerNotificationRefresh();
-        debugPrint('Triggered notification refresh after saving log');
       }
     } catch (e) {
       debugPrint('Error syncing with Supabase: $e');
@@ -1238,7 +1304,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
 
   Widget _buildStepIndicator({required int current}) {
-    final steps = [1, 2, 3];
+    const steps = [1, 2, 3];
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: steps.map((s) {
@@ -1886,220 +1952,270 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final stressColor = getStressColor(log.stressLevel);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    // PERFORMANCE OPTIMIZATION: Wrap expensive widgets in RepaintBoundary
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.grey[200]!,
+            width: 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Time',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF1A1A1A),
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Stress Level',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: stressColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            log.stressLevel <= 3
-                                ? Icons.sentiment_satisfied_rounded
-                                : log.stressLevel <= 7
-                                    ? Icons.sentiment_neutral_rounded
-                                    : Icons.sentiment_dissatisfied_rounded,
-                            size: 14,
-                            color: stressColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Time and Stress Level Row
+                  Row(
+                    children: [
+                      // Time Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.blue.shade50,
+                              Colors.blue.shade100,
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${log.stressLevel.toInt()}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.shade200,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.access_time_rounded,
+                              size: 16,
+                              color: Colors.blue.shade700,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              timeStr,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue.shade700,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Stress Level Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              stressColor.withOpacity(0.1),
+                              stressColor.withOpacity(0.15),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: stressColor.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: stressColor.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              log.stressLevel <= 3
+                                  ? Icons.sentiment_satisfied_alt_rounded
+                                  : log.stressLevel <= 7
+                                      ? Icons.sentiment_neutral_rounded
+                                      : Icons
+                                          .sentiment_very_dissatisfied_rounded,
+                              size: 18,
                               color: stressColor,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              'Stress ${log.stressLevel.toInt()}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: stressColor,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (log.feelings.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.favorite_rounded,
+                            size: 14,
+                            color: Colors.blue.shade600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Feelings',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: log.feelings.map((feeling) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF007AFF).withOpacity(0.1),
+                                const Color(0xFF007AFF).withOpacity(0.15),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF007AFF).withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            feeling,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF007AFF),
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),
-                const Spacer(),
-                // Edit Button
-                GestureDetector(
-                  onTap: () => _showFeelingsDialog(log),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF007AFF).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.edit_rounded,
-                      size: 16,
-                      color: Color(0xFF007AFF),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Delete Button
-                GestureDetector(
-                  onTap: () => _deleteLog(date, index),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B30).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 16,
-                      color: Color(0xFFFF3B30),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (log.feelings.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Feelings',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: log.feelings.map((feeling) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+              ),
+            if (log.symptoms.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.health_and_safety_rounded,
+                            size: 14,
+                            color: Colors.red.shade600,
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF007AFF).withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          feeling,
-                          style: const TextStyle(
+                        const SizedBox(width: 8),
+                        Text(
+                          'Symptoms',
+                          style: TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF007AFF),
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
                             letterSpacing: -0.3,
                           ),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-          if (log.symptoms.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Symptoms',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      letterSpacing: -0.3,
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: log.symptoms.map((symptom) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF3B30).withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          symptom,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFFFF3B30),
-                            letterSpacing: -0.3,
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: log.symptoms.map((symptom) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFFFF3B30).withOpacity(0.1),
+                                const Color(0xFFFF3B30).withOpacity(0.15),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFFF3B30).withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            symptom,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFFF3B30),
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2108,116 +2224,303 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final timeStr =
         '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.purple.withOpacity(0.3),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    // PERFORMANCE OPTIMIZATION: Wrap expensive widgets in RepaintBoundary
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.purple.withOpacity(0.3),
+            width: 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Column(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Journal Entry',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.purple[700],
+                          letterSpacing: -0.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        timeStr,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1A1A1A),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (log.journal != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Journal Entry',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.purple[700],
-                        letterSpacing: -0.3,
-                        fontWeight: FontWeight.w500,
+                    GestureDetector(
+                      onTap: () => _showFullJournalDialog(log),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.purple.withOpacity(0.1),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              log.journal!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
+                                height: 1.5,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            if (log.journal!.length > 80 ||
+                                log.journal!.split('\n').length > 2)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.read_more,
+                                      size: 14,
+                                      color: Colors.purple.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Tap to read more',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.purple.shade600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      timeStr,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF1A1A1A),
-                        letterSpacing: -0.3,
+                    const SizedBox(height: 8),
+                    // Share status indicator (read-only)
+                    if (log.journalId != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: log.sharedWithPsychologist
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.grey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: log.sharedWithPsychologist
+                                ? Colors.green.withOpacity(0.3)
+                                : Colors.grey.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              log.sharedWithPsychologist
+                                  ? Icons.visibility
+                                  : Icons.lock_outline,
+                              size: 16,
+                              color: log.sharedWithPsychologist
+                                  ? Colors.green.shade700
+                                  : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              log.sharedWithPsychologist
+                                  ? 'Shared with psychologist'
+                                  : 'Private journal',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: log.sharedWithPsychologist
+                                    ? Colors.green.shade700
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Method to show full journal content in a dialog
+  void _showFullJournalDialog(DailyLog log) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxWidth: MediaQuery.of(context).size.width * 0.9,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.purple.shade400,
+                      Colors.purple.shade600,
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.book_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Journal Entry',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            DateFormat('d MMMM yyyy, HH:mm')
+                                .format(log.timestamp),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
                       ),
                     ),
                   ],
                 ),
-                const Spacer(),
-                // Edit Button
-                GestureDetector(
-                  onTap: () => _addJournalToExistingLog(log),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.purple.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    log.journal ?? '',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Colors.black87,
+                      height: 1.6,
+                      letterSpacing: -0.2,
                     ),
-                    child: const Icon(
-                      Icons.edit_rounded,
-                      size: 16,
-                      color: Colors.purple,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Delete Button
-                GestureDetector(
-                  onTap: () => _deleteLog(date, index),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B30).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 16,
-                      color: Color(0xFFFF3B30),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (log.journal != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.purple.withOpacity(0.1),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  log.journal!,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                    height: 1.5,
-                    letterSpacing: -0.3,
                   ),
                 ),
               ),
-            ),
-        ],
+              // Footer with share status
+              if (log.journalId != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        log.sharedWithPsychologist
+                            ? Icons.visibility
+                            : Icons.lock_outline,
+                        size: 16,
+                        color: log.sharedWithPsychologist
+                            ? Colors.green.shade700
+                            : Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        log.sharedWithPsychologist
+                            ? 'Shared with psychologist'
+                            : 'Private journal',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: log.sharedWithPsychologist
+                              ? Colors.green.shade700
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2535,7 +2838,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // New method for the standalone journal entry
+  // New method for the standalone journal entry - Modern UI
   void _showJournalDialog() {
     if (_selectedDay == null) return;
 
@@ -2546,25 +2849,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     TextEditingController journalController = TextEditingController();
-    int charCount = 0;
     int wordCount = 0;
-    String selectedMood = '';
-    bool showPrompts = true;
-
-    // Writing prompts for inspiration
-    final List<String> writingPrompts = [
-      "What made me smile today?",
-      "What am I grateful for right now?",
-      "How am I feeling and why?",
-      "What challenged me today?",
-      "What did I learn about myself?",
-      "What would I tell my past self?",
-      "What are my hopes for tomorrow?",
-      "What brought me peace today?",
-    ];
 
     void updateCounts(String text) {
-      charCount = text.length;
       wordCount =
           text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
     }
@@ -2584,332 +2871,309 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 height: MediaQuery.of(context).size.height * 0.85,
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
                 child: Column(
                   children: [
                     const SizedBox(height: 12),
                     _buildDragHandle(),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 10, horizontal: 26),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 18,
-                            offset: const Offset(0, 6),
-                          )
-                        ],
-                      ),
-                      child: const Text(
-                        'Write in Your Journal',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Icon(Icons.calendar_today_rounded,
-                                      size: 18, color: Colors.purple.shade700),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  DateFormat('d MMMM yyyy')
-                                      .format(_selectedDay!),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.purple.shade700,
-                                  ),
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      showPrompts = !showPrompts;
-                                    });
-                                  },
-                                  icon: Icon(
-                                    showPrompts
-                                        ? Icons.lightbulb
-                                        : Icons.lightbulb_outline,
-                                    color: Colors.purple.shade600,
-                                    size: 20,
-                                  ),
-                                  tooltip: 'Writing prompts',
+                    const SizedBox(height: 20),
+                    // Header with date
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.purple.shade400,
+                                  Colors.purple.shade600,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.purple.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
                                 ),
                               ],
                             ),
-
-                            // Quick mood selector
-                            const SizedBox(height: 16),
-                            Text(
-                              'How are you feeling?',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                              ),
+                            child: const Icon(
+                              Icons.edit_note_rounded,
+                              color: Colors.white,
+                              size: 28,
                             ),
-                            const SizedBox(height: 8),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  '😊 Happy',
-                                  '😔 Sad',
-                                  '😰 Anxious',
-                                  '😌 Calm',
-                                  '😴 Tired',
-                                  '🤗 Grateful',
-                                  '😤 Frustrated',
-                                  '✨ Inspired'
-                                ].map((mood) {
-                                  final isSelected = selectedMood == mood;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          selectedMood = isSelected ? '' : mood;
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? Colors.purple.shade100
-                                              : Colors.grey.shade100,
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? Colors.purple.shade300
-                                                : Colors.transparent,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          mood,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isSelected
-                                                ? FontWeight.w600
-                                                : FontWeight.w500,
-                                            color: isSelected
-                                                ? Colors.purple.shade700
-                                                : Colors.grey[600],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-
-                            // Writing prompts
-                            if (showPrompts) ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                'Need inspiration? Try one of these:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                height: 35,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: writingPrompts.length,
-                                  itemBuilder: (context, index) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          if (journalController.text.isEmpty) {
-                                            journalController.text =
-                                                writingPrompts[index] + '\n\n';
-                                            updateCounts(
-                                                journalController.text);
-                                            setState(() {});
-                                          }
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: Colors.orange.shade50,
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            border: Border.all(
-                                              color: Colors.orange.shade200,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            writingPrompts[index],
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w500,
-                                              color: Colors.orange.shade700,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-
-                            const SizedBox(height: 18),
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: Colors.purple.withOpacity(0.4),
-                                    width: 1.2,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Write in Your Journal',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
                                   ),
                                 ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Stack(
-                                  children: [
-                                    TextField(
-                                      controller: journalController,
-                                      maxLines: null,
-                                      expands: true,
-                                      onChanged: (val) {
-                                        setState(() {
-                                          updateCounts(val);
-                                        });
-                                      },
-                                      textAlignVertical: TextAlignVertical.top,
-                                      decoration: InputDecoration(
-                                        hintText: 'Write your thoughts here...',
-                                        hintStyle: TextStyle(
-                                            color: Colors.purple.shade200),
-                                        border: InputBorder.none,
-                                        contentPadding:
-                                            const EdgeInsets.fromLTRB(
-                                                18, 18, 18, 50),
-                                      ),
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.black87,
-                                        height: 1.55,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      left: 14,
-                                      bottom: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.08),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          '$wordCount words',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.blue.shade600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 14,
-                                      bottom: 8,
-                                      child: AnimatedOpacity(
-                                        duration:
-                                            const Duration(milliseconds: 200),
-                                        opacity: 1,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                Colors.purple.withOpacity(0.08),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            '$charCount chars',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.purple.shade600,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  DateFormat('EEEE, d MMMM yyyy')
+                                      .format(_selectedDay!),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                    letterSpacing: -0.3,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, -2),
                           ),
                         ],
                       ),
-                      child: Row(
+                    ),
+                    const SizedBox(height: 16),
+                    // Writing prompts
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
+                          Text(
+                            'Need inspiration? Try one of these:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 36,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [
+                                'What made me smile today?',
+                                'What am I grateful for?',
+                                'How am I feeling and why?',
+                                'What challenged me today?',
+                                'What did I learn?',
+                                'What are my hopes?',
+                              ].map((prompt) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      if (journalController.text.isEmpty) {
+                                        journalController.text =
+                                            prompt + '\n\n';
+                                        updateCounts(journalController.text);
+                                        setState(() {});
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.orange.shade50,
+                                            Colors.orange.shade100,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: Colors.orange.shade300,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        prompt,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.orange.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Text input area
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.grey.shade200,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Stack(
+                            children: [
+                              TextField(
+                                controller: journalController,
+                                maxLines: null,
+                                expands: true,
+                                onChanged: (val) {
+                                  setState(() {
+                                    updateCounts(val);
+                                  });
+                                },
+                                textAlignVertical: TextAlignVertical.top,
+                                decoration: InputDecoration(
+                                  hintText:
+                                      'Express your thoughts, feelings, and experiences...',
+                                  hintStyle: TextStyle(
+                                    color: Colors.grey.shade400,
+                                    fontSize: 15,
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.all(20),
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black87,
+                                  height: 1.6,
+                                ),
+                              ),
+                              // Word count badge
+                              Positioned(
+                                left: 16,
+                                bottom: 16,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.text_fields_rounded,
+                                        size: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '$wordCount words',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey[700],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Action buttons
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: Column(
+                        children: [
+                          // Save for myself button
+                          SizedBox(
+                            width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: () {
-                                String finalJournalText =
-                                    journalController.text;
-                                if (selectedMood.isNotEmpty) {
-                                  finalJournalText =
-                                      'Mood: $selectedMood\n\n$finalJournalText';
+                              onPressed: () async {
+                                if (journalController.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text('Please write something first'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
                                 }
-                                _saveJournalEntry(finalJournalText);
+                                await _saveJournalEntry(
+                                    journalController.text, false);
                                 Navigator.pop(context);
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF7E57C2),
+                                backgroundColor: Colors.grey.shade700,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.lock_outline_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Save for Myself',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Share with psychologist button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                if (journalController.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text('Please write something first'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                await _saveJournalEntry(
+                                    journalController.text, true);
+                                Navigator.pop(context);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.shade600,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                                 elevation: 2,
                               ),
@@ -2917,15 +3181,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   const Icon(
-                                    Icons.save_rounded,
+                                    Icons.share_outlined,
                                     color: Colors.white,
                                     size: 20,
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 10),
                                   Text(
-                                    wordCount > 0
-                                        ? 'Save Journal Entry ($wordCount words)'
-                                        : 'Save Journal Entry',
+                                    'Share with Psychologist',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
@@ -2950,8 +3212,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   // Method to save a standalone journal entry
-  Future<void> _saveJournalEntry(String journalText) async {
+  Future<void> _saveJournalEntry(
+      String journalText, bool sharedWithPsychologist) async {
     if (journalText.isEmpty) return;
+
+    // If sharing, check for assigned psychologist first
+    if (sharedWithPsychologist) {
+      try {
+        final psychologist = await _supabaseService.getAssignedPsychologist();
+        if (psychologist == null) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('No Psychologist Assigned'),
+                content: const Text(
+                    'You need to have an assigned psychologist to share your journals. Please contact support to get a psychologist assigned.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        print('Error checking psychologist: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
 
     final normalizedDate = _normalizeDate(_selectedDay!);
     DailyLog? logToSync;
@@ -2968,25 +3268,53 @@ class _CalendarScreenState extends State<CalendarScreen> {
         symptoms: [], // Empty list for symptoms
         timestamp: DateTime.now(),
         journal: journalText,
+        sharedWithPsychologist: sharedWithPsychologist,
       );
       _dailyLogs[normalizedDate]!.add(logToSync!);
     });
 
     _saveLogsDebounced();
 
-    // Sync with Supabase
+    // Save to the separate journals table in Supabase
     try {
-      await logToSync!.syncWithSupabase();
-    } catch (e) {
-      print('Error syncing journal with Supabase: $e');
-      // Don't show error to user, as local storage still worked
-    }
+      final journalResponse = await _supabaseService.saveJournal(
+        content: journalText,
+        date: _selectedDay,
+        sharedWithPsychologist: sharedWithPsychologist,
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Journal entry saved successfully'),
-        backgroundColor: Colors.purple,
-      ),
-    );
+      // Update the log with the journal ID
+      setState(() {
+        logToSync!.journalId = journalResponse['id'];
+      });
+
+      _saveLogsDebounced();
+
+      debugPrint(
+          '✅ Journal saved to separate journals table: ${journalResponse['id']}');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(sharedWithPsychologist
+                ? 'Journal shared with psychologist successfully'
+                : 'Journal saved privately'),
+            backgroundColor:
+                sharedWithPsychologist ? Colors.green : Colors.grey.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error saving journal to Supabase: $e');
+      // Still show error since this is important functionality
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Warning: Journal saved locally but not synced: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
   }
 }

@@ -117,68 +117,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             );
                           },
                         ),
-                        _buildSettingsTile(
-                          icon: Icons.logout,
-                          title: 'Logout',
-                          subtitle: 'Sign out of your account',
-                          onTap: () async {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Logout'),
-                                content: const Text(
-                                    'Are you sure you want to logout?'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () async {
-                                      Navigator.pop(
-                                          context); // Close dialog first
-                                      try {
-                                        // Use AuthProvider to properly sign out
-                                        final authProvider =
-                                            Provider.of<AuthProvider>(context,
-                                                listen: false);
-                                        await authProvider.signOut();
-
-                                        if (mounted) {
-                                          Navigator.of(context)
-                                              .pushAndRemoveUntil(
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const AuthScreen(
-                                                showLogin: true,
-                                                message:
-                                                    'You have been logged out',
-                                              ),
-                                            ),
-                                            (route) => false,
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content:
-                                                  Text('Error logging out: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                    child: const Text('Logout',
-                                        style: TextStyle(color: Colors.red)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
                       ],
                     ),
                     const SizedBox(height: 25),
@@ -186,16 +124,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'App Settings',
                       [
                         _buildSettingsTile(
-                          icon: Icons.refresh,
-                          title: 'Recalibrate Baseline',
-                          subtitle: 'Run a quick 5-minute resting HR session',
+                          icon: Icons.psychology,
+                          title: 'About AnxieEase',
+                          subtitle: 'Version, features & information',
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      const BaselineRecordingScreen()),
-                            );
+                            _showAboutDialog(context);
                           },
                         ),
                         Consumer<NotificationProvider>(
@@ -285,17 +218,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             );
                           },
                         ),
-                        // ...existing code...
                         _buildSettingsTile(
-                          icon: Icons.psychology,
-                          title: 'About AnxieEase',
-                          subtitle: 'Version, features & information',
+                          icon: Icons.refresh,
+                          title: 'Recalibrate Baseline',
+                          subtitle: 'Run a quick 5-minute resting HR session',
                           onTap: () {
-                            _showAboutDialog(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const BaselineRecordingScreen()),
+                            );
                           },
                         ),
                       ],
                     ),
+                    const SizedBox(height: 25),
+                    // Logout button at the bottom
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border(
+                          left: BorderSide(
+                            color: Colors.red.withOpacity(0.6),
+                            width: 3,
+                          ),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: _buildSettingsTile(
+                        icon: Icons.logout,
+                        title: 'Logout',
+                        subtitle: 'Sign out of your account',
+                        iconColor: Colors.red,
+                        trailing: Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.red,
+                        ),
+                        onTap: () async {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Logout'),
+                              content: const Text(
+                                  'Are you sure you want to logout?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    Navigator.pop(
+                                        context); // Close dialog first
+                                    try {
+                                      // Use AuthProvider to properly sign out
+                                      final authProvider =
+                                          Provider.of<AuthProvider>(context,
+                                              listen: false);
+                                      await authProvider.signOut();
+
+                                      if (mounted) {
+                                        Navigator.of(context)
+                                            .pushAndRemoveUntil(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const AuthScreen(
+                                              showLogin: true,
+                                              message:
+                                                  'You have been logged out',
+                                            ),
+                                          ),
+                                          (route) => false,
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content:
+                                                Text('Error logging out: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: const Text('Logout',
+                                      style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -362,7 +389,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String subtitle,
     Widget? trailing,
     VoidCallback? onTap,
+    Color? iconColor,
   }) {
+    final color = iconColor ?? const Color(0xFF2D9254);
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 20,
@@ -371,12 +401,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: const Color(0xFF2D9254).withOpacity(0.08),
+          color: color.withOpacity(0.08),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
           icon,
-          color: const Color(0xFF2D9254),
+          color: color,
           size: 24,
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'models/psychologist_model.dart';
 import 'models/appointment_model.dart';
 import 'services/supabase_service.dart';
@@ -34,6 +35,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     'Completed'
   ];
 
+  // Performance optimization: Cache filtered appointments
+  Map<String, List<AppointmentModel>>? _filteredAppointmentsCache;
+  String? _lastFilterUsed;
+
   // Form controllers
   final _dateController = TextEditingController();
   final _timeController = TextEditingController();
@@ -60,15 +65,29 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     if (mounted) {
       setState(() {
         _isLoading = true;
+        _isLoadingAppointments = true;
       });
     }
 
     try {
-      // Load essential data first (psychologist info) - this is what users care about most
-      await _loadPsychologistData();
+      // OPTIMIZATION: Load psychologist data and appointments in parallel
+      final results = await Future.wait([
+        _fetchPsychologistData(),
+        _fetchAppointmentsData(),
+      ]);
 
-      // Load appointments in background after showing the main content
-      _loadAppointmentsInBackground();
+      // Process results
+      if (mounted) {
+        setState(() {
+          _psychologist = results[0] as PsychologistModel?;
+          _appointments = results[1] as List<AppointmentModel>;
+          _isLoading = false;
+          _isLoadingAppointments = false;
+          // Clear cache when new data is loaded
+          _filteredAppointmentsCache = null;
+          _lastFilterUsed = null;
+        });
+      }
     } catch (e) {
       Logger.error('Error in _loadData', e);
       if (mounted) {
@@ -77,60 +96,48 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         );
         setState(() {
           _isLoading = false;
+          _isLoadingAppointments = false;
         });
       }
     }
   }
 
-  Future<void> _loadPsychologistData() async {
-    print('🔍 Starting _loadPsychologistData...');
+  Future<PsychologistModel?> _fetchPsychologistData() async {
+    print('🔍 Starting _fetchPsychologistData...');
     try {
-      // Load psychologist data (main priority)
+      // Load psychologist data
       print('📞 Calling getAssignedPsychologist...');
       final psychologistData = await _supabaseService.getAssignedPsychologist();
       print(
           '📋 Got psychologist data: ${psychologistData != null ? 'Found' : 'Null'}');
 
       if (psychologistData != null) {
-        if (mounted) {
-          setState(() {
-            _psychologist = PsychologistModel.fromJson(psychologistData);
-          });
-        }
+        var psychologist = PsychologistModel.fromJson(psychologistData);
 
         // Try to get latest profile picture URL if available (non-blocking)
-        if (_psychologist != null && mounted) {
-          try {
-            final latestPictureUrl = await _supabaseService
-                .getPsychologistProfilePictureUrl(_psychologist!.id);
-            if (latestPictureUrl != null &&
-                latestPictureUrl.isNotEmpty &&
-                mounted) {
-              setState(() {
-                _psychologist = PsychologistModel(
-                  id: _psychologist!.id,
-                  name: _psychologist!.name,
-                  specialization: _psychologist!.specialization,
-                  contactEmail: _psychologist!.contactEmail,
-                  contactPhone: _psychologist!.contactPhone,
-                  biography: _psychologist!.biography,
-                  imageUrl: latestPictureUrl,
-                );
-              });
-            }
-          } catch (e) {
-            Logger.error('Error loading profile picture', e);
-            // Don't show error for profile picture - it's not critical
+        try {
+          final latestPictureUrl = await _supabaseService
+              .getPsychologistProfilePictureUrl(psychologist.id);
+          if (latestPictureUrl != null && latestPictureUrl.isNotEmpty) {
+            psychologist = PsychologistModel(
+              id: psychologist.id,
+              name: psychologist.name,
+              specialization: psychologist.specialization,
+              contactEmail: psychologist.contactEmail,
+              contactPhone: psychologist.contactPhone,
+              biography: psychologist.biography,
+              imageUrl: latestPictureUrl,
+            );
           }
+        } catch (e) {
+          Logger.error('Error loading profile picture', e);
+          // Don't show error for profile picture - it's not critical
         }
-      } else {
-        // Handle case where no psychologist is found
-        if (mounted) {
-          setState(() {
-            _psychologist = null;
-          });
-        }
+
+        return psychologist;
       }
+
+      return null;
     } catch (e) {
       Logger.error('Error loading psychologist data', e);
       if (mounted) {
@@ -142,23 +149,11 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           ),
         );
       }
-    } finally {
-      // Always turn off loading state whether successful or failed
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      return null;
     }
   }
 
-  Future<void> _loadAppointmentsInBackground() async {
-    if (mounted) {
-      setState(() {
-        _isLoadingAppointments = true;
-      });
-    }
-
+  Future<List<AppointmentModel>> _fetchAppointmentsData() async {
     try {
       // Auto-archive old appointments first (maintenance task)
       try {
@@ -196,20 +191,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         appointments.add(AppointmentModel.fromJson(data));
       }
 
-      if (mounted) {
-        setState(() {
-          _appointments = appointments;
-        });
-      }
+      return appointments;
     } catch (e) {
       Logger.error('Error loading appointments', e);
-      // Don't show error for appointments - they can load later via refresh
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingAppointments = false;
-        });
-      }
+      return [];
     }
   }
 
@@ -324,8 +309,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     });
 
     try {
-      // Combine date and time
-      final appointmentDateTime = DateTime(
+      // Combine date and time (local Philippine time)
+      final localDateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
         _selectedDate!.day,
@@ -333,10 +318,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         _selectedTime!.minute,
       );
 
+      // Convert to UTC for storage (Philippines is UTC+8)
+      final utcDateTime = localDateTime.subtract(const Duration(hours: 8));
+
       // Create appointment data
       final appointmentData = {
         'psychologist_id': _psychologist!.id,
-        'appointment_date': appointmentDateTime.toIso8601String(),
+        'appointment_date': utcDateTime.toIso8601String(),
         'reason': _reasonController.text.trim(),
       };
 
@@ -407,6 +395,58 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     }
 
     return false;
+  }
+
+  // PERFORMANCE OPTIMIZATION: Calculate filtered appointments once and cache
+  Map<String, List<AppointmentModel>> _calculateFilteredAppointments() {
+    List<AppointmentModel> filteredAppointments = _appointments;
+
+    if (_selectedFilter != 'All') {
+      filteredAppointments = _appointments.where((apt) {
+        switch (_selectedFilter) {
+          case 'Pending':
+            return apt.status == AppointmentStatus.pending &&
+                (apt.responseMessage == null || apt.responseMessage!.isEmpty);
+          case 'Accepted':
+            return apt.status == AppointmentStatus.accepted ||
+                apt.status == AppointmentStatus.approved ||
+                (apt.status == AppointmentStatus.pending &&
+                    apt.responseMessage != null &&
+                    apt.responseMessage!.isNotEmpty &&
+                    !apt.responseMessage!.toLowerCase().contains('declined'));
+          case 'Expired':
+            return apt.status == AppointmentStatus.expired;
+          case 'Unavailable':
+            return apt.status == AppointmentStatus.denied ||
+                apt.status == AppointmentStatus.cancelled ||
+                (apt.status == AppointmentStatus.pending &&
+                    apt.responseMessage != null &&
+                    apt.responseMessage!.toLowerCase().contains('declined'));
+          case 'Completed':
+            return apt.status == AppointmentStatus.completed;
+          default:
+            return true;
+        }
+      }).toList();
+    }
+
+    // Separate active and archived appointments
+    final activeAppointments = <AppointmentModel>[];
+    final archivedAppointments = <AppointmentModel>[];
+
+    for (var appointment in filteredAppointments) {
+      if (_shouldArchiveAppointment(appointment)) {
+        archivedAppointments.add(appointment);
+      } else {
+        activeAppointments.add(appointment);
+      }
+    }
+
+    return {
+      'filtered': filteredAppointments,
+      'active': activeAppointments,
+      'archived': archivedAppointments,
+    };
   }
 
   // Method to format harsh response messages into gentler ones
@@ -685,28 +725,21 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                 child: ClipOval(
                   child: (_psychologist?.imageUrl != null &&
                           _psychologist!.imageUrl!.isNotEmpty)
-                      ? Image.network(
-                          _psychologist!.imageUrl!,
+                      ? CachedNetworkImage(
+                          imageUrl: _psychologist!.imageUrl!,
                           fit: BoxFit.cover,
                           width: 84,
                           height: 84,
-                          errorBuilder: (context, error, stack) {
+                          placeholder: (context, url) => Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          errorWidget: (context, url, error) {
                             Logger.error(
                                 'Failed to load psychologist image', error);
                             return _buildProfileInitials();
-                          },
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                value: progress.expectedTotalBytes != null
-                                    ? progress.cumulativeBytesLoaded /
-                                        progress.expectedTotalBytes!
-                                    : null,
-                                color: Colors.white,
-                              ),
-                            );
                           },
                         )
                       : _buildProfileInitials(),
@@ -1095,89 +1128,54 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
         );
       }
 
-      // Filter appointments first based on selected filter
-      List<AppointmentModel> filteredAppointments = _appointments;
+      // PERFORMANCE OPTIMIZATION: Cache filtered appointments to avoid recalculating
+      if (_lastFilterUsed != _selectedFilter ||
+          _filteredAppointmentsCache == null) {
+        _filteredAppointmentsCache = _calculateFilteredAppointments();
+        _lastFilterUsed = _selectedFilter;
+      }
 
-      if (_selectedFilter != 'All') {
-        filteredAppointments = _appointments.where((apt) {
-          switch (_selectedFilter) {
-            case 'Pending':
-              // True pending: pending status with no response message
-              return apt.status == AppointmentStatus.pending &&
-                  (apt.responseMessage == null || apt.responseMessage!.isEmpty);
-            case 'Accepted':
-              // Accepted: either officially accepted/approved OR pending with positive response
-              return apt.status == AppointmentStatus.accepted ||
-                  apt.status == AppointmentStatus.approved ||
-                  (apt.status == AppointmentStatus.pending &&
-                      apt.responseMessage != null &&
-                      apt.responseMessage!.isNotEmpty &&
-                      !apt.responseMessage!.toLowerCase().contains('declined'));
-            case 'Expired':
-              return apt.status == AppointmentStatus.expired;
-            case 'Unavailable':
-              // Unavailable: officially denied/cancelled OR pending with decline response
-              return apt.status == AppointmentStatus.denied ||
-                  apt.status == AppointmentStatus.cancelled ||
-                  (apt.status == AppointmentStatus.pending &&
-                      apt.responseMessage != null &&
-                      apt.responseMessage!.toLowerCase().contains('declined'));
-            case 'Completed':
-              return apt.status == AppointmentStatus.completed;
-            default:
-              return true;
-          }
-        }).toList();
+      final filteredAppointments = _filteredAppointmentsCache!['filtered']!;
+      final activeAppointments = _filteredAppointmentsCache!['active']!;
+      final archivedAppointments = _filteredAppointmentsCache!['archived']!;
 
-        // If filter is applied and no results, show empty state
-        if (filteredAppointments.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.filter_list_off,
-                    size: 48,
-                    color: Colors.grey[400],
+      // If filter is applied and no results, show empty state
+      if (_selectedFilter != 'All' && filteredAppointments.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20.0),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.filter_list_off,
+                  size: 48,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No $_selectedFilter appointments found',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No $_selectedFilter appointments found',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedFilter = 'All';
-                      });
-                    },
-                    child: const Text('Clear filter'),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedFilter = 'All';
+                      _filteredAppointmentsCache = null; // Clear cache
+                    });
+                  },
+                  child: const Text('Clear filter'),
+                ),
+              ],
             ),
-          );
-        }
+          ),
+        );
       }
 
-      // Separate active and archived appointments
-      final activeAppointments = <AppointmentModel>[];
-      final archivedAppointments = <AppointmentModel>[];
-
-      for (var appointment in filteredAppointments) {
-        if (_shouldArchiveAppointment(appointment)) {
-          archivedAppointments.add(appointment);
-        } else {
-          activeAppointments.add(appointment);
-        }
-      }
-
-      // Group active appointments by status
+      // Group active appointments by status (using cached data)
       final upcomingAppointments = activeAppointments
           .where((apt) =>
               (apt.status == AppointmentStatus.accepted ||
@@ -1455,141 +1453,146 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               isPastAppointment &&
               appointment.status != AppointmentStatus.completed;
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-          border: Border.all(color: Colors.grey.withOpacity(0.15), width: 1),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
+      // PERFORMANCE OPTIMIZATION: Wrap in RepaintBoundary to prevent unnecessary repaints
+      return RepaintBoundary(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+            border: Border.all(color: Colors.grey.withOpacity(0.15), width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            formattedDate,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.access_time,
+                                  size: 16, color: Colors.grey[600]),
+                              const SizedBox(width: 6),
+                              Text(
+                                formattedTime,
+                                style: TextStyle(
+                                    color: Colors.grey[700], fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    _statusChip(displayStatus, statusColor),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.subject_outlined,
+                        size: 18, color: Colors.grey[600]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        appointment.reason,
+                        style: TextStyle(
+                            fontSize: 14, color: Colors.grey[900], height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+                if (appointment.responseMessage != null &&
+                    appointment.responseMessage!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          formattedDate,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.access_time,
-                                size: 16, color: Colors.grey[600]),
-                            const SizedBox(width: 6),
-                            Text(
-                              formattedTime,
-                              style: TextStyle(
-                                  color: Colors.grey[700], fontSize: 13),
+                        const Icon(Icons.forum_outlined,
+                            size: 18, color: Color(0xFF3AA772)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _formatResponseMessage(
+                                appointment.responseMessage!),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[800],
+                              height: 1.4,
                             ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  _statusChip(displayStatus, statusColor),
                 ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.subject_outlined,
-                      size: 18, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      appointment.reason,
-                      style: TextStyle(
-                          fontSize: 14, color: Colors.grey[900], height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-              if (appointment.responseMessage != null &&
-                  appointment.responseMessage!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                  ),
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                if (canMarkAsCompleted) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Icon(Icons.forum_outlined,
-                          size: 18, color: Color(0xFF3AA772)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _formatResponseMessage(appointment.responseMessage!),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[800],
-                            height: 1.4,
-                          ),
-                        ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final success =
+                              await _supabaseService.updateAppointmentStatus(
+                                  appointment.id, 'completed');
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Appointment marked as completed'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            _loadData();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Failed to update appointment status'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text('Mark as Completed'),
+                        style:
+                            TextButton.styleFrom(foregroundColor: Colors.green),
                       ),
                     ],
                   ),
-                ),
+                ],
               ],
-              if (canMarkAsCompleted) ...[
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () async {
-                        final success =
-                            await _supabaseService.updateAppointmentStatus(
-                                appointment.id, 'completed');
-                        if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Appointment marked as completed'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                          _loadData();
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Failed to update appointment status'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text('Mark as Completed'),
-                      style:
-                          TextButton.styleFrom(foregroundColor: Colors.green),
-                    ),
-                  ],
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       );
