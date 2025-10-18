@@ -13,7 +13,7 @@ class VerifyResetCodeScreen extends StatefulWidget {
 }
 
 class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final List<TextEditingController> _codeControllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
@@ -28,6 +28,8 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
   @override
   void initState() {
     super.initState();
+    // Observe app lifecycle to stabilize UI when returning from external apps
+    WidgetsBinding.instance.addObserver(this);
 
     // Initialize animation controller
     _animationController = AnimationController(
@@ -50,6 +52,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (var controller in _codeControllers) {
       controller.dispose();
     }
@@ -58,6 +61,17 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
     }
     _animationController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Hide keyboard and rebuild to prevent janky/misaligned UI on resume
+      FocusManager.instance.primaryFocus?.unfocus();
+      // Restart subtle fade
+      _animationController?.forward(from: 0);
+      if (mounted) setState(() {});
+    }
   }
 
   // Get the full code from all text fields
@@ -470,7 +484,8 @@ class VerifyResetCodeScreenWithOptionalEmail extends StatefulWidget {
 }
 
 class _VerifyResetCodeScreenWithOptionalEmailState
-    extends State<VerifyResetCodeScreenWithOptionalEmail> {
+    extends State<VerifyResetCodeScreenWithOptionalEmail>
+    with WidgetsBindingObserver {
   final TextEditingController _emailController = TextEditingController();
   final List<TextEditingController> _codeControllers =
       List.generate(6, (_) => TextEditingController());
@@ -482,6 +497,7 @@ class _VerifyResetCodeScreenWithOptionalEmailState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.email != null) {
       _emailController.text = widget.email!;
     }
@@ -489,6 +505,7 @@ class _VerifyResetCodeScreenWithOptionalEmailState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _emailController.dispose();
     for (var controller in _codeControllers) {
       controller.dispose();
@@ -497,6 +514,15 @@ class _VerifyResetCodeScreenWithOptionalEmailState
       node.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Hide keyboard and rebuild to avoid broken layout after returning from email app
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (mounted) setState(() {});
+    }
   }
 
   // Get the full code from all text fields

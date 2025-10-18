@@ -1892,10 +1892,11 @@ class SupabaseService {
     String? relatedScreen,
     String? relatedId,
     String? severity, // Add severity parameter
+    String? createdAt, // Add custom timestamp parameter
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
-    final nowIso = DateTime.now().toIso8601String();
+    final nowIso = createdAt ?? DateTime.now().toIso8601String();
     bool _isValidUuid(String s) {
       final regex = RegExp(
           r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\$');
