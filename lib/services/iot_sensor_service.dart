@@ -31,9 +31,9 @@ class IoTSensorService extends ChangeNotifier {
   static const int _minInterval = 5; // Minimum 5 seconds
   static const int _maxInterval = 15; // Maximum 15 seconds
 
-  // TEMPORARILY ENABLE MOCK DATA for testing watch.dart data fetching
+  // MOCK DATA GENERATION - Set to false to use REAL wearable device
   bool _enableMockDataGeneration =
-      true; // Set to true for testing without real device
+      false; // Set to false for REAL device, true for testing without device
   final String _deviceId = 'AnxieEase001';
   final String _userId = 'user_001';
 
@@ -117,60 +117,31 @@ class IoTSensorService extends ChangeNotifier {
 
   /// Start IoT sensor simulation (ONLY FOR TESTING - Real device should write directly to Firebase)
   Future<void> startSensors() async {
-    if (_isActive) {
-      AppLogger.d('IoTSensorService: Already active');
-      return;
-    }
-
+    // PERMANENT: Mock data generation is DISABLED - using REAL wearable device only
     if (!_enableMockDataGeneration) {
       AppLogger.i(
-          'IoTSensorService: Mock data generation disabled - using real wearable device');
+          '🚫 IoTSensorService: Mock data PERMANENTLY DISABLED - using real wearable device');
       AppLogger.i(
-          'IoTSensorService: Real device should write directly to Firebase at /devices/AnxieEase001/current');
+          '✅ Real wearable device writes directly to Firebase at /devices/AnxieEase001/current');
 
-      // Set status as active but don't generate mock data
-      _isActive = true;
-      _isConnected = true;
-
-      if (!_initialized) {
-        await initialize();
+      // Force stop any existing mock timer that might be running
+      if (_sensorTimer != null) {
+        _sensorTimer?.cancel();
+        _sensorTimer = null;
+        AppLogger.w('🛑 Killed existing mock timer');
       }
 
-      // Do not write any RTDB status in real-device mode to avoid permission issues
-      try {
-        await _deviceRef.child('metadata/status').set('active');
-      } catch (e) {
-        AppLogger.w(
-            'IoTSensorService: Skipping RTDB status write in real-device mode');
-      }
+      // Set as active for status tracking only (no mock data generation)
+      _isActive = false; // Keep as false to prevent any mock activity
+      _isConnected = true; // Connected to Firebase (reading only)
 
       notifyListeners();
       return;
     }
 
-    if (!_initialized) {
-      await initialize();
-    }
-
-    AppLogger.d('IoTSensorService: Starting simulation (TEST MODE ONLY)');
-
-    _isActive = true;
-    _isConnected = true;
-    // Don't force worn state - let it be determined naturally during simulation
-
-    // Update device status (mock mode only)
-    try {
-      await _deviceRef.child('metadata/status').set('active');
-      await _currentRef.child('connectionStatus').set('connected');
-    } catch (e) {
-      AppLogger.w('IoTSensorService: Skipped RTDB status writes (mock-only)');
-    }
-
-    // Start sensor data generation ONLY if mock mode enabled
-    _startSensorTimer();
-
-    notifyListeners();
-    AppLogger.d('IoTSensorService: Started');
+    // Below code will NEVER execute since mock is permanently disabled
+    AppLogger.e('❌ CRITICAL ERROR: Mock data should be permanently disabled!');
+    return;
   }
 
   /// Stop IoT sensor simulation
@@ -238,19 +209,37 @@ class IoTSensorService extends ChangeNotifier {
 
   /// Generate realistic sensor data (ONLY when mock mode enabled)
   void _generateSensorData(Timer timer) async {
+    // PERMANENT BLOCK: Mock data generation is COMPLETELY DISABLED
+    AppLogger.e(
+        '🚫 BLOCKED: Mock data generation attempted but is PERMANENTLY DISABLED');
+    AppLogger.e('✅ Your app uses REAL wearable device data only');
+
+    // Immediately cancel this timer - it should never be running
+    timer.cancel();
+    _sensorTimer?.cancel();
+    _sensorTimer = null;
+    _isActive = false;
+
+    return; // Exit immediately - no mock data generation ever
+
+    // ============================================================================
+    // NOTE: All code below this point is unreachable and never executes
+    // The mock data generation system is permanently disabled
+    // Your app only uses REAL wearable device data
+    // ============================================================================
+  }
+
+  /// DEPRECATED - Not used with real device
+  void _generateSensorDataOLD_DISABLED(Timer timer) async {
     try {
-      // CRITICAL SAFETY CHECKS - Prevent any interference
-      if (!_isActive || !_enableMockDataGeneration) {
-        AppLogger.d(
-            'IoTSensorService: ⚠️ Skipping data generation - monitoring not active or mock mode disabled');
-        return; // Don't generate data if monitoring stopped or mock disabled
-      }
-
-      // For testing: Keep device always worn to avoid 0 values
-      _isDeviceWorn = true;
-
       AppLogger.d(
           'IoTSensorService: 🔄 Generating data cycle - Active: $_isActive, Worn: $_isDeviceWorn');
+
+      // Simulate worn/not worn state randomly (20% chance to change state)
+      if (_random.nextDouble() < 0.2) {
+        _isDeviceWorn = !_isDeviceWorn;
+        AppLogger.d('IoTSensorService: Worn state changed to: $_isDeviceWorn');
+      }
 
       // Check if device is not worn - skip sensor data generation
       if (!_isDeviceWorn) {
@@ -420,7 +409,8 @@ class IoTSensorService extends ChangeNotifier {
         'spo2': double.parse(
             _spo2.toStringAsFixed(1)), // Always send during testing
         'timestamp': ServerValue.timestamp,
-        'worn': 1, // Always worn during testing
+        'worn':
+            _isDeviceWorn ? 1 : 0, // Dynamic worn status based on simulation
       };
 
       // Upload to Firebase Realtime Database
@@ -483,6 +473,20 @@ class IoTSensorService extends ChangeNotifier {
     });
   }
 
+  /// Manually set worn state (for testing)
+  void setWornState(bool isWorn) {
+    _isDeviceWorn = isWorn;
+    AppLogger.d('IoTSensorService: Manually set worn state to: $isWorn');
+    notifyListeners();
+  }
+
+  /// Toggle worn state (for testing)
+  void toggleWornState() {
+    _isDeviceWorn = !_isDeviceWorn;
+    AppLogger.d('IoTSensorService: Toggled worn state to: $_isDeviceWorn');
+    notifyListeners();
+  }
+
   /// Enable mock data generation (for testing without real device)
   void enableMockDataGeneration(bool enable) {
     _enableMockDataGeneration = enable;
@@ -493,7 +497,18 @@ class IoTSensorService extends ChangeNotifier {
       // Stop timer if mock data is disabled
       _sensorTimer?.cancel();
       _sensorTimer = null;
+      _isActive = false;
       AppLogger.d('IoTSensorService: Mock data timer stopped');
+    }
+  }
+
+  /// Force stop any running mock data generation (emergency stop)
+  void forceStopMockData() {
+    if (_sensorTimer != null) {
+      _sensorTimer?.cancel();
+      _sensorTimer = null;
+      _isActive = false;
+      AppLogger.w('IoTSensorService: FORCE STOPPED mock data generation');
     }
   }
 
