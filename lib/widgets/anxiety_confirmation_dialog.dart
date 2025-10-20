@@ -355,7 +355,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
 
                     // Main question
                     const Text(
-                      'Are you currently feeling anxious or stressed?',
+                      'Are you feeling anxious, stressed, or maybe a bit of both right now?',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,

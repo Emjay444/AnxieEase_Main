@@ -183,22 +183,30 @@ Future<void> _storeNotificationLocally(RemoteMessage message) async {
         message.data['notificationId'] ?? 'pending_$timestamp';
 
     // Get title and body from data payload (preferred) or notification payload
-    String title = message.data['title'] ??
-        message.data['message'] ??
-        message.notification?.title ??
-        'Notification';
-    String body = message.data['body'] ??
-        message.data['message'] ??
-        message.notification?.body ??
-        'You have a new notification.';
+    // The Cloud Function sends properly formatted title/message, so use those first
+    String title =
+        message.data['title'] ?? message.notification?.title ?? 'Notification';
+    String body =
+        message.data['message'] ?? // Cloud Function uses 'message' field
+            message.data['body'] ??
+            message.notification?.body ??
+            'You have a new notification.';
 
     // Determine if this is a wellness reminder
     final messageType = message.data['type'] ?? '';
     final isWellnessReminder =
         messageType == 'wellness_reminder' || messageType == 'reminder';
 
-    // Only override title/body for anxiety alerts (not wellness reminders)
-    if (!isWellnessReminder && severity != 'unknown') {
+    // Only override title/body if Cloud Function didn't provide them (legacy support)
+    // Check if we have Cloud Function formatted messages by looking for percentage info
+    final hasCloudFunctionMessage = body.contains('above baseline') ||
+        body.contains('% above') ||
+        body.contains('Are you experiencing');
+
+    if (!isWellnessReminder &&
+        severity != 'unknown' &&
+        !hasCloudFunctionMessage) {
+      // Legacy fallback: only use this if Cloud Function didn't send formatted message
       switch (severity.toLowerCase()) {
         case 'mild':
           title = '🟢 Mild Anxiety Alert';

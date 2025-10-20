@@ -62,7 +62,9 @@ Object.defineProperty(exports, "periodicDeviceSync", { enumerable: true, get: fu
 //   expireAppointmentsNow,
 //   triggerAppointmentExpiration,
 // } from "./appointmentExpiration";
-// NEW: Send FCM when a native alert is created under devices/<deviceId>/alerts
+// Send FCM when a MANUAL TEST alert is created under devices/<deviceId>/alerts
+// Used for testing/demo purposes ONLY (e.g., test_anxiety_alerts.js)
+// Real anxiety alerts from realTimeSustainedAnxietyDetection are handled there
 exports.onNativeAlertCreate = functions.database
     .ref("/devices/{deviceId}/alerts/{alertId}")
     .onCreate(async (snapshot, context) => {
@@ -76,6 +78,15 @@ exports.onNativeAlertCreate = functions.database
         const ts = alert.timestamp || Date.now();
         const baseline = alert.baseline || 73.2; // Get baseline from alert or use default
         const userId = alert.userId; // Get userId if provided
+        const source = alert.source || "unknown"; // NEW: Check if this is a manual test
+        // CRITICAL: Only process MANUAL test alerts (from test scripts)
+        // Real anxiety alerts are handled by realTimeSustainedAnxietyDetection
+        if (source !== "sensor" && source !== "test") {
+            console.log(`⚠️ onNativeAlertCreate: Skipping alert from unknown source: ${source}`);
+            return null;
+        }
+        // For manual tests (test_anxiety_alerts.js), source will be "sensor" or "test"
+        console.log(`📱 onNativeAlertCreate: Processing MANUAL test alert (source: ${source})`);
         if (!["mild", "moderate", "severe", "critical"].includes(severity)) {
             console.log(`Skipping alert with invalid severity: ${severity}`);
             return null;
@@ -112,6 +123,36 @@ exports.onNativeAlertCreate = functions.database
             ? Math.round(((heartRate - baseline) / baseline) * 100)
             : 0;
         const { title, body } = getNotificationContent(severity, heartRate);
+        // RATE LIMITING: Check if user was recently notified (same 5-min cooldown as realTimeSustainedAnxietyDetection)
+        // Get userId from assignment
+        const assignedUserId = (await admin.database().ref(`/devices/${deviceId}/assignment/assignedUser`).once("value")).val();
+        if (assignedUserId) {
+            const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+            const now = Date.now();
+            const rateLimitRef = admin.database().ref(`/users/${assignedUserId}/lastAnxietyNotification`);
+            // Use transaction to prevent race conditions
+            const rateLimitResult = await rateLimitRef.transaction((currentValue) => {
+                const lastNotificationTime = currentValue || 0;
+                const timeSinceLastNotification = now - lastNotificationTime;
+                // If within cooldown window, abort transaction
+                if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+                    return; // Abort
+                }
+                // Outside cooldown - update with current time
+                return now;
+            });
+            // Check if transaction succeeded
+            if (!rateLimitResult.committed) {
+                const lastNotificationSnapshot = await rateLimitRef.once("value");
+                const lastNotification = lastNotificationSnapshot.val() || 0;
+                const timeSinceLastNotification = now - lastNotification;
+                const remainingSeconds = Math.ceil((RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / 1000);
+                console.log(`⏱️ onNativeAlertCreate: Rate limit blocked for user ${assignedUserId}. ` +
+                    `Last notification ${Math.floor(timeSinceLastNotification / 1000)}s ago (${remainingSeconds}s remaining)`);
+                return null; // Skip sending notification
+            }
+            console.log(`✅ onNativeAlertCreate: Rate limit passed for user ${assignedUserId}, sending notification`);
+        }
         // Enhanced notification structure with proper sound support and complete data
         // Send to SPECIFIC USER TOKEN as DATA-ONLY (app handles display)
         const message = {

@@ -19,8 +19,7 @@ try {
 } catch {}
 
 // Rate limiting configuration
-const RATE_LIMIT_WINDOW_MS = 2 * 60 * 1000; // 2 minutes in milliseconds
-const rateLimit = new Map<string, number>(); // userId -> lastNotificationTime
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increased from 2 to prevent duplicates)
 
 // Sustained anxiety detection configuration
 const MIN_SUSTAINED_DURATION_SECONDS = 90; // Require 90+ seconds of continuous elevation (1.5 minutes)
@@ -115,18 +114,35 @@ export const realTimeSustainedAnxietyDetection = functions.database
           `💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`
         );
 
-        // Rate limiting check - prevent duplicate notifications
-        // Check BEFORE processing to avoid multiple simultaneous triggers
+        // PERSISTENT Rate limiting check - prevent duplicate notifications
+        // Use Firebase RTDB to persist rate limits across cold starts
         const now = Date.now();
-        const lastNotification = rateLimit.get(userId) || 0;
-        const timeSinceLastNotification = now - lastNotification;
+        const rateLimitRef = db.ref(`/users/${userId}/lastAnxietyNotification`);
+        
+        // Use transaction to prevent race conditions from simultaneous triggers
+        const rateLimitResult = await rateLimitRef.transaction((currentValue) => {
+          const lastNotificationTime = currentValue || 0;
+          const timeSinceLastNotification = now - lastNotificationTime;
 
-        if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+          // If within cooldown window, abort transaction (don't update)
+          if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+            return; // Abort - this will make transaction fail
+          }
+
+          // Outside cooldown window - update with current time
+          return now;
+        });
+
+        // Check if transaction succeeded (we got the "lock")
+        if (!rateLimitResult.committed) {
+          const lastNotificationSnapshot = await rateLimitRef.once("value");
+          const lastNotification = lastNotificationSnapshot.val() || 0;
+          const timeSinceLastNotification = now - lastNotification;
           const remainingMinutes = Math.ceil(
             (RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / (60 * 1000)
           );
           console.log(
-            `⏱️ Rate limit: User ${userId} was notified ${Math.floor(
+            `⏱️ PERSISTENT Rate limit: User ${userId} was notified ${Math.floor(
               timeSinceLastNotification / 1000
             )}s ago. ` +
               `Skipping notification (${remainingMinutes}min remaining in cooldown)`
@@ -134,10 +150,8 @@ export const realTimeSustainedAnxietyDetection = functions.database
           return null;
         }
 
-        // IMMEDIATELY set rate limit to prevent race conditions
-        rateLimit.set(userId, now);
         console.log(
-          `✅ Rate limit passed for user ${userId}, sending notification`
+          `✅ Persistent rate limit passed for user ${userId}, sending notification (last: ${rateLimitResult.snapshot.val()})`
         );
 
         // STEP 5: Send FCM notification to SPECIFIC USER
@@ -477,15 +491,88 @@ function getChannelIdForSeverity(severity: string): string {
 function getSoundForSeverity(severity: string): string {
   switch (severity.toLowerCase()) {
     case "mild":
-      return "mild_alert.mp3";
+      return "mild_alerts.mp3";
     case "moderate":
-      return "moderate_alert.mp3";
+      return "moderate_alerts.mp3";
     case "severe":
-      return "severe_alert.mp3";
+      return "severe_alerts.mp3";
     case "critical":
-      return "critical_alert.mp3";
+      return "critical_alerts.mp3";
     default:
       return "default"; // System default sound
+  }
+}
+
+/**
+ * Get vibration pattern for severity (enhanced UX)
+ * Pattern format: [delay, vibrate, delay, vibrate, ...]
+ */
+function getVibrationPattern(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return "0,200,100,200"; // Short double vibrate
+    case "moderate":
+      return "0,300,200,300"; // Medium double vibrate
+    case "severe":
+      return "0,400,200,400,200,400"; // Triple vibrate
+    case "critical":
+      return "0,500,300,500,300,500,300,500"; // Urgent quad vibrate
+    default:
+      return "0,250"; // Single vibrate
+  }
+}
+
+/**
+ * Get notification importance/priority level
+ */
+function getNotificationImportance(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return "default"; // Normal importance
+    case "moderate":
+      return "high"; // High importance
+    case "severe":
+      return "max"; // Maximum importance
+    case "critical":
+      return "max"; // Maximum importance + urgent
+    default:
+      return "default";
+  }
+}
+
+/**
+ * Get large icon for severity (for richer notifications)
+ */
+function getSeverityIcon(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return "ic_mild_alert"; // Green icon
+    case "moderate":
+      return "ic_moderate_alert"; // Yellow icon
+    case "severe":
+      return "ic_severe_alert"; // Orange icon
+    case "critical":
+      return "ic_critical_alert"; // Red icon
+    default:
+      return "ic_notification"; // Default icon
+  }
+}
+
+/**
+ * Get badge count for app icon (iOS/Android badge)
+ */
+function getBadgeCount(severity: string): number {
+  switch (severity.toLowerCase()) {
+    case "mild":
+      return 1;
+    case "moderate":
+      return 2;
+    case "severe":
+      return 3;
+    case "critical":
+      return 5; // Highest badge for critical
+    default:
+      return 1;
   }
 }
 
@@ -540,6 +627,16 @@ async function sendUserAnxietyAlert(alertData: any) {
         alertType: notificationContent.alertType,
         // For critical alerts, automatically count as anxiety attack
         autoConfirm: (alertData.severity === "critical").toString(),
+        // Enhanced features for better UX
+        vibrationPattern: getVibrationPattern(alertData.severity),
+        importance: getNotificationImportance(alertData.severity),
+        largeIcon: getSeverityIcon(alertData.severity),
+        badge: getBadgeCount(alertData.severity).toString(),
+        category: "ANXIETY_ALERT",
+        showTimestamp: "true",
+        autoCancel: "false", // Don't auto-dismiss
+        ongoing: (alertData.severity === "critical" || alertData.severity === "severe").toString(),
+        percentageAbove: Math.round(((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100).toString(),
       },
       android: {
         priority: "high" as const,
@@ -553,6 +650,8 @@ async function sendUserAnxietyAlert(alertData: any) {
           aps: {
             "content-available": 1, // Silent push for iOS data-only
             category: "ANXIETY_ALERT",
+            badge: getBadgeCount(alertData.severity),
+            sound: getSoundForSeverity(alertData.severity).replace('.mp3', ''), // iOS doesn't need .mp3
           },
         },
       },
@@ -875,15 +974,36 @@ async function getUserBaseline(
 
 /**
  * Clear rate limits for testing purposes
+ * Now clears from Firebase instead of in-memory map
  */
 export const clearAnxietyRateLimits = functions.https.onRequest(
   async (req, res) => {
     try {
-      rateLimit.clear();
-      console.log("🧹 Cleared all anxiety notification rate limits");
+      // Get all users and clear their lastAnxietyNotification timestamp
+      const usersSnapshot = await db.ref("/users").once("value");
+      const users = usersSnapshot.val();
+      
+      if (!users) {
+        res.status(200).json({
+          success: true,
+          message: "No users found to clear rate limits",
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const userIds = Object.keys(users);
+      const clearPromises = userIds.map((userId) =>
+        db.ref(`/users/${userId}/lastAnxietyNotification`).remove()
+      );
+
+      await Promise.all(clearPromises);
+      
+      console.log(`🧹 Cleared anxiety notification rate limits for ${userIds.length} users`);
       res.status(200).json({
         success: true,
-        message: "Rate limits cleared successfully",
+        message: `Rate limits cleared for ${userIds.length} users`,
+        clearedUsers: userIds.length,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {

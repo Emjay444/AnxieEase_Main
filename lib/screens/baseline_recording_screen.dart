@@ -5,7 +5,7 @@ import '../services/device_service.dart';
 import '../services/admin_device_management_service.dart';
 import '../models/baseline_heart_rate.dart';
 import '../theme/app_theme.dart';
-import 'health_dashboard_screen.dart';
+import '../watch.dart';
 import '../config/baseline_config.dart';
 
 /// Guided resting heart rate recording screen
@@ -704,7 +704,7 @@ class _BaselineRecordingScreenState extends State<BaselineRecordingScreen>
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const HealthDashboardScreen(),
+                  builder: (context) => const WatchScreen(),
                 ),
               );
             },

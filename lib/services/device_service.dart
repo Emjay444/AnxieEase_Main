@@ -212,10 +212,10 @@ class DeviceService extends ChangeNotifier {
 
       AppLogger.d('DeviceService: Baseline streams ready');
 
-      // Ensure IoT sensor is running for realistic data
-      await _iotSensorService.startSensors();
+      // NOTE: IoT sensor service is now read-only, no need to start it
+      // Real wearable device writes directly to Firebase
       AppLogger.d(
-          'DeviceService: IoT sensors started, current HR: ${_iotSensorService.heartRate}');
+          'DeviceService: Using real wearable device data from Firebase');
 
       // Start countdown timer
       int remainingSeconds = durationMinutes * 60;
@@ -477,6 +477,9 @@ class DeviceService extends ChangeNotifier {
     _baselineRecordingCompleter = null;
     _baselineReadings.clear();
     _baselineRecordingStartTime = null;
+
+    // IoT sensor service is now read-only, nothing to stop
+    AppLogger.d('DeviceService: Baseline cleanup complete');
   }
 
   /// Validate device connection by checking if it's sending data to Firebase

@@ -2519,8 +2519,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        // Answer filters (only show if alerts are being displayed)
-        if (_selectedFilter == null || _selectedFilter == 'alert')
+        // Answer filters (ONLY show when Alert type is specifically selected)
+        if (_selectedFilter == 'alert')
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),

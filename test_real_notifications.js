@@ -3,14 +3,20 @@
  * This script simulates real heart rate data to trigger actual anxiety detection
  * and notifications with custom sounds for different severity levels.
  *
- * Baseline: 73.2 BPM
- * Mild: 79-89 BPM (8-21% above baseline)
- * Moderate: 90-102 BPM (22-39% above baseline)
- * Severe: 103-117 BPM (40-59% above baseline)
- * Critical: 118+ BPM (60%+ above baseline)
+ * UPDATED BASELINE: 76.4 BPM (from device assignment)
+ * User: e0997cb7-68df-41e6-923f-48107872d434
+ * 
+ * Thresholds:
+ * Mild: 96+ BPM (25% above baseline)
+ * Moderate: 107+ BPM (40% above baseline)
+ * Severe: 122+ BPM (60% above baseline)
+ * Critical: 138+ BPM (80% above baseline)
  */
 
 const admin = require("firebase-admin");
+
+// Suppress Firebase warnings
+process.env.FIREBASE_DATABASE_EMULATOR_HOST = undefined;
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
@@ -20,25 +26,26 @@ if (!admin.apps.length) {
     databaseURL:
       "https://anxieease-sensors-default-rtdb.asia-southeast1.firebasedatabase.app/",
   });
+  console.log("✅ Firebase Admin initialized successfully\n");
 }
 
 const db = admin.database();
 
-// Test configuration
-const BASELINE_BPM = 73.2;
+// Test configuration - UPDATED WITH CORRECT USER AND BASELINE
+const BASELINE_BPM = 76.4; // Correct baseline from device assignment
 const TEST_DEVICE_ID = "AnxieEase001"; // Your actual device ID
-const TEST_USER_ID = "5afad7d4-3dcd-4353-badb-4f155303419a"; // Your real user ID with most sessions
+const TEST_USER_ID = "e0997cb7-68df-41e6-923f-48107872d434"; // Correct user ID from device assignment
 const TEST_SESSION_ID = "session_" + Date.now();
 
 // Calculate heart rates for each severity level
 const HEART_RATES = {
-  mild: Math.round(BASELINE_BPM * 1.25), // 25% above baseline = 92 BPM (above 20% threshold)
-  moderate: Math.round(BASELINE_BPM * 1.4), // 40% above baseline = 102 BPM
-  severe: Math.round(BASELINE_BPM * 1.6), // 60% above baseline = 117 BPM
-  critical: Math.round(BASELINE_BPM * 1.8), // 80% above baseline = 132 BPM
+  mild: Math.round(BASELINE_BPM * 1.25), // 25% above baseline = 96 BPM
+  moderate: Math.round(BASELINE_BPM * 1.4), // 40% above baseline = 107 BPM
+  severe: Math.round(BASELINE_BPM * 1.6), // 60% above baseline = 122 BPM
+  critical: Math.round(BASELINE_BPM * 1.8), // 80% above baseline = 138 BPM
 };
 
-console.log("🔍 Heart Rate Test Values Based on 73.2 BPM Baseline:");
+console.log("🔍 Heart Rate Test Values Based on 76.4 BPM Baseline:");
 console.log(`📊 Mild: ${HEART_RATES.mild} BPM`);
 console.log(`📊 Moderate: ${HEART_RATES.moderate} BPM`);
 console.log(`📊 Severe: ${HEART_RATES.severe} BPM`);
@@ -155,21 +162,29 @@ async function triggerDirectAlert(severity) {
     alertType: "direct_test",
     deviceId: TEST_DEVICE_ID,
     userId: TEST_USER_ID,
+    source: "test", // CRITICAL: Required for Cloud Function to process alert
   };
 
   try {
     // Write to alerts path (triggers onNativeAlertCreate)
+    console.log(`📝 Writing alert to /devices/${TEST_DEVICE_ID}/alerts...`);
     const alertRef = db.ref(`/devices/${TEST_DEVICE_ID}/alerts`).push();
+    console.log(`📍 Generated alert ID: ${alertRef.key}`);
+    
+    console.log(`💾 Saving alert data...`);
     await alertRef.set(alertData);
 
     console.log(`✅ Direct ${severity} alert triggered successfully!`);
+    console.log(`📍 Alert ID: ${alertRef.key}`);
     console.log(
       `📱 Check your device for the notification with custom ${severity} sound`
     );
+    console.log(`\n💡 Run 'node verify_alert_sent.js' to verify the alert was created\n`);
 
     return alertRef.key;
   } catch (error) {
     console.error(`❌ Error triggering ${severity} alert:`, error);
+    throw error;
   }
 }
 
@@ -198,14 +213,14 @@ async function runTest() {
     console.log(
       "💡 Sustained detection simulates real-world gradual heart rate increase"
     );
-    return;
+    process.exit(0);
   }
 
   if (!["mild", "moderate", "severe", "critical"].includes(severity)) {
     console.error(
       "❌ Invalid severity. Use: mild, moderate, severe, or critical"
     );
-    return;
+    process.exit(1);
   }
 
   console.log(`🎯 Testing ${testType} ${severity} notification...`);
@@ -214,12 +229,21 @@ async function runTest() {
   );
   console.log(`🔊 Listen for the custom ${severity} alert sound\n`);
 
-  if (testType === "direct") {
-    await triggerDirectAlert(severity);
-  } else if (testType === "sustained") {
-    await simulateSustainedHeartRate(severity);
-  } else {
-    console.error("❌ Invalid test type. Use: direct or sustained");
+  try {
+    if (testType === "direct") {
+      await triggerDirectAlert(severity);
+      console.log("\n✅ Test completed successfully!");
+      process.exit(0);
+    } else if (testType === "sustained") {
+      await simulateSustainedHeartRate(severity);
+    } else {
+      console.error("❌ Invalid test type. Use: direct or sustained");
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error("\n❌ Test failed:", error.message);
+    console.error(error);
+    process.exit(1);
   }
 }
 
