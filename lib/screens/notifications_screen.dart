@@ -1990,11 +1990,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       },
       child: InkWell(
         // For breathing reminders and stress notifications, navigate to breathing screen
-        // For other reminders/wellness, disable tapping to avoid opening modal
-        onTap: (typeLower == 'breathing_reminder' ||
-                tLower.contains('breathing') ||
-                tLower.contains('breathe') ||
-                isStressMoodNotification)
+        // For positive mood and other reminders/wellness, disable tapping
+        onTap: (!isPositiveMood && // ✅ Exclude positive mood from navigation
+                (typeLower == 'breathing_reminder' ||
+                    tLower.contains('breathing') ||
+                    tLower.contains('breathe') ||
+                    isStressMoodNotification))
             ? () async {
                 // Mark as read if unread
                 if (!isRead) {
