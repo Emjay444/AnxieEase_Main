@@ -1089,7 +1089,8 @@ class SupabaseService {
         print('Checking for existing log with timestamp ${log['timestamp']}');
         final existingLogs = await client
             .from('wellness_logs')
-            .select('id, feelings, stress_level, symptoms, journal')
+            // Note: wellness_logs does not have a 'journal' column. Journals are stored in a separate 'journals' table.
+            .select('id, feelings, stress_level, symptoms')
             .eq('user_id', user.id)
             .eq('timestamp', log['timestamp'])
             .limit(1);
@@ -1123,12 +1124,7 @@ class SupabaseService {
             contentChanged = true;
           }
 
-          // Compare journal
-          if (existingLog['journal'] != log['journal']) {
-            print(
-                'Journal has changed: ${existingLog['journal']} -> ${log['journal']}');
-            contentChanged = true;
-          }
+          // Journal is handled in the separate 'journals' table, so no comparison here
 
           if (!contentChanged) {
             print('No content changes detected, skipping update');
@@ -1152,7 +1148,6 @@ class SupabaseService {
         'feelings': log['feelings'],
         'stress_level': log['stress_level'],
         'symptoms': log['symptoms'],
-        'journal': log['journal'],
         'timestamp': log['timestamp'],
         'created_at': DateTime.now().toIso8601String(),
       });
@@ -1197,10 +1192,7 @@ class SupabaseService {
         'symptoms': log['symptoms'],
       };
 
-      // Only include journal if it's provided
-      if (log['journal'] != null) {
-        updateData['journal'] = log['journal'];
-      }
+      // Journal is stored in the separate 'journals' table, not in wellness_logs
 
       // Include timestamp for consistency
       updateData['timestamp'] = log['timestamp'];

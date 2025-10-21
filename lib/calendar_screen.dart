@@ -535,51 +535,83 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       // Only create ONE notification per log entry - check what was logged
       bool hasHighStress = stressLevel >= 7;
+      bool hasModerateStress = stressLevel >= 5 && stressLevel < 7;
+      bool hasLowStress = stressLevel < 4;
       bool hasSymptoms =
           selectedSymptoms.isNotEmpty && !selectedSymptoms.contains('None');
       bool hasMoods = selectedMoods.isNotEmpty;
 
-      // Priority: Create only ONE notification based on severity
-      if (hasHighStress) {
-        // High stress takes priority
+      // Analyze mood sentiment
+      bool isNegativeMood = selectedMoods.any((mood) =>
+          mood.toLowerCase().contains('anxious') ||
+          mood.toLowerCase().contains('fearful') ||
+          mood.toLowerCase().contains('angry') ||
+          mood.toLowerCase().contains('sad') ||
+          mood.toLowerCase().contains('pain') ||
+          mood.toLowerCase().contains('confused') ||
+          mood.toLowerCase().contains('boredom'));
+
+      bool isPositiveMood = selectedMoods.any((mood) =>
+          mood.toLowerCase().contains('happy') ||
+          mood.toLowerCase().contains('excited') ||
+          mood.toLowerCase().contains('calm') ||
+          mood.toLowerCase().contains('relief') ||
+          mood.toLowerCase().contains('satisfied') ||
+          mood.toLowerCase().contains('awe'));
+
+      // Priority: Create only ONE notification based on severity and mood
+      if (hasHighStress || (hasModerateStress && hasSymptoms)) {
+        // High stress or moderate stress with symptoms takes priority - send alert
         await _supabaseService.createNotificationWithTimestamp(
           title: 'High Stress Level Detected',
           message:
-              'Your stress level was recorded as ${stressLevel.toInt()}/10. Consider using breathing exercises.',
-          type: 'alert',
+              'Your stress level was recorded as ${stressLevel.toInt()}/10. Consider using breathing exercises or talking to someone.',
+          type:
+              'reminder', // Changed from 'alert' to 'reminder' - this is mood-based, not anxiety detection
+          relatedScreen: 'breathing_screen',
+          relatedId: logToSync?.id,
+          createdAt: notificationTime,
+        );
+      } else if (isNegativeMood && hasMoods) {
+        // Negative mood - send supportive reminder
+        final moodsList = selectedMoods.join(", ");
+        await _supabaseService.createNotificationWithTimestamp(
+          title: 'We\'re Here for You',
+          message:
+              'You\'ve been feeling $moodsList. Remember, it\'s okay to not be okay. Try some breathing exercises or reach out to someone you trust.',
+          type: 'reminder',
+          relatedScreen: 'breathing_screen',
+          relatedId: logToSync?.id,
+          createdAt: notificationTime,
+        );
+      } else if (isPositiveMood && hasLowStress && hasMoods) {
+        // Positive mood + low stress - send encouraging notification
+        final positiveMoods = selectedMoods
+            .where((mood) =>
+                mood.toLowerCase().contains('happy') ||
+                mood.toLowerCase().contains('excited') ||
+                mood.toLowerCase().contains('calm') ||
+                mood.toLowerCase().contains('relief') ||
+                mood.toLowerCase().contains('satisfied') ||
+                mood.toLowerCase().contains('awe'))
+            .join(", ");
+
+        await _supabaseService.createNotificationWithTimestamp(
+          title: '🌟 Great to See You Thriving!',
+          message:
+              'You\'re feeling $positiveMoods with a low stress level (${stressLevel.toInt()}/10). Keep up the amazing work! 💪',
+          type: 'reminder',
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
           createdAt: notificationTime,
         );
-      } else if (hasMoods) {
-        // Check if negative mood
-        final moodsList = selectedMoods.join(", ");
-        final isNegativeMood = selectedMoods.any((mood) =>
-            mood.toLowerCase().contains('anxious') ||
-            mood.toLowerCase().contains('fearful') ||
-            mood.toLowerCase().contains('angry') ||
-            mood.toLowerCase().contains('sad') ||
-            mood.toLowerCase().contains('pain') ||
-            mood.toLowerCase().contains('confused'));
-
-        if (isNegativeMood) {
-          await _supabaseService.createNotificationWithTimestamp(
-            title: 'Mood Pattern Alert',
-            message:
-                'You\'ve been feeling $moodsList. Would you like to try some calming exercises?',
-            type: 'reminder',
-            relatedScreen: 'calendar',
-            relatedId: logToSync?.id,
-            createdAt: notificationTime,
-          );
-        }
-        // Don't send notification for positive moods - just save silently
-      } else if (hasSymptoms) {
-        // Only if no high stress or negative mood
+      } else if (hasSymptoms && !hasHighStress) {
+        // Symptoms without high stress - informational log
         final symptomsList = selectedSymptoms.join(", ");
         await _supabaseService.createNotificationWithTimestamp(
-          title: 'Anxiety Symptoms Logged',
-          message: 'You reported experiencing: $symptomsList',
+          title: 'Symptoms Tracked',
+          message:
+              'You reported: $symptomsList. Keep monitoring these patterns. If they persist, consider talking to a professional.',
           type: 'log',
           relatedScreen: 'calendar',
           relatedId: logToSync?.id,
@@ -2806,6 +2838,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
       print(
           'Syncing updated journal with Supabase. ID: ${updatedLog.id ?? "None"}, Timestamp: ${updatedLog.timestamp}');
       await updatedLog.syncWithSupabase();
+
+      // Also sync journal content via the dedicated journals table
+      try {
+        final dateForJournal = updatedLog.timestamp;
+        final existingJournals =
+            await _supabaseService.getJournalsForDate(dateForJournal);
+
+        if (updatedLog.journal == null || updatedLog.journal!.isEmpty) {
+          // If journal cleared, delete existing journal entry for this date (if any)
+          if (existingJournals.isNotEmpty) {
+            final journalId = existingJournals.first['id'] as String;
+            await _supabaseService.deleteJournal(journalId);
+            // Clear journalId locally as well
+            setState(() {
+              updatedLog.journalId = null;
+            });
+          }
+        } else {
+          // Upsert journal for this date
+          if (existingJournals.isNotEmpty) {
+            final journalId = existingJournals.first['id'] as String;
+            await _supabaseService.updateJournal(
+              journalId: journalId,
+              content: updatedLog.journal,
+            );
+            setState(() {
+              updatedLog.journalId = journalId;
+            });
+          } else {
+            final created = await _supabaseService.saveJournal(
+              content: updatedLog.journal!,
+              date: dateForJournal,
+            );
+            setState(() {
+              updatedLog.journalId = created['id'];
+            });
+          }
+        }
+      } catch (e) {
+        print('Warning: Journal sync skipped/failed: $e');
+      }
 
       // Show success message based on whether journal was added, updated, or cleared
       if (mounted) {

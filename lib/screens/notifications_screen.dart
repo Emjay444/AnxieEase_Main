@@ -1802,7 +1802,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final tLower = title.toLowerCase();
     final mLower = (notification['message']?.toString() ?? '').toLowerCase();
     final isPositiveMood = tLower.contains('positive mood') ||
+        tLower.contains('great to see you thriving') ||
+        tLower.contains('thriving') ||
         mLower.contains('great to see you feeling') ||
+        mLower.contains('keep up the amazing work') ||
+        (mLower.contains('you\'re feeling') && mLower.contains('low stress')) ||
         mLower.contains('good vibes');
 
     // Detect dismissed notifications
@@ -1817,6 +1821,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         tLower.contains('mild anxiety') ||
         tLower.contains('moderate anxiety') ||
         tLower.contains('severe anxiety');
+
+    // Identify stress/mood notifications (supportive reminders, not anxiety alerts)
+    final isStressMoodNotification =
+        tLower.contains('high stress level detected') ||
+            tLower.contains('mood pattern') ||
+            tLower.contains('we\'re here for you') ||
+            tLower.contains('great to see you thriving') ||
+            tLower.contains('symptoms tracked');
 
     // Identify caring wellness/breathing reminders
     final wellnessKeywords = <String>{
@@ -1867,7 +1879,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       (keyword) => tLower.contains(keyword) || mLower.contains(keyword),
     );
     final isWellnessReminder = !isAnxietyAlert &&
-        (typeLower == 'wellness_reminder' ||
+        (isStressMoodNotification ||
+            typeLower == 'wellness_reminder' ||
             typeLower == 'breathing_reminder' ||
             typeLower == 'wellness' ||
             matchesWellnessKeyword);
@@ -1877,6 +1890,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         typeLower == 'wellness_reminder' ||
         typeLower == 'breathing_reminder' ||
         isWellnessReminder ||
+        isStressMoodNotification ||
         isPositiveMood ||
         isDismissed ||
         tLower.contains('anxiety check-in') ||
@@ -1975,11 +1989,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       },
       child: InkWell(
-        // For breathing reminders, navigate to breathing screen
+        // For breathing reminders and stress notifications, navigate to breathing screen
         // For other reminders/wellness, disable tapping to avoid opening modal
         onTap: (typeLower == 'breathing_reminder' ||
                 tLower.contains('breathing') ||
-                tLower.contains('breathe'))
+                tLower.contains('breathe') ||
+                isStressMoodNotification)
             ? () async {
                 // Mark as read if unread
                 if (!isRead) {

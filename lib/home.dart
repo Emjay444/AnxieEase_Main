@@ -1470,9 +1470,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           tLower.contains('moderate anxiety') ||
                           tLower.contains('severe anxiety');
 
+                      // Check if this is a stress/mood notification (supportive, not anxiety detection)
+                      final isStressMoodNotification =
+                          tLower.contains('high stress level detected') ||
+                              tLower.contains('mood pattern') ||
+                              tLower.contains('we\'re here for you') ||
+                              tLower.contains('great to see you thriving') ||
+                              tLower.contains('symptoms tracked');
+
                       // Check if this is a wellness/breathing reminder (but NOT an anxiety alert)
                       final isWellnessReminder = !isAnxietyAlert &&
-                          (tLower.contains('peaceful') ||
+                          (isStressMoodNotification ||
+                              tLower.contains('peaceful') ||
                               tLower.contains('afternoon reset') ||
                               tLower.contains('grounding') ||
                               tLower.contains('good morning') ||
@@ -1662,7 +1671,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final nMessage =
         (notification?['message']?.toString() ?? message).toLowerCase();
     final isPositiveContent = nTitle.contains('positive mood') ||
+        nTitle.contains('great to see you thriving') ||
+        nTitle.contains('thriving') ||
         nMessage.contains('great to see you feeling') ||
+        nMessage.contains('keep up the amazing work') ||
+        (nMessage.contains('you\'re feeling') &&
+            nMessage.contains('low stress')) ||
         nMessage.contains('good vibes');
 
     // Check if this is a dismissed anxiety detection notification
@@ -1688,9 +1702,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         nTitle.contains('moderate anxiety') ||
         nTitle.contains('severe anxiety');
 
+    // Check if this is a stress/mood notification (supportive, not anxiety detection)
+    final isStressMoodContent = nTitle.contains('high stress level detected') ||
+        nTitle.contains('mood pattern') ||
+        nTitle.contains('we\'re here for you') ||
+        nTitle.contains('great to see you thriving') ||
+        nTitle.contains('symptoms tracked');
+
     // Check if this is a wellness/breathing reminder (should be teal/caring)
     final isWellnessContent = !isAnxietyContent &&
-        (originalType == 'wellness_reminder' ||
+        (isStressMoodContent ||
+            originalType == 'wellness_reminder' ||
             originalType == 'breathing_reminder' ||
             originalType == 'wellness' ||
             nTitle.contains('peaceful') ||
@@ -1856,6 +1878,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         effectiveType == 'dismissed' ||
         isPositiveContent ||
         isWellnessContent ||
+        isStressMoodContent ||
         isDismissedContent ||
         title.contains('Anxiety Check-in') ||
         title.contains('Anxiety Prevention') ||
@@ -1863,6 +1886,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         title.contains('Mental Health Moment') ||
         title.contains('Relaxation Reminder') ||
         title.contains('Positive Mood') ||
+        title.contains('Great to See You Thriving') ||
+        title.contains('High Stress Level Detected') ||
+        title.contains('Mood Pattern') ||
+        title.contains('We\'re Here for You') ||
+        title.contains('Symptoms Tracked') ||
         title.contains('Anxiety Detection Dismissed');
 
     // Wrap in GestureDetector only if it's not a reminder
