@@ -6,27 +6,27 @@ const admin = require("firebase-admin");
 const db = admin.database();
 const RATE_LIMIT_CONFIG = {
     mild: {
-        baseCooldown: 5 * 60 * 1000,
+        baseCooldown: 20 * 60 * 1000,
         confirmedCooldown: 60 * 60 * 1000,
         dismissedCooldown: 15 * 60 * 1000,
         maxCooldown: 2 * 60 * 60 * 1000, // Max 2 hours
     },
     moderate: {
-        baseCooldown: 3 * 60 * 1000,
+        baseCooldown: 15 * 60 * 1000,
         confirmedCooldown: 60 * 60 * 1000,
         dismissedCooldown: 15 * 60 * 1000,
         maxCooldown: 2 * 60 * 60 * 1000, // Max 2 hours
     },
     severe: {
-        baseCooldown: 1 * 60 * 1000,
+        baseCooldown: 10 * 60 * 1000,
         confirmedCooldown: 30 * 60 * 1000,
         dismissedCooldown: 10 * 60 * 1000,
         maxCooldown: 60 * 60 * 1000, // Max 1 hour
     },
     critical: {
-        baseCooldown: 30 * 1000,
-        confirmedCooldown: 5 * 60 * 1000,
-        dismissedCooldown: 2 * 60 * 1000,
+        baseCooldown: 5 * 60 * 1000,
+        confirmedCooldown: 10 * 60 * 1000,
+        dismissedCooldown: 3 * 60 * 1000,
         maxCooldown: 15 * 60 * 1000, // Max 15 minutes
     },
 };

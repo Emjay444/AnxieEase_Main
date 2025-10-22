@@ -2446,12 +2446,16 @@ class SupabaseService {
       }
 
       // Map response into existing anxiety_records schema
-      final String severity = (reportedSeverity ??
+      final rawSeverity = (reportedSeverity ??
               detectionData['severity'] ??
               detectionData['severity_level'] ??
               'unknown')
           .toString()
           .toLowerCase();
+
+      // Map 'critical' to 'severe' since anxiety_records table only has mild/moderate/severe/unknown
+      final String severity =
+          rawSeverity == 'critical' ? 'severe' : rawSeverity;
 
       // Heart rate is not stored in anxiety_records
 

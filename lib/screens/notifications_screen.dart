@@ -251,6 +251,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         type: _selectedFilter,
       );
 
+      // Filter out wellness/breathing reminders from Alert filter
+      if (_selectedFilter == 'alert') {
+        notifications.removeWhere((notification) {
+          final title = (notification['title'] ?? '').toString().toLowerCase();
+          final message =
+              (notification['message'] ?? '').toString().toLowerCase();
+
+          // Remove wellness-related notifications (reminders disguised as alerts)
+          return title.contains('wellness') ||
+              title.contains('breathing') ||
+              title.contains('reflection') ||
+              title.contains('reset') ||
+              title.contains('check-in') ||
+              title.contains('gratitude') ||
+              title.contains('wind down') ||
+              title.contains('night') ||
+              title.contains('sleep') ||
+              title.contains('peaceful') ||
+              title.contains('evening') && title.contains('wisdom') ||
+              title.contains('transition') ||
+              title.contains('promise') ||
+              message.contains('wellness') ||
+              message.contains('breathing exercise') ||
+              message.contains('grounding');
+        });
+      }
+
       // Apply answer filter
       if (_answerFilter != 'all') {
         notifications.removeWhere((notification) {
@@ -478,8 +505,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
 
       if (confirmed) {
-        // Show help modal with emergency contact and clinic finder
-        await _showHelpModal(severity, notificationId);
+        // First show caring pre-message modal, then help modal
+        final shouldShowHelp = await _showCaringPreMessageModal(severity);
+        if (shouldShowHelp == true && mounted) {
+          await _showHelpModal(severity, notificationId);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -490,6 +520,281 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       }
     }
+  }
+
+  // Show caring pre-message modal before emergency contacts
+  Future<bool?> _showCaringPreMessageModal(String? severity) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 340,
+              maxHeight: 620,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.blue.shade50,
+                  Colors.white,
+                ],
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header with calming icon
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.favorite,
+                            size: 40,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'You\'re Not Alone',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Caring message content
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        // Main caring message
+                        const Text(
+                          'First, take a deep breath with me.',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Breathing guide
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blue.shade200,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.air,
+                                      color: Colors.blue.shade700, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Breathe in slowly for 4 counts',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(Icons.pause_circle_outline,
+                                      color: Colors.blue.shade700, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Hold for 4 counts',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(Icons.air,
+                                      color: Colors.blue.shade700, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Breathe out slowly for 4 counts',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Comforting reminders
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildReminderRow(
+                                '✓',
+                                'This feeling will pass',
+                                Colors.green.shade700,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildReminderRow(
+                                '✓',
+                                'You are safe right now',
+                                Colors.green.shade700,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildReminderRow(
+                                '✓',
+                                'Help is available anytime',
+                                Colors.green.shade700,
+                              ),
+                              const SizedBox(height: 6),
+                              _buildReminderRow(
+                                '✓',
+                                'You\'re doing great by reaching out',
+                                Colors.green.shade700,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        const Text(
+                          'When you\'re ready, we can connect you with support resources.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Action buttons
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade600,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                            child: const Text(
+                              'I\'m Ready - Show Support Options',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: Text(
+                            'I\'m okay now, close this',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper widget for reminder rows
+  Widget _buildReminderRow(String icon, String text, Color color) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          icon,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   // Show help modal with emergency contact and clinic finder
@@ -2493,17 +2798,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              ...['all', 'alert', 'reminder', 'log'].map((f) {
+              ...['all', 'alert', 'reminder'].map((f) {
                 final selected = (_selectedFilter ?? 'all') == f;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
                     label: Text(
-                      f == 'all'
-                          ? 'All'
-                          : f[0].toUpperCase() +
-                              f.substring(1) +
-                              (f == 'log' ? 's' : ''),
+                      f == 'all' ? 'All' : f[0].toUpperCase() + f.substring(1),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,

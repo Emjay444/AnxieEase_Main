@@ -26,27 +26,27 @@ interface RateLimitConfig {
 
 const RATE_LIMIT_CONFIG: Record<string, RateLimitConfig> = {
   mild: {
-    baseCooldown: 5 * 60 * 1000, // 5 minutes (normal)
+    baseCooldown: 20 * 60 * 1000, // 20 minutes (when user confirms "YES, anxious")
     confirmedCooldown: 60 * 60 * 1000, // 1 hour if user said "not anxious"
     dismissedCooldown: 15 * 60 * 1000, // 15 minutes if user said "not now"
     maxCooldown: 2 * 60 * 60 * 1000, // Max 2 hours
   },
   moderate: {
-    baseCooldown: 3 * 60 * 1000, // 3 minutes (normal)
+    baseCooldown: 15 * 60 * 1000, // 15 minutes (when user confirms "YES, anxious")
     confirmedCooldown: 60 * 60 * 1000, // 1 hour if user said "not anxious"
     dismissedCooldown: 15 * 60 * 1000, // 15 minutes if user said "not now"
     maxCooldown: 2 * 60 * 60 * 1000, // Max 2 hours
   },
   severe: {
-    baseCooldown: 1 * 60 * 1000, // 1 minute (normal)
+    baseCooldown: 10 * 60 * 1000, // 10 minutes (when user confirms "YES, anxious")
     confirmedCooldown: 30 * 60 * 1000, // 30 minutes if user said "not anxious"
     dismissedCooldown: 10 * 60 * 1000, // 10 minutes if user said "not now"
     maxCooldown: 60 * 60 * 1000, // Max 1 hour
   },
   critical: {
-    baseCooldown: 30 * 1000, // 30 seconds (normal)
-    confirmedCooldown: 5 * 60 * 1000, // 5 minutes if user said "not anxious"
-    dismissedCooldown: 2 * 60 * 1000, // 2 minutes if user said "not now"
+    baseCooldown: 5 * 60 * 1000, // 5 minutes (when user confirms "YES, anxious")
+    confirmedCooldown: 10 * 60 * 1000, // 10 minutes if user said "not anxious"
+    dismissedCooldown: 3 * 60 * 1000, // 3 minutes if user said "not now"
     maxCooldown: 15 * 60 * 1000, // Max 15 minutes
   },
 };

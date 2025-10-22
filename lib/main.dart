@@ -1872,27 +1872,17 @@ Future<void> _subscribeToTopicsOnce() async {
   try {
     final prefs = await SharedPreferences.getInstance();
 
-    // Only subscribe to anxiety_alerts once per installation
-    bool subscribedToAnxiety =
-        prefs.getBool('subscribed_anxiety_alerts') ?? false;
-    if (!subscribedToAnxiety) {
-      await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
-      await prefs.setBool('subscribed_anxiety_alerts', true);
-      debugPrint('✅ First-time subscription to anxiety_alerts topic');
-    } else {
-      debugPrint('ℹ️ Already subscribed to anxiety_alerts topic');
-    }
+    // Always re-subscribe to ensure fresh connection (changed from once-only)
+    await FirebaseMessaging.instance.subscribeToTopic('anxiety_alerts');
+    await prefs.setBool('subscribed_anxiety_alerts', true);
+    debugPrint('✅ Subscribed/re-subscribed to anxiety_alerts topic');
 
-    // Only subscribe to wellness_reminders once per installation
-    bool subscribedToWellness =
-        prefs.getBool('subscribed_wellness_reminders') ?? false;
-    if (!subscribedToWellness) {
-      await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
-      await prefs.setBool('subscribed_wellness_reminders', true);
-      debugPrint('✅ First-time subscription to wellness_reminders topic');
-    } else {
-      debugPrint('ℹ️ Already subscribed to wellness_reminders topic');
-    }
+    // Always re-subscribe to wellness_reminders to ensure fresh connection
+    await FirebaseMessaging.instance.subscribeToTopic('wellness_reminders');
+    await prefs.setBool('subscribed_wellness_reminders', true);
+    debugPrint('✅ Subscribed/re-subscribed to wellness_reminders topic');
+
+    debugPrint('📱 FCM topic subscriptions completed successfully');
   } catch (e) {
     debugPrint('❌ Failed to manage FCM topic subscriptions: $e');
   }
@@ -1900,20 +1890,53 @@ Future<void> _subscribeToTopicsOnce() async {
 
 // Get fresh FCM token and store it
 Future<void> _refreshAndStoreToken() async {
-  try {
-    // Force token refresh to get the latest token
-    await FirebaseMessaging.instance.deleteToken();
-    final token = await FirebaseMessaging.instance.getToken();
+  int retryCount = 0;
+  const maxRetries = 3;
 
-    if (token != null) {
-      debugPrint('🔑 Fresh FCM registration token: $token');
-      await _storeTokenAtAssignmentLevel(token);
-    } else {
-      debugPrint('⚠️ FCM token is null after refresh');
+  while (retryCount < maxRetries) {
+    try {
+      // TEMPORARY FIX: Force delete old token to get fresh one
+      // This ensures stale tokens don't prevent notifications
+      await FirebaseMessaging.instance.deleteToken();
+      debugPrint('🗑️ Deleted old FCM token (forcing refresh)');
+
+      // Wait a moment for token deletion to complete
+      await Future.delayed(Duration(seconds: retryCount + 1));
+
+      // Force token refresh to get the latest token
+      final token = await FirebaseMessaging.instance.getToken();
+
+      if (token != null) {
+        debugPrint('🔑 Fresh FCM registration token: $token');
+        await _storeTokenAtAssignmentLevel(token);
+        debugPrint('✅ FCM token stored successfully');
+        return; // Success, exit retry loop
+      } else {
+        debugPrint(
+            '⚠️ FCM token is null after refresh (attempt ${retryCount + 1}/$maxRetries)');
+      }
+    } catch (e) {
+      retryCount++;
+      debugPrint(
+          '❌ Error refreshing FCM token (attempt $retryCount/$maxRetries): $e');
+
+      if (e.toString().contains('SERVICE_NOT_AVAILABLE')) {
+        debugPrint('⚠️ Google Play Services not available. Please check:');
+        debugPrint('   1. Google Play Services is installed and updated');
+        debugPrint('   2. Device has internet connection');
+        debugPrint('   3. Date & time settings are correct');
+
+        if (retryCount < maxRetries) {
+          debugPrint('   🔄 Retrying in ${retryCount + 1} seconds...');
+          await Future.delayed(Duration(seconds: retryCount + 1));
+        }
+      }
     }
-  } catch (e) {
-    debugPrint('❌ Error refreshing FCM token: $e');
   }
+
+  debugPrint('❌ Failed to get FCM token after $maxRetries attempts');
+  debugPrint(
+      '💡 Notifications will not work until Google Play Services is available');
 }
 
 // Store FCM token at both user and assignment levels for different notification types

@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearAnxietyRateLimits = exports.getUserFCMToken = exports.realTimeSustainedAnxietyDetection = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 const db = admin.database();
 // Optional: Supabase server-side persistence for alerts
 // Configure via environment variables (Firebase Functions config or runtime env)
@@ -20,7 +21,7 @@ catch (_c) { }
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increased from 2 to prevent duplicates)
 // Sustained anxiety detection configuration
-const MIN_SUSTAINED_DURATION_SECONDS = 90; // Require 90+ seconds of continuous elevation (1.5 minutes)
+const MIN_SUSTAINED_DURATION_SECONDS = 120; // Require 120+ seconds of continuous elevation (2 minutes) - prevents false alerts from sudden HR spikes
 /**
  * Real-time anxiety detection with user-specific analysis
  * Triggers when device current data is updated
@@ -74,7 +75,14 @@ exports.realTimeSustainedAnxietyDetection = functions.database
             console.log(`🚨 SUSTAINED ANXIETY DETECTED FOR USER ${userId}`);
             console.log(`📊 Duration: ${sustainedAnalysis.sustainedSeconds}s`);
             console.log(`💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`);
-            // PERSISTENT Rate limiting check - prevent duplicate notifications
+            // STEP 1: Check ENHANCED rate limiting (considers user responses)
+            const severity = sustainedAnalysis.severity || "mild"; // Ensure severity is defined
+            const isRateLimited = await (0, enhancedRateLimiting_1.isRateLimitedWithConfirmation)(userId, severity);
+            if (isRateLimited) {
+                console.log(`⏱️ ENHANCED Rate limit: User ${userId} blocked by confirmation-aware rate limiting for ${severity} severity`);
+                return null;
+            }
+            // STEP 2: Check PERSISTENT rate limiting (prevents simultaneous triggers)
             // Use Firebase RTDB to persist rate limits across cold starts
             const now = Date.now();
             const rateLimitRef = db.ref(`/users/${userId}/lastAnxietyNotification`);
@@ -99,13 +107,15 @@ exports.realTimeSustainedAnxietyDetection = functions.database
                     `Skipping notification (${remainingMinutes}min remaining in cooldown)`);
                 return null;
             }
-            console.log(`✅ Persistent rate limit passed for user ${userId}, sending notification (last: ${rateLimitResult.snapshot.val()})`);
-            // STEP 5: Send FCM notification to SPECIFIC USER
+            console.log(`✅ Both rate limits passed for user ${userId}, sending notification`);
+            // STEP 3: Update enhanced rate limit timestamp for this severity
+            await (0, enhancedRateLimiting_1.updateRateLimitTimestamp)(userId, severity);
+            // STEP 4: Send FCM notification to SPECIFIC USER
             return await sendUserAnxietyAlert({
                 userId: userId,
                 sessionId: sessionId,
                 deviceId: deviceId,
-                severity: sustainedAnalysis.severity,
+                severity: severity,
                 heartRate: sustainedAnalysis.averageHR,
                 baseline: userBaseline.baselineHR,
                 duration: sustainedAnalysis.sustainedSeconds,
@@ -322,15 +332,84 @@ function getChannelIdForSeverity(severity) {
 function getSoundForSeverity(severity) {
     switch (severity.toLowerCase()) {
         case "mild":
-            return "mild_alert.mp3";
+            return "mild_alerts.mp3";
         case "moderate":
-            return "moderate_alert.mp3";
+            return "moderate_alerts.mp3";
         case "severe":
-            return "severe_alert.mp3";
+            return "severe_alerts.mp3";
         case "critical":
-            return "critical_alert.mp3";
+            return "critical_alerts.mp3";
         default:
             return "default"; // System default sound
+    }
+}
+/**
+ * Get vibration pattern for severity (enhanced UX)
+ * Pattern format: [delay, vibrate, delay, vibrate, ...]
+ */
+function getVibrationPattern(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "0,200,100,200"; // Short double vibrate
+        case "moderate":
+            return "0,300,200,300"; // Medium double vibrate
+        case "severe":
+            return "0,400,200,400,200,400"; // Triple vibrate
+        case "critical":
+            return "0,500,300,500,300,500,300,500"; // Urgent quad vibrate
+        default:
+            return "0,250"; // Single vibrate
+    }
+}
+/**
+ * Get notification importance/priority level
+ */
+function getNotificationImportance(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "default"; // Normal importance
+        case "moderate":
+            return "high"; // High importance
+        case "severe":
+            return "max"; // Maximum importance
+        case "critical":
+            return "max"; // Maximum importance + urgent
+        default:
+            return "default";
+    }
+}
+/**
+ * Get large icon for severity (for richer notifications)
+ */
+function getSeverityIcon(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "ic_mild_alert"; // Green icon
+        case "moderate":
+            return "ic_moderate_alert"; // Yellow icon
+        case "severe":
+            return "ic_severe_alert"; // Orange icon
+        case "critical":
+            return "ic_critical_alert"; // Red icon
+        default:
+            return "ic_notification"; // Default icon
+    }
+}
+/**
+ * Get badge count for app icon (iOS/Android badge)
+ */
+function getBadgeCount(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return 1;
+        case "moderate":
+            return 2;
+        case "severe":
+            return 3;
+        case "critical":
+            return 5; // Highest badge for critical
+        default:
+            return 1;
     }
 }
 /**
@@ -371,6 +450,16 @@ async function sendUserAnxietyAlert(alertData) {
                 alertType: notificationContent.alertType,
                 // For critical alerts, automatically count as anxiety attack
                 autoConfirm: (alertData.severity === "critical").toString(),
+                // Enhanced features for better UX
+                vibrationPattern: getVibrationPattern(alertData.severity),
+                importance: getNotificationImportance(alertData.severity),
+                largeIcon: getSeverityIcon(alertData.severity),
+                badge: getBadgeCount(alertData.severity).toString(),
+                category: "ANXIETY_ALERT",
+                showTimestamp: "true",
+                autoCancel: "false",
+                ongoing: (alertData.severity === "critical" || alertData.severity === "severe").toString(),
+                percentageAbove: Math.round(((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100).toString(),
             },
             android: {
                 priority: "high",
@@ -384,6 +473,8 @@ async function sendUserAnxietyAlert(alertData) {
                     aps: {
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
+                        badge: getBadgeCount(alertData.severity),
+                        sound: getSoundForSeverity(alertData.severity).replace('.mp3', ''), // iOS doesn't need .mp3
                     },
                 },
             },

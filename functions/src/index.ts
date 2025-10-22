@@ -75,8 +75,10 @@ export {
 // Send FCM when a MANUAL TEST alert is created under devices/<deviceId>/alerts
 // Used for testing/demo purposes ONLY (e.g., test_anxiety_alerts.js)
 // Real anxiety alerts from realTimeSustainedAnxietyDetection are handled there
-export const onNativeAlertCreate = functions.database
-  .ref("/devices/{deviceId}/alerts/{alertId}")
+// IMPORTANT: Must be in same region as RTDB (asia-southeast1)
+export const onNativeAlertCreate = functions
+  .region("asia-southeast1")
+  .database.ref("/devices/{deviceId}/alerts/{alertId}")
   .onCreate(async (snapshot, context) => {
     try {
       const alert = snapshot.val() as any;
@@ -93,12 +95,16 @@ export const onNativeAlertCreate = functions.database
       // CRITICAL: Only process MANUAL test alerts (from test scripts)
       // Real anxiety alerts are handled by realTimeSustainedAnxietyDetection
       if (source !== "sensor" && source !== "test") {
-        console.log(`⚠️ onNativeAlertCreate: Skipping alert from unknown source: ${source}`);
+        console.log(
+          `⚠️ onNativeAlertCreate: Skipping alert from unknown source: ${source}`
+        );
         return null;
       }
 
       // For manual tests (test_anxiety_alerts.js), source will be "sensor" or "test"
-      console.log(`📱 onNativeAlertCreate: Processing MANUAL test alert (source: ${source})`);
+      console.log(
+        `📱 onNativeAlertCreate: Processing MANUAL test alert (source: ${source})`
+      );
 
       if (!["mild", "moderate", "severe", "critical"].includes(severity)) {
         console.log(`Skipping alert with invalid severity: ${severity}`);
@@ -112,17 +118,21 @@ export const onNativeAlertCreate = functions.database
           .database()
           .ref(`/devices/${deviceId}/assignment`)
           .once("value");
-        
+
         if (assignmentSnapshot.exists()) {
           const assignment = assignmentSnapshot.val();
           fcmToken = assignment.fcmToken;
           const assignedUserId = assignment.assignedUser;
-          
-          console.log(`📱 Device ${deviceId} assigned to user: ${assignedUserId}`);
-          console.log(`🔑 FCM Token found: ${fcmToken ? 'Yes' : 'No'}`);
-          
+
+          console.log(
+            `📱 Device ${deviceId} assigned to user: ${assignedUserId}`
+          );
+          console.log(`🔑 FCM Token found: ${fcmToken ? "Yes" : "No"}`);
+
           if (!fcmToken) {
-            console.log(`⚠️ No FCM token found for device ${deviceId} assignment`);
+            console.log(
+              `⚠️ No FCM token found for device ${deviceId} assignment`
+            );
             return null;
           }
         } else {
@@ -135,49 +145,69 @@ export const onNativeAlertCreate = functions.database
       }
 
       // Calculate percentage above baseline
-      const percentageAbove = baseline > 0 
-        ? Math.round(((heartRate - baseline) / baseline) * 100) 
-        : 0;
+      const percentageAbove =
+        baseline > 0
+          ? Math.round(((heartRate - baseline) / baseline) * 100)
+          : 0;
 
-      const { title, body } = getNotificationContent(severity, heartRate, baseline);
+      const { title, body } = getNotificationContent(
+        severity,
+        heartRate,
+        baseline
+      );
 
       // RATE LIMITING: Check if user was recently notified (same 5-min cooldown as realTimeSustainedAnxietyDetection)
       // Get userId from assignment
-      const assignedUserId = (await admin.database().ref(`/devices/${deviceId}/assignment/assignedUser`).once("value")).val();
-      
+      const assignedUserId = (
+        await admin
+          .database()
+          .ref(`/devices/${deviceId}/assignment/assignedUser`)
+          .once("value")
+      ).val();
+
       if (assignedUserId) {
         const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
         const now = Date.now();
-        const rateLimitRef = admin.database().ref(`/users/${assignedUserId}/lastAnxietyNotification`);
-        
+        const rateLimitRef = admin
+          .database()
+          .ref(`/users/${assignedUserId}/lastAnxietyNotification`);
+
         // Use transaction to prevent race conditions
-        const rateLimitResult = await rateLimitRef.transaction((currentValue) => {
-          const lastNotificationTime = currentValue || 0;
-          const timeSinceLastNotification = now - lastNotificationTime;
+        const rateLimitResult = await rateLimitRef.transaction(
+          (currentValue) => {
+            const lastNotificationTime = currentValue || 0;
+            const timeSinceLastNotification = now - lastNotificationTime;
 
-          // If within cooldown window, abort transaction
-          if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
-            return; // Abort
+            // If within cooldown window, abort transaction
+            if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+              return; // Abort
+            }
+
+            // Outside cooldown - update with current time
+            return now;
           }
-
-          // Outside cooldown - update with current time
-          return now;
-        });
+        );
 
         // Check if transaction succeeded
         if (!rateLimitResult.committed) {
           const lastNotificationSnapshot = await rateLimitRef.once("value");
           const lastNotification = lastNotificationSnapshot.val() || 0;
           const timeSinceLastNotification = now - lastNotification;
-          const remainingSeconds = Math.ceil((RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / 1000);
+          const remainingSeconds = Math.ceil(
+            (RATE_LIMIT_WINDOW_MS - timeSinceLastNotification) / 1000
+          );
           console.log(
             `⏱️ onNativeAlertCreate: Rate limit blocked for user ${assignedUserId}. ` +
-            `Last notification ${Math.floor(timeSinceLastNotification / 1000)}s ago (${remainingSeconds}s remaining)`
+              `Last notification ${Math.floor(
+                timeSinceLastNotification / 1000
+              )}s ago (${remainingSeconds}s remaining)`
           );
           return null; // Skip sending notification
         }
-        
-        console.log(`✅ onNativeAlertCreate: Rate limit passed for user ${assignedUserId}, sending notification`);
+
+        console.log(
+          `✅ onNativeAlertCreate: Rate limit passed for user ${assignedUserId}, sending notification`
+        );
       }
 
       // Enhanced notification structure with proper sound support and complete data
@@ -186,7 +216,7 @@ export const onNativeAlertCreate = functions.database
         token: fcmToken, // ✅ Target specific user!
         data: {
           type: "anxiety_alert",
-          severity,
+          severity: severity,
           heartRate: heartRate?.toString() || "N/A",
           baseline: baseline.toString(),
           percentageAbove: percentageAbove.toString(),
@@ -194,22 +224,24 @@ export const onNativeAlertCreate = functions.database
           notificationId: `${severity}_${ts}`,
           deviceId: deviceId,
           userId: userId || "",
-          title,
+          title: title,
           message: body,
           channelId: getChannelIdForSeverity(severity),
           sound: getSoundForSeverity(severity),
           color: getSeverityColor(severity),
           requiresConfirmation: "false",
           alertType: "direct",
-          // Enhanced features
+          // Enhanced features - ALL must be strings
           vibrationPattern: getVibrationPattern(severity),
           importance: getNotificationImportance(severity),
           largeIcon: getSeverityIcon(severity),
-          badge: getBadgeCount(severity),
+          badge: getBadgeCount(severity).toString(), // ✅ Convert number to string
           category: "ANXIETY_ALERT",
           showTimestamp: "true",
-          autoCancel: "false", // Don't auto-dismiss
-          ongoing: (severity === "critical" || severity === "severe").toString(), // Keep critical/severe in notification tray
+          autoCancel: "false",
+          ongoing: (
+            severity === "critical" || severity === "severe"
+          ).toString(),
         },
         android: {
           priority: "high" as const,
@@ -224,15 +256,19 @@ export const onNativeAlertCreate = functions.database
               "content-available": 1, // Silent push for data-only
               category: "ANXIETY_ALERT",
               badge: getBadgeCount(severity),
-              sound: getSoundForSeverity(severity).replace('.mp3', ''), // iOS doesn't need .mp3 extension
+              sound: getSoundForSeverity(severity).replace(".mp3", ""), // iOS doesn't need .mp3 extension
             },
           },
         },
       } as any;
 
       const response = await admin.messaging().send(message);
-      console.log(`✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`);
-      console.log(`✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`);
+      console.log(
+        `✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`
+      );
+      console.log(
+        `✅ FCM sent to specific user token from onNativeAlertCreate: ${response}`
+      );
       return response;
     } catch (error) {
       console.error("❌ Error in onNativeAlertCreate:", error);
@@ -242,11 +278,18 @@ export const onNativeAlertCreate = functions.database
 
 // Helper function to get notification content based on severity
 // Now matches the friendly, conversational tone from realTimeSustainedAnxietyDetection
-function getNotificationContent(severity: string, heartRate?: number, baseline?: number) {
+function getNotificationContent(
+  severity: string,
+  heartRate?: number,
+  baseline?: number
+) {
   const hrText = heartRate ? ` ${heartRate} BPM` : "";
-  const percentageText = heartRate && baseline && baseline > 0
-    ? ` (${Math.round(((heartRate - baseline) / baseline) * 100)}% above baseline)`
-    : "";
+  const percentageText =
+    heartRate && baseline && baseline > 0
+      ? ` (${Math.round(
+          ((heartRate - baseline) / baseline) * 100
+        )}% above baseline)`
+      : "";
 
   switch (severity) {
     case "mild":

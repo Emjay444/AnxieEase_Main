@@ -1,5 +1,9 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import {
+  isRateLimitedWithConfirmation,
+  updateRateLimitTimestamp as updateEnhancedRateLimit,
+} from "./enhancedRateLimiting";
 
 const db = admin.database();
 
@@ -22,7 +26,7 @@ try {
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increased from 2 to prevent duplicates)
 
 // Sustained anxiety detection configuration
-const MIN_SUSTAINED_DURATION_SECONDS = 90; // Require 90+ seconds of continuous elevation (1.5 minutes)
+const MIN_SUSTAINED_DURATION_SECONDS = 120; // Require 120+ seconds of continuous elevation (2 minutes) - prevents false alerts from sudden HR spikes
 
 /**
  * Real-time anxiety detection with user-specific analysis
@@ -114,24 +118,40 @@ export const realTimeSustainedAnxietyDetection = functions.database
           `💓 Average HR: ${sustainedAnalysis.averageHR} (${sustainedAnalysis.percentageAbove}% above user's baseline)`
         );
 
-        // PERSISTENT Rate limiting check - prevent duplicate notifications
+        // STEP 1: Check ENHANCED rate limiting (considers user responses)
+        const severity = sustainedAnalysis.severity || "mild"; // Ensure severity is defined
+        const isRateLimited = await isRateLimitedWithConfirmation(
+          userId,
+          severity
+        );
+
+        if (isRateLimited) {
+          console.log(
+            `⏱️ ENHANCED Rate limit: User ${userId} blocked by confirmation-aware rate limiting for ${severity} severity`
+          );
+          return null;
+        }
+
+        // STEP 2: Check PERSISTENT rate limiting (prevents simultaneous triggers)
         // Use Firebase RTDB to persist rate limits across cold starts
         const now = Date.now();
         const rateLimitRef = db.ref(`/users/${userId}/lastAnxietyNotification`);
-        
+
         // Use transaction to prevent race conditions from simultaneous triggers
-        const rateLimitResult = await rateLimitRef.transaction((currentValue) => {
-          const lastNotificationTime = currentValue || 0;
-          const timeSinceLastNotification = now - lastNotificationTime;
+        const rateLimitResult = await rateLimitRef.transaction(
+          (currentValue) => {
+            const lastNotificationTime = currentValue || 0;
+            const timeSinceLastNotification = now - lastNotificationTime;
 
-          // If within cooldown window, abort transaction (don't update)
-          if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
-            return; // Abort - this will make transaction fail
+            // If within cooldown window, abort transaction (don't update)
+            if (timeSinceLastNotification < RATE_LIMIT_WINDOW_MS) {
+              return; // Abort - this will make transaction fail
+            }
+
+            // Outside cooldown window - update with current time
+            return now;
           }
-
-          // Outside cooldown window - update with current time
-          return now;
-        });
+        );
 
         // Check if transaction succeeded (we got the "lock")
         if (!rateLimitResult.committed) {
@@ -151,19 +171,22 @@ export const realTimeSustainedAnxietyDetection = functions.database
         }
 
         console.log(
-          `✅ Persistent rate limit passed for user ${userId}, sending notification (last: ${rateLimitResult.snapshot.val()})`
+          `✅ Both rate limits passed for user ${userId}, sending notification`
         );
 
-        // STEP 5: Send FCM notification to SPECIFIC USER
+        // STEP 3: Update enhanced rate limit timestamp for this severity
+        await updateEnhancedRateLimit(userId, severity);
+
+        // STEP 4: Send FCM notification to SPECIFIC USER
         return await sendUserAnxietyAlert({
           userId: userId,
           sessionId: sessionId,
           deviceId: deviceId,
-          severity: sustainedAnalysis.severity,
-          heartRate: sustainedAnalysis.averageHR,
+          severity: severity,
+          heartRate: sustainedAnalysis.averageHR!,
           baseline: userBaseline.baselineHR,
-          duration: sustainedAnalysis.sustainedSeconds,
-          reason: sustainedAnalysis.reason,
+          duration: sustainedAnalysis.sustainedSeconds!,
+          reason: sustainedAnalysis.reason!,
         });
       } else {
         console.log(
@@ -297,7 +320,15 @@ function analyzeUserSustainedAnxiety(
   baselineHR: number,
   currentData: any,
   userId: string
-) {
+): {
+  isSustained: boolean;
+  sustainedSeconds?: number;
+  averageHR?: number;
+  percentageAbove?: number;
+  severity?: string;
+  reason?: string;
+  durationSeconds?: number;
+} {
   if (userHistoryData.length < 3) {
     return { isSustained: false, durationSeconds: 0 };
   }
@@ -635,8 +666,13 @@ async function sendUserAnxietyAlert(alertData: any) {
         category: "ANXIETY_ALERT",
         showTimestamp: "true",
         autoCancel: "false", // Don't auto-dismiss
-        ongoing: (alertData.severity === "critical" || alertData.severity === "severe").toString(),
-        percentageAbove: Math.round(((alertData.heartRate - alertData.baseline) / alertData.baseline) * 100).toString(),
+        ongoing: (
+          alertData.severity === "critical" || alertData.severity === "severe"
+        ).toString(),
+        percentageAbove: Math.round(
+          ((alertData.heartRate - alertData.baseline) / alertData.baseline) *
+            100
+        ).toString(),
       },
       android: {
         priority: "high" as const,
@@ -651,7 +687,7 @@ async function sendUserAnxietyAlert(alertData: any) {
             "content-available": 1, // Silent push for iOS data-only
             category: "ANXIETY_ALERT",
             badge: getBadgeCount(alertData.severity),
-            sound: getSoundForSeverity(alertData.severity).replace('.mp3', ''), // iOS doesn't need .mp3
+            sound: getSoundForSeverity(alertData.severity).replace(".mp3", ""), // iOS doesn't need .mp3
           },
         },
       },
@@ -982,7 +1018,7 @@ export const clearAnxietyRateLimits = functions.https.onRequest(
       // Get all users and clear their lastAnxietyNotification timestamp
       const usersSnapshot = await db.ref("/users").once("value");
       const users = usersSnapshot.val();
-      
+
       if (!users) {
         res.status(200).json({
           success: true,
@@ -998,8 +1034,10 @@ export const clearAnxietyRateLimits = functions.https.onRequest(
       );
 
       await Promise.all(clearPromises);
-      
-      console.log(`🧹 Cleared anxiety notification rate limits for ${userIds.length} users`);
+
+      console.log(
+        `🧹 Cleared anxiety notification rate limits for ${userIds.length} users`
+      );
       res.status(200).json({
         success: true,
         message: `Rate limits cleared for ${userIds.length} users`,

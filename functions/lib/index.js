@@ -122,7 +122,7 @@ exports.onNativeAlertCreate = functions.database
         const percentageAbove = baseline > 0
             ? Math.round(((heartRate - baseline) / baseline) * 100)
             : 0;
-        const { title, body } = getNotificationContent(severity, heartRate);
+        const { title, body } = getNotificationContent(severity, heartRate, baseline);
         // RATE LIMITING: Check if user was recently notified (same 5-min cooldown as realTimeSustainedAnxietyDetection)
         // Get userId from assignment
         const assignedUserId = (await admin.database().ref(`/devices/${deviceId}/assignment/assignedUser`).once("value")).val();
@@ -159,21 +159,30 @@ exports.onNativeAlertCreate = functions.database
             token: fcmToken,
             data: {
                 type: "anxiety_alert",
-                severity,
-                heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
+                severity: severity,
+                heartRate: ((heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A"),
                 baseline: baseline.toString(),
                 percentageAbove: percentageAbove.toString(),
                 timestamp: ts.toString(),
                 notificationId: `${severity}_${ts}`,
                 deviceId: deviceId,
-                userId: userId || "",
-                title,
+                userId: (userId || ""),
+                title: title,
                 message: body,
                 channelId: getChannelIdForSeverity(severity),
                 sound: getSoundForSeverity(severity),
                 color: getSeverityColor(severity),
                 requiresConfirmation: "false",
                 alertType: "direct",
+                // Enhanced features - ALL must be strings
+                vibrationPattern: getVibrationPattern(severity),
+                importance: getNotificationImportance(severity),
+                largeIcon: getSeverityIcon(severity),
+                badge: getBadgeCount(severity).toString(),
+                category: "ANXIETY_ALERT",
+                showTimestamp: "true",
+                autoCancel: "false",
+                ongoing: (severity === "critical" || severity === "severe").toString(),
             },
             android: {
                 priority: "high",
@@ -187,6 +196,8 @@ exports.onNativeAlertCreate = functions.database
                     aps: {
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
+                        badge: getBadgeCount(severity),
+                        sound: getSoundForSeverity(severity).replace('.mp3', ''), // iOS doesn't need .mp3 extension
                     },
                 },
             },
@@ -202,33 +213,37 @@ exports.onNativeAlertCreate = functions.database
     }
 });
 // Helper function to get notification content based on severity
-function getNotificationContent(severity, heartRate) {
-    const hrText = heartRate ? ` HR: ${heartRate} bpm` : "";
+// Now matches the friendly, conversational tone from realTimeSustainedAnxietyDetection
+function getNotificationContent(severity, heartRate, baseline) {
+    const hrText = heartRate ? ` ${heartRate} BPM` : "";
+    const percentageText = heartRate && baseline && baseline > 0
+        ? ` (${Math.round(((heartRate - baseline) / baseline) * 100)}% above baseline)`
+        : "";
     switch (severity) {
         case "mild":
             return {
                 title: "🟢 Mild Alert - 60% Confidence",
-                body: `Slight elevation in readings.${hrText}`,
+                body: `I noticed a slight increase in your heart rate to${hrText}${percentageText}. Are you experiencing any anxiety or is this just normal activity?`,
             };
         case "moderate":
             return {
-                title: "🟠 Moderate Alert - 70% Confidence",
-                body: `Noticeable symptoms detected.${hrText}`,
+                title: "� Moderate Alert - 70% Confidence",
+                body: `Your heart rate increased to${hrText}${percentageText}. How are you feeling? Is everything alright?`,
             };
         case "severe":
             return {
                 title: "🔴 Severe Alert - 85% Confidence",
-                body: `URGENT: High risk detected!${hrText}`,
+                body: `Hi there! I noticed your heart rate was elevated to${hrText}${percentageText}. Are you experiencing any anxiety or stress right now?`,
             };
         case "critical":
             return {
-                title: "🚨 CRITICAL Alert - 95% Confidence",
-                body: `EMERGENCY: Critical anxiety detected!${hrText}`,
+                title: "🚨 Critical Alert - 95% Confidence",
+                body: `URGENT: Your heart rate has been critically elevated at${hrText}${percentageText}. This indicates a severe anxiety episode. Please seek immediate support if needed.`,
             };
         default:
             return {
                 title: "📱 AnxieEase Alert",
-                body: `Anxiety level detected.${hrText}`,
+                body: `Heart rate check:${hrText}${percentageText}`,
             };
     }
 }
@@ -248,6 +263,7 @@ function getChannelIdForSeverity(severity) {
     }
 }
 // Helper function to get correct sound for severity
+// Uses PLURAL filenames to match actual MP3 files (mild_alerts.mp3, etc.)
 function getSoundForSeverity(severity) {
     switch (severity.toLowerCase()) {
         case "mild":
@@ -263,18 +279,80 @@ function getSoundForSeverity(severity) {
     }
 }
 // Helper function to get color for severity
+// Synced with realTimeSustainedAnxietyDetection for consistency
 function getSeverityColor(severity) {
     switch (severity.toLowerCase()) {
         case "mild":
             return "#4CAF50"; // Green
         case "moderate":
-            return "#FF9800"; // Orange
+            return "#FFFF00"; // Yellow (matches realTimeSustainedAnxietyDetection)
         case "severe":
-            return "#F44336"; // Red
+            return "#FFA500"; // Orange (matches realTimeSustainedAnxietyDetection)
         case "critical":
-            return "#8B0000"; // Dark Red
+            return "#FF0000"; // Red (matches realTimeSustainedAnxietyDetection)
         default:
             return "#2196F3"; // Blue
+    }
+}
+// Helper function to get vibration pattern for severity
+// Pattern format: [delay, vibrate, delay, vibrate, ...]
+function getVibrationPattern(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "0,200,100,200"; // Short double vibrate
+        case "moderate":
+            return "0,300,200,300"; // Medium double vibrate
+        case "severe":
+            return "0,400,200,400,200,400"; // Triple vibrate
+        case "critical":
+            return "0,500,300,500,300,500,300,500"; // Urgent quad vibrate
+        default:
+            return "0,250"; // Single vibrate
+    }
+}
+// Helper function to get notification importance/priority
+function getNotificationImportance(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "default"; // Normal importance
+        case "moderate":
+            return "high"; // High importance
+        case "severe":
+            return "max"; // Maximum importance
+        case "critical":
+            return "max"; // Maximum importance + urgent
+        default:
+            return "default";
+    }
+}
+// Helper function to get large icon for severity
+function getSeverityIcon(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return "ic_mild_alert"; // Green icon
+        case "moderate":
+            return "ic_moderate_alert"; // Yellow icon
+        case "severe":
+            return "ic_severe_alert"; // Orange icon
+        case "critical":
+            return "ic_critical_alert"; // Red icon
+        default:
+            return "ic_notification"; // Default icon
+    }
+}
+// Helper function to get badge count (for app icon badge)
+function getBadgeCount(severity) {
+    switch (severity.toLowerCase()) {
+        case "mild":
+            return 1;
+        case "moderate":
+            return 2;
+        case "severe":
+            return 3;
+        case "critical":
+            return 5; // Highest badge for critical
+        default:
+            return 1;
     }
 }
 // Cloud Function to subscribe new users to the anxiety alerts topic
