@@ -65,8 +65,10 @@ Object.defineProperty(exports, "periodicDeviceSync", { enumerable: true, get: fu
 // Send FCM when a MANUAL TEST alert is created under devices/<deviceId>/alerts
 // Used for testing/demo purposes ONLY (e.g., test_anxiety_alerts.js)
 // Real anxiety alerts from realTimeSustainedAnxietyDetection are handled there
-exports.onNativeAlertCreate = functions.database
-    .ref("/devices/{deviceId}/alerts/{alertId}")
+// IMPORTANT: Must be in same region as RTDB (asia-southeast1)
+exports.onNativeAlertCreate = functions
+    .region("asia-southeast1")
+    .database.ref("/devices/{deviceId}/alerts/{alertId}")
     .onCreate(async (snapshot, context) => {
     try {
         const alert = snapshot.val();
@@ -103,7 +105,7 @@ exports.onNativeAlertCreate = functions.database
                 fcmToken = assignment.fcmToken;
                 const assignedUserId = assignment.assignedUser;
                 console.log(`📱 Device ${deviceId} assigned to user: ${assignedUserId}`);
-                console.log(`🔑 FCM Token found: ${fcmToken ? 'Yes' : 'No'}`);
+                console.log(`🔑 FCM Token found: ${fcmToken ? "Yes" : "No"}`);
                 if (!fcmToken) {
                     console.log(`⚠️ No FCM token found for device ${deviceId} assignment`);
                     return null;
@@ -125,11 +127,16 @@ exports.onNativeAlertCreate = functions.database
         const { title, body } = getNotificationContent(severity, heartRate, baseline);
         // RATE LIMITING: Check if user was recently notified (same 5-min cooldown as realTimeSustainedAnxietyDetection)
         // Get userId from assignment
-        const assignedUserId = (await admin.database().ref(`/devices/${deviceId}/assignment/assignedUser`).once("value")).val();
+        const assignedUserId = (await admin
+            .database()
+            .ref(`/devices/${deviceId}/assignment/assignedUser`)
+            .once("value")).val();
         if (assignedUserId) {
             const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
             const now = Date.now();
-            const rateLimitRef = admin.database().ref(`/users/${assignedUserId}/lastAnxietyNotification`);
+            const rateLimitRef = admin
+                .database()
+                .ref(`/users/${assignedUserId}/lastAnxietyNotification`);
             // Use transaction to prevent race conditions
             const rateLimitResult = await rateLimitRef.transaction((currentValue) => {
                 const lastNotificationTime = currentValue || 0;
@@ -160,13 +167,13 @@ exports.onNativeAlertCreate = functions.database
             data: {
                 type: "anxiety_alert",
                 severity: severity,
-                heartRate: ((heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A"),
+                heartRate: (heartRate === null || heartRate === void 0 ? void 0 : heartRate.toString()) || "N/A",
                 baseline: baseline.toString(),
                 percentageAbove: percentageAbove.toString(),
                 timestamp: ts.toString(),
                 notificationId: `${severity}_${ts}`,
                 deviceId: deviceId,
-                userId: (userId || ""),
+                userId: userId || "",
                 title: title,
                 message: body,
                 channelId: getChannelIdForSeverity(severity),
@@ -197,7 +204,7 @@ exports.onNativeAlertCreate = functions.database
                         "content-available": 1,
                         category: "ANXIETY_ALERT",
                         badge: getBadgeCount(severity),
-                        sound: getSoundForSeverity(severity).replace('.mp3', ''), // iOS doesn't need .mp3 extension
+                        sound: getSoundForSeverity(severity).replace(".mp3", ""), // iOS doesn't need .mp3 extension
                     },
                 },
             },

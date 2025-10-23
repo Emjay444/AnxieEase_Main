@@ -973,39 +973,84 @@ async function storeUserAnxietyAlert(alertData: any) {
 }
 
 /**
- * Get user's baseline heart rate
+ * Get user's baseline heart rate from Supabase (primary source)
  */
 async function getUserBaseline(
   userId: string,
   deviceId: string
 ): Promise<{ baselineHR: number } | null> {
-  // Try to get baseline from device assignment (where it's actually stored)
+  // STEP 1: Query Supabase for active baseline (primary source of truth)
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
+    try {
+      const url = `${SUPABASE_URL}/rest/v1/baseline_heart_rates?user_id=eq.${userId}&device_id=eq.${deviceId}&is_active=eq.true&order=created_at.desc&limit=1`;
+
+      console.log(
+        `🔍 Querying Supabase for baseline: user=${userId}, device=${deviceId}`
+      );
+
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const baselineHR = data[0].baseline_hr;
+          console.log(
+            `📊 ✅ Found baseline in Supabase: ${baselineHR} BPM (user: ${userId}, device: ${deviceId})`
+          );
+          return { baselineHR: baselineHR };
+        } else {
+          console.log(
+            `⚠️ No active baseline found in Supabase for user ${userId}`
+          );
+        }
+      } else {
+        console.error(
+          `❌ Supabase query failed: ${response.status} ${response.statusText}`
+        );
+      }
+    } catch (error) {
+      console.error(`❌ Error querying Supabase for baseline:`, error);
+    }
+  }
+
+  // STEP 2: Fallback to Firebase device assignment (legacy/sync location)
   const deviceBaselineRef = db.ref(
     `/devices/${deviceId}/assignment/supabaseSync/baselineHR`
   );
-  const baselineSnapshot = await deviceBaselineRef.once("value");
+  const deviceSnapshot = await deviceBaselineRef.once("value");
 
-  if (baselineSnapshot.exists()) {
-    const baselineHR = baselineSnapshot.val();
+  if (deviceSnapshot.exists()) {
+    const baselineHR = deviceSnapshot.val();
     console.log(
-      `📊 Found user baseline: ${baselineHR} BPM from device assignment`
+      `📊 Found baseline in Firebase device assignment: ${baselineHR} BPM`
     );
     return { baselineHR: baselineHR };
   }
 
-  // Fallback: try Firebase user profile
+  // STEP 3: Fallback to Firebase user profile (legacy location)
   const userBaselineRef = db.ref(`/users/${userId}/baseline/heartRate`);
   const userBaselineSnapshot = await userBaselineRef.once("value");
 
   if (userBaselineSnapshot.exists()) {
     const baselineHR = userBaselineSnapshot.val();
-    console.log(`📊 Found user baseline: ${baselineHR} BPM from user profile`);
+    console.log(
+      `📊 Found baseline in Firebase user profile: ${baselineHR} BPM`
+    );
     return { baselineHR: baselineHR };
   }
 
-  // For now, return a reasonable default based on age/demographics
-  console.log(`⚠️ No baseline found for user ${userId}, using default 70 BPM`);
-  return { baselineHR: 70 };
+  // No baseline found anywhere - user must set up baseline before anxiety detection
+  console.log(
+    `⚠️ ❌ NO BASELINE FOUND for user ${userId} - Anxiety detection DISABLED until baseline is set up in Supabase`
+  );
+  return null;
 }
 
 /**

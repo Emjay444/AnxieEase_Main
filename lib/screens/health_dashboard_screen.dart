@@ -117,11 +117,72 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
 
       // Start pulse animation if heart rate is available
       _updatePulseAnimation();
+
+      // Check if baseline is missing and show reminder
+      _checkAndShowBaselineReminder();
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to initialize: $e';
       });
     }
+  }
+
+  void _checkAndShowBaselineReminder() {
+    // Wait a bit for device data to load
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      final device = _deviceService.linkedDevice;
+
+      // Show modal if baseline is null or not set
+      if (device == null || device.baselineHR == null) {
+        _showBaselineReminderDialog();
+      }
+    });
+  }
+
+  void _showBaselineReminderDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.favorite_border,
+            size: 48,
+            color: Colors.red,
+          ),
+          title: const Text(
+            'Baseline Setup Required',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'You need to set up your baseline heart rate for accurate anxiety detection.\n\n'
+            'Without a baseline, the system cannot properly monitor your heart rate patterns.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Later'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/baseline-recording');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Set Up Baseline Now'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _onDeviceServiceUpdate() {

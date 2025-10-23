@@ -181,11 +181,94 @@ class _WatchScreenState extends State<WatchScreen>
 
       // Start pulse animation if heart rate is available
       _updatePulseAnimation();
+
+      // Always show baseline reminder when opening watch screen
+      _showBaselineReminderDialog();
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to initialize: $e';
       });
     }
+  }
+
+  void _showBaselineReminderDialog() {
+    // Wait a bit for the screen to fully load
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            icon: const Icon(
+              Icons.favorite_border,
+              size: 48,
+              color: Colors.red,
+            ),
+            title: const Text(
+              'Recalibrate Baseline HR',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'For accurate anxiety detection, please recalibrate your baseline heart rate regularly.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                if (baselineHR != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Current Baseline: ',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        Text(
+                          '${baselineHR!.toInt()} BPM',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Later'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/baseline-recording');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Recalibrate Now'),
+              ),
+            ],
+          );
+        },
+      );
+    });
   }
 
   void _updatePulseAnimation() {
