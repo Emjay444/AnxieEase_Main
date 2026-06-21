@@ -199,7 +199,7 @@ class AuthProvider extends ChangeNotifier {
           try {
             debugPrint(
                 '🔄 Attempting to create missing profile in background...');
-            await _supabaseService.client.from('user_profiles').upsert({
+            await _supabaseService.client.from('users').upsert({
               'id': user.id,
               'email': user.email ?? '',
               'first_name': firstName,
@@ -326,7 +326,7 @@ class AuthProvider extends ChangeNotifier {
       final metadata = user.userMetadata ?? {};
       debugPrint('📋 Auth metadata available: $metadata');
 
-      await _supabaseService.client.from('user_profiles').upsert({
+      await _supabaseService.client.from('users').upsert({
         'id': user.id,
         'email': user.email ?? '',
         'first_name': metadata['first_name'] ?? '',
@@ -533,7 +533,7 @@ class AuthProvider extends ChangeNotifier {
         'birth_date': birthDate?.toIso8601String(),
         'contact_number': contactNumber,
         'emergency_contact': emergencyContact,
-        'sex': sex,
+        'gender': sex,
       };
 
       await _supabaseService.signUp(
@@ -655,7 +655,7 @@ class AuthProvider extends ChangeNotifier {
         if (birthDate != null) 'birth_date': birthDate.toIso8601String(),
         if (contactNumber != null) 'contact_number': contactNumber,
         if (emergencyContact != null) 'emergency_contact': emergencyContact,
-        if (sex != null) 'sex': sex,
+        if (sex != null) 'gender': sex,
         // If a new avatarUrl is provided, set it; if explicitly removing, set to null
         if (avatarUrl != null) 'avatar_url': avatarUrl,
         if (avatarUrl == null && removeAvatar) 'avatar_url': null,

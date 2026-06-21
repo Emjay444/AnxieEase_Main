@@ -32,7 +32,7 @@ class UnifiedDeviceService {
     try {
       final response = await _supabase.from('wearable_devices').select('''
             *,
-            user_profiles (
+            users (
               id,
               first_name,
               last_name,
@@ -59,8 +59,8 @@ class UnifiedDeviceService {
 
       // Update last seen in Supabase
       await _supabase.from('wearable_devices').update({
-        'last_seen': DateTime.now().toIso8601String(),
-        'status': status == 'active' ? 'assigned' : 'available',
+        'last_seen_at': DateTime.now().toIso8601String(),
+        'is_active': status == 'active',
       }).eq('device_id', _currentDeviceId!);
 
       print('Device status updated to: $status');
@@ -320,8 +320,8 @@ class UnifiedDeviceService {
     try {
       await _supabase.from('wearable_devices').upsert({
         'device_id': _currentDeviceId,
-        'last_seen': DateTime.now().toIso8601String(),
-        'status': _currentUserId != null ? 'assigned' : 'available',
+        'last_seen_at': DateTime.now().toIso8601String(),
+        'is_active': _currentUserId != null,
         'firmware_version': '1.0.0', // Replace with actual version
         'battery_level': _generateBatteryLevel(),
       }).eq('device_id', _currentDeviceId!);
@@ -352,7 +352,7 @@ class UnifiedDeviceService {
         return 'Available for assignment';
       }
 
-      final userProfile = deviceInfo['user_profiles'];
+      final userProfile = deviceInfo['users'];
       if (userProfile != null) {
         final userName =
             '${userProfile['first_name']} ${userProfile['last_name']}';

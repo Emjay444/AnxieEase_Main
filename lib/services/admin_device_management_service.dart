@@ -27,7 +27,7 @@ class AdminDeviceManagementService {
       // First, let's see what devices exist in the table
       final allDevices = await _supabase
           .from('wearable_devices')
-          .select('device_id, user_id, is_active, status')
+          .select('device_id, user_id, is_active')
           .limit(5);
 
       AppLogger.d(
@@ -49,7 +49,8 @@ class AdminDeviceManagementService {
       }
 
       final device = response;
-      final assignmentStatus = device['status'] as String? ?? 'available';
+      final assignmentStatus =
+          (device['is_active'] as bool? ?? false) ? 'active' : 'inactive';
       AppLogger.d(
           'AdminDeviceManagementService: Assignment status: $assignmentStatus');
       final assignedAt = device['assigned_at'] != null

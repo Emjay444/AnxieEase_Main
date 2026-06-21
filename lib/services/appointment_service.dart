@@ -77,7 +77,7 @@ class AppointmentService {
         'message': 'Your appointment request from '
             '${DateTime.parse(appointment['created_at']).toLocal().toString().split(' ')[0]} '
             'has expired after 24 hours. Please submit a new request if you still need an appointment.',
-        'type': 'info',
+        'type': 'log',
         'related_screen': 'psychologist_profile',
         'created_at': now.toIso8601String(),
       });

@@ -21,7 +21,7 @@ class PsychologistModel {
     return PsychologistModel(
       id: json['id'] ?? 'unknown-id',
       name: json['name'] ?? 'Unknown Psychologist',
-      specialization: json['specialization'] ?? 'General Psychology',
+      specialization: json['specialization'] ?? 'Psychologist',
     // Prefer explicit contact_email; fall back to generic email or last resort placeholder
     contactEmail: (json['contact_email'] ?? json['email'] ?? '').isNotEmpty
       ? (json['contact_email'] ?? json['email'])

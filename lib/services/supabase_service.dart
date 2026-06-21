@@ -72,7 +72,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'sex': userData['sex'] ?? '',
+        'gender': userData['gender'] ?? '',
         'role': 'patient',
         'created_at': timestamp,
         'updated_at': timestamp,
@@ -95,7 +95,7 @@ class SupabaseService {
           'birth_date': userData['birth_date'],
           'contact_number': userData['contact_number'] ?? '',
           'emergency_contact': userData['emergency_contact'] ?? '',
-          'sex': userData['sex'] ?? '',
+          'gender': userData['gender'] ?? '',
         });
         print('✅ Profile created successfully via database function');
 
@@ -110,7 +110,7 @@ class SupabaseService {
       // Strategy 2: Try direct insert with error details
       try {
         print('🔧 Attempting direct insert...');
-        await client.from('user_profiles').insert(profileData);
+        await client.from('users').insert(profileData);
         print('✅ Profile inserted successfully via direct insert');
 
         // Verify the profile was created
@@ -124,7 +124,7 @@ class SupabaseService {
       // Strategy 3: Try upsert (insert or update)
       try {
         print('🔧 Attempting upsert...');
-        await client.from('user_profiles').upsert(profileData);
+        await client.from('users').upsert(profileData);
         print('✅ Profile created successfully via upsert');
 
         // Verify the profile was created
@@ -148,7 +148,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'sex': userData['sex'] ?? '',
+        'gender': userData['gender'] ?? '',
         'timestamp': timestamp,
       };
 
@@ -162,7 +162,7 @@ class SupabaseService {
             'birth_date': userData['birth_date'],
             'contact_number': userData['contact_number'] ?? '',
             'emergency_contact': userData['emergency_contact'] ?? '',
-            'sex': userData['sex'] ?? '',
+            'gender': userData['gender'] ?? '',
             'profile_creation_failed':
                 true, // Flag to indicate profile needs creation
             'profile_data_stored': timestamp,
@@ -189,7 +189,7 @@ class SupabaseService {
         'birth_date': userData['birth_date'],
         'contact_number': userData['contact_number'] ?? '',
         'emergency_contact': userData['emergency_contact'] ?? '',
-        'sex': userData['sex'] ?? '',
+        'gender': userData['gender'] ?? '',
         'timestamp': timestamp,
       };
       print('🔄 Fallback: Stored data for profile creation during sign-in');
@@ -201,7 +201,7 @@ class SupabaseService {
     try {
       print('🔍 Verifying profile creation for user: $userId');
       final profile = await client
-          .from('user_profiles')
+          .from('users')
           .select('id, first_name, last_name, email')
           .eq('id', userId)
           .maybeSingle();
@@ -243,7 +243,7 @@ class SupabaseService {
           'birth_date': metadata['birth_date'],
           'contact_number': metadata['contact_number'] ?? '',
           'emergency_contact': metadata['emergency_contact'] ?? '',
-          'sex': metadata['sex'] ?? '',
+          'gender': metadata['gender'] ?? '',
           'timestamp': metadata['profile_data_stored'] ??
               DateTime.now().toIso8601String(),
         };
@@ -294,7 +294,7 @@ class SupabaseService {
         'birth_date': pendingData['birth_date'],
         'contact_number': pendingData['contact_number'] ?? '',
         'emergency_contact': pendingData['emergency_contact'] ?? '',
-        'sex': pendingData['sex'] ?? '',
+        'gender': pendingData['gender'] ?? '',
         'role': 'patient',
         'created_at': timestamp,
         'updated_at': timestamp,
@@ -304,7 +304,7 @@ class SupabaseService {
 
       // Try multiple strategies
       try {
-        await client.from('user_profiles').upsert(profileData);
+        await client.from('users').upsert(profileData);
         print('✅ Profile created from pending data via upsert');
         await _verifyProfileCreation(userId);
         _pendingUserData = null; // Clear pending data on success
@@ -314,7 +314,7 @@ class SupabaseService {
       }
 
       try {
-        await client.from('user_profiles').insert(profileData);
+        await client.from('users').insert(profileData);
         print('✅ Profile created from pending data via insert');
         await _verifyProfileCreation(userId);
         _pendingUserData = null; // Clear pending data on success
@@ -553,15 +553,15 @@ class SupabaseService {
       // Ensure user profile exists BEFORE returning - this prevents race conditions
       try {
         final user = await client
-            .from('user_profiles')
+            .from('users')
             .select()
             .eq('id', response.user!.id)
             .maybeSingle();
 
         if (user == null) {
-          // User doesn't exist in user_profiles table, create it
+          // User doesn't exist in users table, create it
           Logger.info(
-              'User not found in user_profiles table, creating user record');
+              'User not found in users table, creating user record');
 
           // Try to use pending user data first, then fall back to metadata
           Map<String, dynamic> profileData;
@@ -578,7 +578,7 @@ class SupabaseService {
               'birth_date': _pendingUserData!['birth_date'],
               'contact_number': _pendingUserData!['contact_number'] ?? '',
               'emergency_contact': _pendingUserData!['emergency_contact'] ?? '',
-              'sex': _pendingUserData!['sex'] ?? '',
+              'gender': _pendingUserData!['gender'] ?? '',
               'role': 'patient',
               'created_at': DateTime.now().toIso8601String(),
               'updated_at': DateTime.now().toIso8601String(),
@@ -603,11 +603,11 @@ class SupabaseService {
             };
           }
 
-          await client.from('user_profiles').upsert(profileData);
+          await client.from('users').upsert(profileData);
           Logger.info('User record created successfully with profile data');
         } else {
           // Update email verification status if user exists
-          await client.from('user_profiles').update({
+          await client.from('users').update({
             'updated_at': DateTime.now().toIso8601String(),
             'is_email_verified': response.user?.emailConfirmedAt != null,
           }).eq('id', response.user!.id);
@@ -683,7 +683,7 @@ class SupabaseService {
 
     try {
       final response = await client
-          .from('user_profiles')
+          .from('users')
           .select()
           .eq('id', user)
           .maybeSingle();
@@ -857,7 +857,7 @@ class SupabaseService {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await client.from('user_profiles').update(updatedData).eq('id', user.id);
+      await client.from('users').update(updatedData).eq('id', user.id);
       print(
           'Successfully updated user profile: ${updatedData.keys.join(', ')}');
     } catch (e) {
@@ -868,7 +868,7 @@ class SupabaseService {
 
         // Always update the timestamp
         try {
-          await client.from('user_profiles').update({
+          await client.from('users').update({
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', user.id);
         } catch (_) {
@@ -878,7 +878,7 @@ class SupabaseService {
         // Try each field individually
         for (var entry in data.entries) {
           try {
-            await client.from('user_profiles').update({
+            await client.from('users').update({
               entry.key: entry.value,
             }).eq('id', user.id);
             print('Successfully updated field: ${entry.key}');
@@ -1340,7 +1340,7 @@ class SupabaseService {
     // Original implementation (commented out)
     /*
     final response = await client
-        .from('user_profiles')
+        .from('users')
         .select()
         .eq('assigned_psychologist_id', user.id)
         .eq('role', 'patient');
@@ -1465,7 +1465,7 @@ class SupabaseService {
     try {
       print('Updating email verification status for: $email');
 
-      await client.from('user_profiles').update({
+      await client.from('users').update({
         'is_email_verified': true,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('email', email);
@@ -2130,7 +2130,7 @@ class SupabaseService {
 
     try {
       // Update the user's assigned psychologist
-      await client.from('user_profiles').update(
+      await client.from('users').update(
           {'assigned_psychologist_id': psychologistId}).eq('id', user.id);
 
       Logger.info(
@@ -2167,7 +2167,9 @@ class SupabaseService {
     return {
       'id': psychologist['id'] ?? 'unknown-id',
       'name': fullName,
-      'specialization': psychologist['specialization'] ?? 'General Psychology',
+      // No specialization column exists in the psychologists table; use a
+      // clearly static label rather than pretending this is database-backed.
+      'specialization': 'Psychologist',
       // Try multiple possible keys before using placeholder
       'contact_email': psychologist['contact_email'] ??
           psychologist['email'] ??
@@ -2274,7 +2276,7 @@ class SupabaseService {
 
       // Update user profile record with avatar URL
       await client
-          .from('user_profiles')
+          .from('users')
           .update({'avatar_url': imageUrl}).eq('id', userId);
 
       // Best-effort: clean up older avatar files for this user
@@ -2302,7 +2304,7 @@ class SupabaseService {
     try {
       // First check if the user has an avatar_url directly in their record
       final userProfile = await client
-          .from('user_profiles')
+          .from('users')
           .select('avatar_url')
           .eq('id', userId)
           .maybeSingle();
@@ -2327,7 +2329,7 @@ class SupabaseService {
 
         // Update the database with the found URL for future use
         await client
-            .from('user_profiles')
+            .from('users')
             .update({'avatar_url': avatarUrl}).eq('id', userId);
 
         return avatarUrl;
@@ -2783,7 +2785,7 @@ class SupabaseService {
 
       // Verify the patient is assigned to this psychologist
       final patient = await client
-          .from('user_profiles')
+          .from('users')
           .select()
           .eq('id', patientId)
           .eq('assigned_psychologist_id', psychologist['id'])
@@ -2797,7 +2799,7 @@ class SupabaseService {
       // Get shared journals
       final response = await client
           .from('journals')
-          .select('*, user_profiles!inner(first_name, last_name, email)')
+          .select('*, users!inner(first_name, last_name, email)')
           .eq('user_id', patientId)
           .eq('shared_with_psychologist', true)
           .order('date', ascending: false);
@@ -2837,7 +2839,7 @@ class SupabaseService {
           .from('journals')
           .select('''
             *,
-            user_profiles!inner(
+            users!inner(
               id,
               first_name,
               last_name,
@@ -2846,7 +2848,7 @@ class SupabaseService {
             )
           ''')
           .eq('shared_with_psychologist', true)
-          .eq('user_profiles.assigned_psychologist_id', psychologist['id'])
+          .eq('users.assigned_psychologist_id', psychologist['id'])
           .order('date', ascending: false);
 
       if (limit != null) {
@@ -2884,7 +2886,7 @@ class SupabaseService {
 
       // Verify patient is assigned
       final patient = await client
-          .from('user_profiles')
+          .from('users')
           .select()
           .eq('id', patientId)
           .eq('assigned_psychologist_id', psychologist['id'])

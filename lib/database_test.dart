@@ -33,17 +33,17 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
         testResults.add("⚠️ Auth: No user logged in");
       }
 
-      // Test 2: Test user_profiles table
-      testResults.add("\n🔍 Testing user_profiles table...");
+      // Test 2: Test users table
+      testResults.add("\n🔍 Testing users table...");
       try {
         final profiles = await supabase
-            .from('user_profiles')
+            .from('users')
             .select('id, first_name, last_name, role')
             .limit(5);
         testResults.add(
-            "✅ user_profiles: Query successful (${profiles.length} records)");
+            "✅ users: Query successful (${profiles.length} records)");
       } catch (e) {
-        testResults.add("❌ user_profiles: Error - $e");
+        testResults.add("❌ users: Error - $e");
       }
 
       // Test 3: Test anxiety_records table
@@ -77,7 +77,7 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
       try {
         final psychologists = await supabase
             .from('psychologists')
-            .select('id, first_name, last_name, specialization')
+            .select('id, first_name, last_name, name')
             .limit(5);
         testResults.add(
             "✅ psychologists: Query successful (${psychologists.length} records)");
@@ -103,7 +103,7 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
       try {
         final notifications = await supabase
             .from('notifications')
-            .select('id, user_id, title, message, is_read')
+            .select('id, user_id, title, message, read')
             .limit(5);
         testResults.add(
             "✅ notifications: Query successful (${notifications.length} records)");
@@ -120,7 +120,7 @@ class _DatabaseTestScreenState extends State<DatabaseTestScreen> {
             'user_id': user.id,
             'title': 'Database Test',
             'message': 'This is a test notification from the database test',
-            'type': 'system'
+            'type': 'log'
           });
           testResults.add("✅ Write test: Can insert data");
 
@@ -233,7 +233,7 @@ Future<void> quickDatabaseTest() async {
 
     // Test each table
     final tables = [
-      'user_profiles',
+      'users',
       'anxiety_records',
       'wellness_logs',
       'appointments',

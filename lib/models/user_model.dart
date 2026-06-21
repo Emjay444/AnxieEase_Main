@@ -56,7 +56,7 @@ class UserModel {
       birthDate: json['birth_date'] != null
           ? DateTime.parse(json['birth_date'])
           : null,
-      sex: json['sex'],
+      sex: json['gender'],
       contactNumber: json['contact_number'],
       emergencyContact: json['emergency_contact'],
       avatarUrl: json['avatar_url'],
@@ -74,7 +74,7 @@ class UserModel {
       'middle_name': middleName,
       'last_name': lastName,
       'birth_date': birthDate?.toIso8601String(),
-      'sex': sex,
+      'gender': sex,
       'contact_number': contactNumber,
       'emergency_contact': emergencyContact,
       'avatar_url': avatarUrl,
