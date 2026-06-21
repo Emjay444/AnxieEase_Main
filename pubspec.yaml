@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_dotenv: ^5.1.0
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.3.5
   flutter_secure_storage: ^9.0.0
@@ -105,6 +106,7 @@ flutter:
     - assets/audio/severe_alerts.mp3
     - assets/audio/critical_alerts.mp3
     - assets/animations/
+    - .env
     # - assets/audio/soft_bells.mp3
     # - assets/audio/ocean_waves.mp3
 

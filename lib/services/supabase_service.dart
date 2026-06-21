@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:io';
@@ -7,9 +8,41 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 
 class SupabaseService {
-  static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
-  static const String supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxc3VzdGp4emp6Zm50Y3NudnBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMDg4NTgsImV4cCI6MjA1Njc4NDg1OH0.RCS_0fSVYnYVY2qr0Ow1__vBC4WRaVg_2SDatKREVHA';
+  static String get supabaseUrl => _resolveEnvValue(
+        'SUPABASE_URL',
+        'https://pglfqtwjithjalwopcdm.supabase.co',
+      );
+  static String get supabaseAnonKey => _resolveEnvValue(
+        'SUPABASE_ANON_KEY',
+        'sb_publishable_EEikfS0RT7AhtSZ82QmhXQ_by2SFZi9',
+      );
+
+  static String _resolveEnvValue(String key, String fallback) {
+    try {
+      final envKeys = <String>[
+        key,
+        if (key == 'SUPABASE_URL') 'NEXT_PUBLIC_SUPABASE_URL',
+        if (key == 'SUPABASE_ANON_KEY') 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+        if (key == 'SUPABASE_ANON_KEY') 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      ];
+
+      for (final envKey in envKeys) {
+        final value = dotenv.env[envKey]?.trim();
+        if (value != null && value.isNotEmpty && !value.startsWith('YOUR_')) {
+          return value;
+        }
+      }
+
+      final value = dotenv.env[key]?.trim();
+      if (value != null && value.isNotEmpty && !value.startsWith('YOUR_')) {
+        return value;
+      }
+    } catch (_) {
+      // dotenv may not be initialized yet; fall back to the embedded defaults below.
+    }
+
+    return fallback;
+  }
 
   SupabaseClient? _supabaseClient;
   bool _isInitialized = false;

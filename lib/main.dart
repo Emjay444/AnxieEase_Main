@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -194,6 +195,13 @@ class InitialApp extends StatelessWidget {
 // Run initialization tasks in the background
 Future<void> _initializeServices() async {
   try {
+    try {
+      await dotenv.load(fileName: '.env');
+      debugPrint('✅ Loaded .env for app configuration');
+    } catch (e) {
+      debugPrint('ℹ️ No .env loaded: $e');
+    }
+
     // --- CORE (block only what is strictly necessary for first frame) --- //
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
