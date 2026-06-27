@@ -562,8 +562,7 @@ class SupabaseService {
 
         if (user == null) {
           // User doesn't exist in users table, create it
-          Logger.info(
-              'User not found in users table, creating user record');
+          Logger.info('User not found in users table, creating user record');
 
           // Try to use pending user data first, then fall back to metadata
           Map<String, dynamic> profileData;
@@ -684,11 +683,8 @@ class SupabaseService {
     print('Fetching user profile for ID: $user');
 
     try {
-      final response = await client
-          .from('users')
-          .select()
-          .eq('id', user)
-          .maybeSingle();
+      final response =
+          await client.from('users').select().eq('id', user).maybeSingle();
       return response;
     } catch (e) {
       // Rethrow instead of swallowing to null: a thrown error here means
