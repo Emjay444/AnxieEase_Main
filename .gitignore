@@ -84,9 +84,10 @@ app.*.map.json
 coverage/
 
 # Supabase config
-lib/config/supabase_config.dart 
+lib/config/supabase_config.dart
 .env
 .env.local
+.env.server
 
 # Firebase service account keys (sensitive)
 service-account-key.json

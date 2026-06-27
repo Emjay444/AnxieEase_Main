@@ -1,4 +1,5 @@
 "use strict";
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = void 0;
 const functions = require("firebase-functions/v1");
@@ -8,6 +9,71 @@ if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.database();
+// Server-side-only Supabase credentials, used to verify admin status.
+// Never sourced from client-provided data.
+const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+let fetchImpl = null;
+try {
+    fetchImpl = global.fetch || require("node-fetch");
+}
+catch (_c) { }
+/**
+ * Verifies the caller is a real, currently-valid Supabase user with
+ * role = 'admin' in public.user_profiles. The caller's Firebase Auth
+ * context (context.auth) has no relationship to Supabase identities in
+ * this app (the mobile/web clients authenticate via Supabase, not
+ * Firebase Auth), so admin status can only be established by validating
+ * a genuine Supabase access token server-side -- never by trusting any
+ * role the client claims to have.
+ */
+async function verifySupabaseAdmin(accessToken) {
+    var _a;
+    if (typeof accessToken !== "string" ||
+        !accessToken ||
+        !SUPABASE_URL ||
+        !SUPABASE_SERVICE_ROLE_KEY ||
+        !fetchImpl) {
+        return false;
+    }
+    try {
+        // Resolve the token to a real Supabase user; this validates the
+        // token's signature/expiry against Supabase Auth itself.
+        const userResp = await fetchImpl(`${SUPABASE_URL}/auth/v1/user`, {
+            headers: {
+                apikey: SUPABASE_SERVICE_ROLE_KEY,
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+        if (!userResp.ok)
+            return false;
+        const userData = await userResp.json();
+        const uid = userData === null || userData === void 0 ? void 0 : userData.id;
+        if (!uid || typeof uid !== "string")
+            return false;
+        // Look up the role server-side with the service-role key (bypasses
+        // RLS by design -- this is the one trusted, server-only check).
+        const roleResp = await fetchImpl(`${SUPABASE_URL}/rest/v1/user_profiles?id=eq.${uid}&select=role`, {
+            headers: {
+                apikey: SUPABASE_SERVICE_ROLE_KEY,
+                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+        });
+        if (!roleResp.ok)
+            return false;
+        const rows = await roleResp.json();
+        const isAdmin = Array.isArray(rows) && ((_a = rows[0]) === null || _a === void 0 ? void 0 : _a.role) === "admin";
+        if (isAdmin) {
+            console.log(`✅ Verified admin request from Supabase user ${uid}`);
+        }
+        return isAdmin;
+    }
+    catch (error) {
+        console.error("❌ Admin verification failed:", error instanceof Error ? error.message : String(error));
+        return false;
+    }
+}
 /**
  * Interface for sensor data from the wearable device
  * COMMENTED OUT - Only used by disabled functions
@@ -248,9 +314,16 @@ export const copyDeviceCurrentToUserSession = functions.database
  * Called by admin interface or testing system
  */
 exports.assignDeviceToUser = functions.https.onCall(async (data, context) => {
-    // Verify admin authentication (implement your auth logic)
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be authenticated to assign devices");
+    }
+    // The caller must prove admin status via a real Supabase session
+    // (verified server-side above); a client-asserted role is never
+    // trusted, since this app's admin role lives in Supabase, not in the
+    // Firebase Auth context.
+    const isAdmin = await verifySupabaseAdmin(data === null || data === void 0 ? void 0 : data.supabaseAccessToken);
+    if (!isAdmin) {
+        throw new functions.https.HttpsError("permission-denied", "Admin privileges required to assign or unassign devices");
     }
     const { userId, sessionId, action, adminNotes } = data;
     try {

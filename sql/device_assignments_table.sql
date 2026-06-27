@@ -1,6 +1,23 @@
 -- Enhanced wearable_devices table for admin-controlled device assignments
 -- Add these columns to your existing wearable_devices table
 
+-- Admin check used by assign_device_to_user/release_device_assignment
+-- below. Idempotent -- safe even if supabase/device_rls_policies.sql or
+-- supabase/admin_device_functions.sql already defined the same function.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (
+        (auth.jwt() ->> 'role') = 'admin' OR
+        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Add admin management columns to existing wearable_devices table
 ALTER TABLE public.wearable_devices 
 ADD COLUMN IF NOT EXISTS assigned_by UUID REFERENCES auth.users(id), -- Admin who assigned
@@ -54,6 +71,10 @@ CREATE OR REPLACE FUNCTION assign_device_to_user(
 )
 RETURNS BOOLEAN AS $$
 BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Access denied: admin privileges required';
+    END IF;
+
     -- Check if device exists and is available
     IF NOT EXISTS (
         SELECT 1 FROM wearable_devices 
@@ -88,8 +109,12 @@ CREATE OR REPLACE FUNCTION release_device_assignment(
 )
 RETURNS BOOLEAN AS $$
 BEGIN
-    UPDATE wearable_devices 
-    SET 
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Access denied: admin privileges required';
+    END IF;
+
+    UPDATE wearable_devices
+    SET
         user_id = NULL,
         assignment_status = 'available',
         session_status = 'idle',

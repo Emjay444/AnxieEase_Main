@@ -12,10 +12,23 @@ admin.initializeApp({
 });
 
 // Supabase configuration
-const SUPABASE_URL = "https://rgyhljphkimypytwksex.supabase.co";
-const SUPABASE_SERVICE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJneWhsanBoa2lteXB5dHdrc2V4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyOTMwMzI0MCwiZXhwIjoyMDQ0ODc5MjQwfQ.oUVu8MWqKLQ2-g_xBiQoAzewwYK8jFgZqnrh5r3D6MM";
+// SECURITY: never hardcode the service-role key here. Set it in your shell
+// or in a local, git-ignored .env file before running this script:
+//   PowerShell:  $env:SUPABASE_SERVICE_ROLE_KEY = "..."
+//   bash:        export SUPABASE_SERVICE_ROLE_KEY="..."
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || "https://rgyhljphkimypytwksex.supabase.co";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_SERVICE_KEY) {
+  console.error(
+    "\n❌ Missing SUPABASE_SERVICE_ROLE_KEY environment variable.\n" +
+      "   Set it before running this script, e.g.:\n" +
+      '   PowerShell:  $env:SUPABASE_SERVICE_ROLE_KEY = "<key from Supabase dashboard>"\n' +
+      "   bash:        export SUPABASE_SERVICE_ROLE_KEY=\"<key from Supabase dashboard>\"\n"
+  );
+  process.exit(1);
+}
 
 const DEVICE_ID = "AnxieEase001";
 const TEST_USER_ID = "24a689fe-3eec-46ee-8374-81a81914f530"; // Your user ID

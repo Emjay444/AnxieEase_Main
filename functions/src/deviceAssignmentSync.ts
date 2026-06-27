@@ -9,23 +9,63 @@
 
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 
 const db = admin.database();
+
+// Shared secret used to authenticate inbound Supabase webhook calls.
+// Set via environment variable -- never hardcode it here.
+const WEBHOOK_SHARED_SECRET =
+  process.env.SUPABASE_WEBHOOK_SECRET ||
+  functions.config().supabase?.webhook_secret;
+
+/**
+ * Constant-time comparison against the configured shared secret, so a
+ * caller can't learn the secret byte-by-byte via response timing.
+ */
+function isValidWebhookSecret(provided: unknown): boolean {
+  if (
+    !WEBHOOK_SHARED_SECRET ||
+    typeof provided !== "string" ||
+    provided.length === 0
+  ) {
+    return false;
+  }
+  const expected = Buffer.from(WEBHOOK_SHARED_SECRET);
+  const actual = Buffer.from(provided);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
 
 /**
  * 📡 HTTP Function to receive Supabase webhooks
  *
  * Supabase webhook URL: https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/syncDeviceAssignment
+ *
+ * SECURITY: this endpoint is public (onRequest), so it authenticates the
+ * caller via a shared secret rather than trusting the payload alone.
+ * Configure it in Supabase: Dashboard -> Database -> Webhooks -> (this
+ * webhook) -> HTTP Headers -> add header "x-webhook-secret" with the same
+ * value as the SUPABASE_WEBHOOK_SECRET env var configured for this
+ * Cloud Function. Requests without a matching header are rejected.
  */
 export const syncDeviceAssignment = functions.https.onRequest(
   async (req, res) => {
     // Enable CORS
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-webhook-secret");
 
     if (req.method === "OPTIONS") {
       res.status(200).send("");
+      return;
+    }
+
+    if (!isValidWebhookSecret(req.get("x-webhook-secret"))) {
+      console.warn(
+        "⚠️ Rejected syncDeviceAssignment call: missing or invalid x-webhook-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
@@ -217,8 +257,20 @@ export const periodicDeviceSync = functions.pubsub
 
 /**
  * 🧪 TEST FUNCTION: Manual sync trigger for testing
+ *
+ * SECURITY: this performs the same device-reassignment write as the real
+ * webhook above (it overwrites AnxieEase001's assignment with a hardcoded
+ * test user), so it requires the same shared secret.
  */
 export const testDeviceSync = functions.https.onRequest(async (req, res) => {
+  if (!isValidWebhookSecret(req.get("x-webhook-secret"))) {
+    console.warn(
+      "⚠️ Rejected testDeviceSync call: missing or invalid x-webhook-secret header"
+    );
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   console.log("🧪 Manual device sync test triggered");
 
   try {

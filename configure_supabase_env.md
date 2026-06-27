@@ -15,7 +15,7 @@ Your anxiety detection notifications are being sent to your phone but not appear
 1. Go to your Supabase dashboard: https://supabase.com/dashboard
 2. Select your project: `gqsustjxzjzfntcsnvpk`
 3. Go to **Settings** → **API**
-4. Copy the **eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxc3VzdGp4emp6Zm50Y3NudnBrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MTIwODg1OCwiZXhwIjoyMDU2Nzg0ODU4fQ.cpwoYCQIEiqnRliT-A25GESAy7lS_YP_ETTYM5idujY** key (not the anon key)
+4. Copy the **service_role** key shown there (not the anon key). Do not paste it into this file or any other file in the repo -- only into `functions/.env` (git-ignored) or `firebase functions:config:set`.
 
 ### Step 2: Configure Firebase Functions Environment
 

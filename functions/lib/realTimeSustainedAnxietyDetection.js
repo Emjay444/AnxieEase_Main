@@ -1,23 +1,39 @@
 "use strict";
-var _a, _b;
+var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearAnxietyRateLimits = exports.getUserFCMToken = exports.realTimeSustainedAnxietyDetection = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 const enhancedRateLimiting_1 = require("./enhancedRateLimiting");
 const db = admin.database();
+// Shared secret gating admin/debug-only HTTP endpoints in this file
+// (e.g. clearAnxietyRateLimits). Set via environment variable.
+const ADMIN_TOOLS_SECRET = process.env.ADMIN_TOOLS_SECRET || ((_a = functions.config().admintools) === null || _a === void 0 ? void 0 : _a.secret);
+function isValidAdminToolsSecret(provided) {
+    if (!ADMIN_TOOLS_SECRET ||
+        typeof provided !== "string" ||
+        provided.length === 0) {
+        return false;
+    }
+    const expected = Buffer.from(ADMIN_TOOLS_SECRET);
+    const actual = Buffer.from(provided);
+    if (expected.length !== actual.length)
+        return false;
+    return crypto.timingSafeEqual(expected, actual);
+}
 // Optional: Supabase server-side persistence for alerts
 // Configure via environment variables (Firebase Functions config or runtime env)
-const SUPABASE_URL = process.env.SUPABASE_URL || ((_a = functions.config().supabase) === null || _a === void 0 ? void 0 : _a.url);
+const SUPABASE_URL = process.env.SUPABASE_URL || ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.url);
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    ((_b = functions.config().supabase) === null || _b === void 0 ? void 0 : _b.service_role_key);
+    ((_c = functions.config().supabase) === null || _c === void 0 ? void 0 : _c.service_role_key);
 // Lazy import to avoid hard dependency when not configured
 let fetchImpl = null;
 try {
     // Node 18+ has global fetch; fallback not needed normally
     fetchImpl = global.fetch || require("node-fetch");
 }
-catch (_c) { }
+catch (_d) { }
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increased from 2 to prevent duplicates)
 // Sustained anxiety detection configuration
@@ -756,8 +772,18 @@ async function getUserBaseline(userId, deviceId) {
 /**
  * Clear rate limits for testing purposes
  * Now clears from Firebase instead of in-memory map
+ *
+ * SECURITY: this wipes every user's anxiety-notification cooldown in one
+ * call, so it requires the ADMIN_TOOLS_SECRET shared secret via the
+ * "x-admin-secret" header. Without it, anyone who found this URL could
+ * spam every patient with repeated anxiety alerts.
  */
 exports.clearAnxietyRateLimits = functions.https.onRequest(async (req, res) => {
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+        console.warn("⚠️ Rejected clearAnxietyRateLimits call: missing or invalid x-admin-secret header");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
     try {
         // Get all users and clear their lastAnxietyNotification timestamp
         const usersSnapshot = await db.ref("/users").once("value");

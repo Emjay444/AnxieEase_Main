@@ -2,6 +2,25 @@
 -- Add these policies to ensure proper user data separation
 
 -- ========================================
+-- ADMIN HELPER FUNCTION (defined first: policies below reference it,
+-- and CREATE POLICY resolves function calls immediately, unlike plpgsql
+-- function bodies which resolve at call time)
+-- ========================================
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (
+        (auth.jwt() ->> 'role') = 'admin' OR
+        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ========================================
 -- ENABLE RLS ON DEVICE-RELATED TABLES
 -- ========================================
 ALTER TABLE public.wearable_devices ENABLE ROW LEVEL SECURITY;
@@ -66,19 +85,54 @@ DROP POLICY IF EXISTS "Users can view assigned devices" ON public.wearable_devic
 DROP POLICY IF EXISTS "Users can update own device sessions" ON public.wearable_devices;
 DROP POLICY IF EXISTS "Admin functions can manage devices" ON public.wearable_devices;
 DROP POLICY IF EXISTS "System can register new devices" ON public.wearable_devices;
+DROP POLICY IF EXISTS "Device access policy" ON public.wearable_devices;
 
--- More comprehensive device policies
-CREATE POLICY "Device access policy" ON public.wearable_devices
-    FOR ALL USING (
-        -- Users can access devices assigned to them
+-- SELECT: a user can see their own device, any unclaimed/available device
+-- (needed to discover a device before pairing with it), or every device if
+-- they are an admin.
+CREATE POLICY "Device select policy" ON public.wearable_devices
+    FOR SELECT USING (
         user_id = auth.uid() OR
-        -- Available devices can be viewed by anyone (for assignment)
         assignment_status = 'available' OR
-        -- Admin users can access all devices
-        (auth.jwt() ->> 'role') = 'admin' OR
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR
-        -- Allow admin functions to work (they use SECURITY DEFINER)
-        current_setting('role', true) = 'supabase_admin'
+        public.is_admin()
+    );
+
+-- INSERT: a user may only register a brand-new device row under their own
+-- user_id (first-time pairing) or leave it unassigned. Admins may insert
+-- anything (e.g. pre-registering a device with no owner yet).
+CREATE POLICY "Device insert policy" ON public.wearable_devices
+    FOR INSERT WITH CHECK (
+        user_id = auth.uid() OR
+        user_id IS NULL OR
+        public.is_admin()
+    );
+
+-- UPDATE: this is the policy that previously allowed device hijacking.
+-- USING controls which existing rows can be targeted: a user's own device,
+-- OR a currently-available/unclaimed device (this is what lib/services/
+-- device_service.dart's linkDevice() relies on for first-time pairing --
+-- the "approved patient self-claim flow"). WITH CHECK controls what the
+-- row can become afterwards: the user may only set themselves as owner or
+-- release it back to unowned (user_id = NULL, used by unlinkDevice()).
+-- Critically, WITH CHECK no longer allows leaving an updated row owned by
+-- someone other than the caller, which is what let any authenticated user
+-- claim another user's "available" device for themselves.
+CREATE POLICY "Device update policy" ON public.wearable_devices
+    FOR UPDATE USING (
+        user_id = auth.uid() OR
+        assignment_status = 'available' OR
+        public.is_admin()
+    ) WITH CHECK (
+        user_id = auth.uid() OR
+        user_id IS NULL OR
+        public.is_admin()
+    );
+
+-- DELETE: admin only. No current end-user flow deletes a device row, and
+-- the previous FOR ALL policy let anyone delete any "available" device.
+CREATE POLICY "Device delete policy" ON public.wearable_devices
+    FOR DELETE USING (
+        public.is_admin()
     );
 
 -- ========================================
@@ -117,23 +171,9 @@ ORDER BY device_id;
 
 -- ========================================
 -- ADMIN HELPER FUNCTIONS
+-- (public.is_admin() now lives at the top of this file -- moved there so
+-- the policies above can reference it)
 -- ========================================
-
--- Function to check if current user is admin
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS boolean AS $$
-BEGIN
-    RETURN (
-        (auth.jwt() ->> 'role') = 'admin' OR
-        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR
-        -- Check if user has admin flag in user_profiles (if you add this field)
-        EXISTS (
-            SELECT 1 FROM public.user_profiles 
-            WHERE id = auth.uid() AND role = 'admin'
-        )
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to safely get user device assignment
 CREATE OR REPLACE FUNCTION public.get_user_device_assignment(p_user_id uuid)
@@ -174,8 +214,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON POLICY "Device access policy" ON public.wearable_devices IS 
-'Comprehensive device access policy supporting user isolation, admin management, and psychologist access';
+COMMENT ON POLICY "Device select policy" ON public.wearable_devices IS
+'Users see their own device, available/unclaimed devices, or all devices if admin';
+COMMENT ON POLICY "Device insert policy" ON public.wearable_devices IS
+'Users may register a new device only under their own user_id (or unassigned); admins may insert any row';
+COMMENT ON POLICY "Device update policy" ON public.wearable_devices IS
+'Users may update their own device or claim an available device for themselves, but can never assign it to someone else';
+COMMENT ON POLICY "Device delete policy" ON public.wearable_devices IS
+'Only admins may delete a device row';
 
 COMMENT ON POLICY "Users can manage own baselines" ON public.baseline_heart_rates IS
 'Users can only access baseline heart rate data they recorded themselves';

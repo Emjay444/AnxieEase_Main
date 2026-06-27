@@ -1,11 +1,31 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 import {
   isRateLimitedWithConfirmation,
   updateRateLimitTimestamp as updateEnhancedRateLimit,
 } from "./enhancedRateLimiting";
 
 const db = admin.database();
+
+// Shared secret gating admin/debug-only HTTP endpoints in this file
+// (e.g. clearAnxietyRateLimits). Set via environment variable.
+const ADMIN_TOOLS_SECRET =
+  process.env.ADMIN_TOOLS_SECRET || functions.config().admintools?.secret;
+
+function isValidAdminToolsSecret(provided: unknown): boolean {
+  if (
+    !ADMIN_TOOLS_SECRET ||
+    typeof provided !== "string" ||
+    provided.length === 0
+  ) {
+    return false;
+  }
+  const expected = Buffer.from(ADMIN_TOOLS_SECRET);
+  const actual = Buffer.from(provided);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
 
 // Optional: Supabase server-side persistence for alerts
 // Configure via environment variables (Firebase Functions config or runtime env)
@@ -1056,9 +1076,22 @@ async function getUserBaseline(
 /**
  * Clear rate limits for testing purposes
  * Now clears from Firebase instead of in-memory map
+ *
+ * SECURITY: this wipes every user's anxiety-notification cooldown in one
+ * call, so it requires the ADMIN_TOOLS_SECRET shared secret via the
+ * "x-admin-secret" header. Without it, anyone who found this URL could
+ * spam every patient with repeated anxiety alerts.
  */
 export const clearAnxietyRateLimits = functions.https.onRequest(
   async (req, res) => {
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+      console.warn(
+        "⚠️ Rejected clearAnxietyRateLimits call: missing or invalid x-admin-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     try {
       // Get all users and clear their lastAnxietyNotification timestamp
       const usersSnapshot = await db.ref("/users").once("value");

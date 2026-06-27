@@ -1,6 +1,23 @@
 -- Admin Device Management Functions for AnxieEase
 -- Run these in your Supabase SQL editor to enable admin device control
 
+-- Shared admin check used by every SECURITY DEFINER function below.
+-- Idempotent (safe to run even if supabase/device_rls_policies.sql already
+-- defined the same function) and intentionally defined before it's used.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (
+        (auth.jwt() ->> 'role') = 'admin' OR
+        (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin' OR
+        EXISTS (
+            SELECT 1 FROM public.user_profiles
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Function to assign device to user (admin only)
 CREATE OR REPLACE FUNCTION assign_device_to_user(
   p_device_id TEXT,
@@ -20,6 +37,10 @@ DECLARE
   existing_device RECORD;
   new_device_record RECORD;
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied: admin privileges required';
+  END IF;
+
   -- Check if device is already assigned to someone else
   SELECT * INTO existing_device 
   FROM wearable_devices 
@@ -94,6 +115,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied: admin privileges required';
+  END IF;
+
   -- Update device to release assignment
   UPDATE wearable_devices 
   SET 
@@ -176,8 +201,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied: admin privileges required';
+  END IF;
+
   RETURN QUERY
-  SELECT 
+  SELECT
     wd.device_id,
     wd.user_id,
     p.full_name as user_name,
@@ -212,8 +241,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied: admin privileges required';
+  END IF;
+
   RETURN QUERY
-  SELECT 
+  SELECT
     p.id,
     p.full_name,
     au.email,
@@ -243,8 +276,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied: admin privileges required';
+  END IF;
+
   RETURN QUERY
-  SELECT 
+  SELECT
     p.full_name as user_name,
     au.email as user_email,
     wd.assigned_at,
