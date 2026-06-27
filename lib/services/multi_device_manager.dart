@@ -71,7 +71,9 @@ class MultiDeviceManager extends ChangeNotifier {
     }
   }
 
-  /// Set primary device for monitoring
+  /// Set primary device for monitoring.
+  /// This is local/in-memory only: wearable_devices has no is_primary
+  /// column, so the selection is not persisted to Supabase.
   Future<void> setPrimaryDevice(String deviceId) async {
     final device = _userDevices.firstWhere(
       (d) => d.deviceId == deviceId,
@@ -79,24 +81,6 @@ class MultiDeviceManager extends ChangeNotifier {
     );
 
     _primaryDevice = device;
-
-    // Update in database
-    await _supabaseService.client
-        .from('wearable_devices')
-        .update({'is_primary': true})
-        .eq('device_id', deviceId)
-        .eq('user_id', _supabaseService.client.auth.currentUser!.id);
-
-    // Clear primary flag from other devices
-    for (final otherDevice in _userDevices) {
-      if (otherDevice.deviceId != deviceId) {
-        await _supabaseService.client
-            .from('wearable_devices')
-            .update({'is_primary': false})
-            .eq('device_id', otherDevice.deviceId)
-            .eq('user_id', _supabaseService.client.auth.currentUser!.id);
-      }
-    }
 
     notifyListeners();
     AppLogger.d('MultiDeviceManager: Set primary device to $deviceId');

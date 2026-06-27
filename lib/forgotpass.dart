@@ -10,7 +10,7 @@ class Forgotpass extends StatefulWidget {
 }
 
 class _ForgotpassState extends State<Forgotpass>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _emailController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
@@ -23,6 +23,8 @@ class _ForgotpassState extends State<Forgotpass>
   @override
   void initState() {
     super.initState();
+    // Observe app lifecycle to stabilize UI when returning from external apps
+    WidgetsBinding.instance.addObserver(this);
 
     // Initialize animation controller with simpler animation
     _animationController = AnimationController(
@@ -46,9 +48,27 @@ class _ForgotpassState extends State<Forgotpass>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _emailController.dispose();
     _animationController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Unfocus immediately - cheap and always safe.
+      FocusManager.instance.primaryFocus?.unfocus();
+      // Defer the rebuild/animation restart slightly so an in-flight
+      // deep-link navigation (e.g. tapping the reset-password email link,
+      // which fully replaces the screen) has a chance to win the race and
+      // dispose this screen first, instead of both happening at once.
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (!mounted) return;
+        _animationController?.forward(from: 0);
+        setState(() {});
+      });
+    }
   }
 
   Future<void> _resetPassword() async {
@@ -334,7 +354,7 @@ class _ForgotpassState extends State<Forgotpass>
             if (_resetEmailSent)
               _buildStatusMessage(
                 message:
-                    'Password reset email sent! Check your inbox for the 6-digit PIN code. You will be redirected to the verification screen.',
+                    'Password reset email sent! Check your inbox for the 8-digit PIN code. You will be redirected to the verification screen.',
                 icon: Icons.check_circle_outline,
                 color: const Color(0xFF3AA772),
               ),

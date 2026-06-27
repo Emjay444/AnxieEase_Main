@@ -61,9 +61,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       // Use the notification provider to signal that a refresh is needed
       Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted) return;
         final notificationProvider =
             Provider.of<NotificationProvider>(context, listen: false);
         notificationProvider.triggerNotificationRefresh();
+        // We just triggered this ourselves and already loaded the data in
+        // initState, so mark it as seen to avoid didChangeDependencies
+        // reloading again in response to our own signal.
+        _lastRefreshCounter = notificationProvider.refreshCounter;
         debugPrint('✅ NotificationsScreen: Triggered refresh via provider');
       });
     } catch (e) {
@@ -1989,7 +1994,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _deleteNotification(String id) async {
     try {
-      await _supabaseService.deleteNotification(id, hardDelete: true);
+      await _supabaseService.deleteNotification(id, hardDelete: false);
       setState(() {
         _notifications.removeWhere((notification) => notification['id'] == id);
         // Update unread count if needed
@@ -2041,7 +2046,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (confirm) {
       try {
-        await _supabaseService.clearAllNotifications(hardDelete: true);
+        await _supabaseService.clearAllNotifications(hardDelete: false);
         setState(() {
           _notifications.clear();
           _unreadCount = 0;

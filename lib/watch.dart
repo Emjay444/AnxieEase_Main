@@ -128,52 +128,61 @@ class _WatchScreenState extends State<WatchScreen>
       // Initialize IoT service
       await _initializeIoTService();
 
-      // Initialize Firebase references
-      final deviceId = _deviceService.linkedDevice?.deviceId ?? 'AnxieEase001';
-      _currentDataRef =
-          FirebaseDatabase.instance.ref().child('devices/$deviceId/current');
+      // Only wire up the Firebase device stream if a device is actually
+      // assigned to this user. Without this guard, unassigned users would
+      // fall back to the shared test device and see its live data.
+      if (_isDeviceSetup) {
+        final deviceId = _deviceService.linkedDevice?.deviceId;
+        if (deviceId != null) {
+          _currentDataRef =
+              FirebaseDatabase.instance.ref().child('devices/$deviceId/current');
 
-      debugPrint(
-          '📱 WatchScreen: Initialized Firebase reference for device: $deviceId');
-      debugPrint('📱 WatchScreen: Firebase path: devices/$deviceId/current');
+          debugPrint(
+              '📱 WatchScreen: Initialized Firebase reference for device: $deviceId');
+          debugPrint('📱 WatchScreen: Firebase path: devices/$deviceId/current');
 
-      // Test Firebase connection by doing a one-time read
-      _testFirebaseConnection();
+          // Test Firebase connection by doing a one-time read
+          _testFirebaseConnection();
 
-      // Listen to real-time current data updates - SIMPLIFIED VERSION
-      _iotDataSubscription = _currentDataRef.onValue.listen((event) {
-        if (event.snapshot.value != null) {
-          try {
-            final data = event.snapshot.value as Map<dynamic, dynamic>;
-            debugPrint('📱 WatchScreen: Raw Firebase data: $data');
+          // Listen to real-time current data updates - SIMPLIFIED VERSION
+          _iotDataSubscription = _currentDataRef.onValue.listen((event) {
+            if (event.snapshot.value != null) {
+              try {
+                final data = event.snapshot.value as Map<dynamic, dynamic>;
+                debugPrint('📱 WatchScreen: Raw Firebase data: $data');
 
-            setState(() {
-              // Simply extract and display all data without any suppression logic
-              heartRateValue = _asDouble(data['heartRate']) ?? 0.0;
-              bodyTempValue = _asDouble(data['bodyTemp']) ?? 0.0;
-              ambientTempValue = _asDouble(data['ambientTemp']) ?? 0.0;
-              batteryPercentage = _asDouble(data['battPerc']) ?? 0.0;
-              isDeviceWorn = _asBool(data['worn']) ?? false;
+                setState(() {
+                  // Simply extract and display all data without any suppression logic
+                  heartRateValue = _asDouble(data['heartRate']) ?? 0.0;
+                  bodyTempValue = _asDouble(data['bodyTemp']) ?? 0.0;
+                  ambientTempValue = _asDouble(data['ambientTemp']) ?? 0.0;
+                  batteryPercentage = _asDouble(data['battPerc']) ?? 0.0;
+                  isDeviceWorn = _asBool(data['worn']) ?? false;
 
-              // Always show as connected if we receive any data
-              isConnected = true;
-              _hasRealtimeData = true;
+                  // Always show as connected if we receive any data
+                  isConnected = true;
+                  _hasRealtimeData = true;
 
-              debugPrint(
-                  '📱 WatchScreen: HR: $heartRateValue, Temp: $bodyTempValue, Battery: $batteryPercentage%, Worn: $isDeviceWorn');
-            });
+                  debugPrint(
+                      '📱 WatchScreen: HR: $heartRateValue, Temp: $bodyTempValue, Battery: $batteryPercentage%, Worn: $isDeviceWorn');
+                });
 
-            // Update pulse animation
-            _updatePulseAnimation();
-          } catch (e) {
-            debugPrint('❌ WatchScreen: Error parsing Firebase data: $e');
-          }
-        } else {
-          debugPrint('📱 WatchScreen: Firebase snapshot value is null');
+                // Update pulse animation
+                _updatePulseAnimation();
+              } catch (e) {
+                debugPrint('❌ WatchScreen: Error parsing Firebase data: $e');
+              }
+            } else {
+              debugPrint('📱 WatchScreen: Firebase snapshot value is null');
+            }
+          }, onError: (error) {
+            debugPrint('❌ WatchScreen: Firebase listener error: $error');
+          });
         }
-      }, onError: (error) {
-        debugPrint('❌ WatchScreen: Firebase listener error: $error');
-      });
+      } else {
+        debugPrint(
+            '📱 WatchScreen: No device assigned - skipping Firebase subscription');
+      }
 
       setState(() {
         _isInitialized = true;
@@ -182,8 +191,10 @@ class _WatchScreenState extends State<WatchScreen>
       // Start pulse animation if heart rate is available
       _updatePulseAnimation();
 
-      // Always show baseline reminder when opening watch screen
-      _showBaselineReminderDialog();
+      // Only show baseline reminder if a device is actually assigned/setup
+      if (_isDeviceSetup) {
+        _showBaselineReminderDialog();
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to initialize: $e';

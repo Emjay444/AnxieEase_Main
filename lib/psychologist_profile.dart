@@ -114,24 +114,31 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       if (psychologistData != null) {
         var psychologist = PsychologistModel.fromJson(psychologistData);
 
-        // Try to get latest profile picture URL if available (non-blocking)
-        try {
-          final latestPictureUrl = await _supabaseService
-              .getPsychologistProfilePictureUrl(psychologist.id);
-          if (latestPictureUrl != null && latestPictureUrl.isNotEmpty) {
-            psychologist = PsychologistModel(
-              id: psychologist.id,
-              name: psychologist.name,
-              specialization: psychologist.specialization,
-              contactEmail: psychologist.contactEmail,
-              contactPhone: psychologist.contactPhone,
-              biography: psychologist.biography,
-              imageUrl: latestPictureUrl,
-            );
+        // getAssignedPsychologist() already includes avatar_url in the row,
+        // so PsychologistModel.fromJson already has imageUrl set in the
+        // common case. Only fall back to the slower lookup (a second DB
+        // query plus a full storage-bucket file listing) when it's
+        // genuinely missing - this used to run unconditionally on every
+        // load and was the main cause of this screen loading slowly.
+        if (psychologist.imageUrl == null || psychologist.imageUrl!.isEmpty) {
+          try {
+            final latestPictureUrl = await _supabaseService
+                .getPsychologistProfilePictureUrl(psychologist.id);
+            if (latestPictureUrl != null && latestPictureUrl.isNotEmpty) {
+              psychologist = PsychologistModel(
+                id: psychologist.id,
+                name: psychologist.name,
+                specialization: psychologist.specialization,
+                contactEmail: psychologist.contactEmail,
+                contactPhone: psychologist.contactPhone,
+                biography: psychologist.biography,
+                imageUrl: latestPictureUrl,
+              );
+            }
+          } catch (e) {
+            Logger.error('Error loading profile picture', e);
+            // Don't show error for profile picture - it's not critical
           }
-        } catch (e) {
-          Logger.error('Error loading profile picture', e);
-          // Don't show error for profile picture - it's not critical
         }
 
         return psychologist;
@@ -170,24 +177,9 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       final appointmentsData = await _supabaseService.getAppointments();
       final List<AppointmentModel> appointments = [];
 
-      // Process appointments, correcting statuses as needed
+      // appointments.status is the source of truth; response_message is
+      // display text only and must not be used to infer or rewrite status.
       for (var data in appointmentsData) {
-        // Auto-correct status if it's pending but has a response
-        if (data['status'] == 'pending' &&
-            data['response_message'] != null &&
-            data['response_message'].toString().isNotEmpty) {
-          // Update status to accepted/approved in the model
-          data['status'] = 'accepted';
-
-          // Also try to update in the database
-          try {
-            await _supabaseService.refreshAppointmentStatus(data['id']);
-          } catch (e) {
-            Logger.error('Error updating appointment status', e);
-          }
-        }
-
-        // Add to the appointments list
         appointments.add(AppointmentModel.fromJson(data));
       }
 
@@ -405,23 +397,15 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       filteredAppointments = _appointments.where((apt) {
         switch (_selectedFilter) {
           case 'Pending':
-            return apt.status == AppointmentStatus.pending &&
-                (apt.responseMessage == null || apt.responseMessage!.isEmpty);
+            return apt.status == AppointmentStatus.pending;
           case 'Accepted':
             return apt.status == AppointmentStatus.accepted ||
-                apt.status == AppointmentStatus.approved ||
-                (apt.status == AppointmentStatus.pending &&
-                    apt.responseMessage != null &&
-                    apt.responseMessage!.isNotEmpty &&
-                    !apt.responseMessage!.toLowerCase().contains('declined'));
+                apt.status == AppointmentStatus.approved;
           case 'Expired':
             return apt.status == AppointmentStatus.expired;
           case 'Unavailable':
             return apt.status == AppointmentStatus.denied ||
-                apt.status == AppointmentStatus.cancelled ||
-                (apt.status == AppointmentStatus.pending &&
-                    apt.responseMessage != null &&
-                    apt.responseMessage!.toLowerCase().contains('declined'));
+                apt.status == AppointmentStatus.cancelled;
           case 'Completed':
             return apt.status == AppointmentStatus.completed;
           default:
@@ -1184,17 +1168,13 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
           .toList();
 
       final pendingAppointments = activeAppointments
-          .where((apt) =>
-              apt.status == AppointmentStatus.pending &&
-              (apt.responseMessage == null || apt.responseMessage!.isEmpty))
+          .where((apt) => apt.status == AppointmentStatus.pending)
           .toList();
 
       final acceptedAppointments = activeAppointments
           .where((apt) =>
-              apt.status == AppointmentStatus.pending &&
-              apt.responseMessage != null &&
-              apt.responseMessage!.isNotEmpty &&
-              !apt.responseMessage!.toLowerCase().contains('declined'))
+              apt.status == AppointmentStatus.accepted ||
+              apt.status == AppointmentStatus.approved)
           .toList();
 
       final completedAppointments = activeAppointments
@@ -1216,10 +1196,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       final cancelledAppointments = activeAppointments
           .where((apt) =>
               apt.status == AppointmentStatus.cancelled ||
-              apt.status == AppointmentStatus.denied ||
-              (apt.status == AppointmentStatus.pending &&
-                  apt.responseMessage != null &&
-                  apt.responseMessage!.toLowerCase().contains('declined')))
+              apt.status == AppointmentStatus.denied)
           .toList();
 
       return Column(
@@ -1429,21 +1406,9 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       final formattedTime =
           DateFormat('h:mm a').format(appointment.appointmentDate);
 
-      // Determine the correct status to display
-      String displayStatus = appointment.statusText;
-
-      // Check if response message indicates decline/denial
-      if (appointment.responseMessage != null &&
-          appointment.responseMessage!.toLowerCase().contains('declined')) {
-        displayStatus = "Unavailable";
-      }
-      // If the appointment has a response message but is still pending,
-      // and it's not declined, display it as "Accepted" instead
-      else if (appointment.status == AppointmentStatus.pending &&
-          appointment.responseMessage != null &&
-          appointment.responseMessage!.isNotEmpty) {
-        displayStatus = "Accepted";
-      }
+      // Status text comes directly from appointments.status (the source of
+      // truth); response_message is shown separately as display text only.
+      final String displayStatus = appointment.statusText;
 
       final now = DateTime.now();
       final isPastAppointment = appointment.appointmentDate.isBefore(now);

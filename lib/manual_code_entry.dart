@@ -12,7 +12,8 @@ class ManualCodeEntryScreen extends StatefulWidget {
   State<ManualCodeEntryScreen> createState() => _ManualCodeEntryScreenState();
 }
 
-class _ManualCodeEntryScreenState extends State<ManualCodeEntryScreen> {
+class _ManualCodeEntryScreenState extends State<ManualCodeEntryScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
 
@@ -22,6 +23,8 @@ class _ManualCodeEntryScreenState extends State<ManualCodeEntryScreen> {
   @override
   void initState() {
     super.initState();
+    // Observe app lifecycle to stabilize UI when returning from external apps
+    WidgetsBinding.instance.addObserver(this);
     if (widget.email != null) {
       _emailController.text = widget.email!;
     }
@@ -32,9 +35,25 @@ class _ManualCodeEntryScreenState extends State<ManualCodeEntryScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _emailController.dispose();
     _codeController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Unfocus immediately - cheap and always safe.
+      FocusManager.instance.primaryFocus?.unfocus();
+      // Defer the rebuild slightly so an in-flight deep-link navigation
+      // (which fully replaces this screen) has a chance to win the race
+      // and dispose this screen first, instead of both happening at once.
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (!mounted) return;
+        setState(() {});
+      });
+    }
   }
 
   Future<void> _verifyCode() async {
@@ -242,7 +261,7 @@ class _ManualCodeEntryScreenState extends State<ManualCodeEntryScreen> {
                             // Info message about code format
                             _buildStatusMessage(
                               message:
-                                  "Please enter the long UUID-style verification code from your reset link. It looks like: 5da9e421-413c-45ff-a8a9-d6a47da485bb (not a 6-digit code)",
+                                  "Please enter the long UUID-style verification code from your reset link. It looks like: 5da9e421-413c-45ff-a8a9-d6a47da485bb (not an 8-digit PIN code)",
                               icon: Icons.info_outline,
                               color: Colors.blue,
                             ),

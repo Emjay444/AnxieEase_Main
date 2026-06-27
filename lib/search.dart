@@ -11,6 +11,13 @@ import 'utils/logger.dart';
 // Add travel mode enum near the top of the file
 enum TravelMode { driving, walking, bicycling, transit }
 
+/// A short-lived cache entry for a clinic search at a given location bucket.
+class _CachedClinicSearch {
+  _CachedClinicSearch(this.places, this.fetchedAt);
+  final List<Map<String, dynamic>> places;
+  final DateTime fetchedAt;
+}
+
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -40,8 +47,9 @@ class SearchScreenState extends State<SearchScreen>
   bool _hasLocationPermission = false;
   Map<String, dynamic>? _selectedPlace;
   String _errorMessage = '';
-  final TravelMode _selectedTravelMode = TravelMode.driving;
-  final String _selectedTravelModeString = 'driving';
+  String? _lastPlacesApiError;
+  bool _usingFallbackClinics = false;
+  TravelMode _selectedTravelMode = TravelMode.driving;
 
   // Animation controller for camera movements
   AnimationController? _animationController;
@@ -63,14 +71,17 @@ class SearchScreenState extends State<SearchScreen>
   // UI state
   bool _isBottomCardCollapsed = false; // Track if bottom card is collapsed
 
-  // Google Maps API key - this will be replaced by the key in AndroidManifest.xml and AppDelegate.swift
-  // We keep this here only for reference and for API calls from Dart code
-  final String _apiKey = 'AIzaSyCzIImQ-Yw5ZSWLiGq3JDDMLn-dnBeVNMQ';
+  // Places/Directions REST calls go through our own Cloud Functions proxy
+  // instead of calling Google Maps directly with an embedded key. The key
+  // lives server-side only (functions/.env -> MAPS_SERVER_KEY), so it can't
+  // be lifted out of the APK and abused against our billing account.
+  static const String _proxyBaseUrl =
+      'https://us-central1-anxieease-sensors.cloudfunctions.net';
 
-  // Backup API keys to try if the main one fails
-  final List<String> _backupApiKeys = [
-    'AIzaSyCzIImQ-Yw5ZSWLiGq3JDDMLn-dnBeVNMQ',
-  ];
+  // Cache of recent search results keyed by a rounded lat/lng "bucket" so
+  // reopening this screen near the same spot doesn't re-spend API quota.
+  static final Map<String, _CachedClinicSearch> _searchCache = {};
+  static const Duration _cacheTtl = Duration(minutes: 15);
 
   // Control for the draggable bottom sheet
   final DraggableScrollableController _dragController =
@@ -467,10 +478,7 @@ class SearchScreenState extends State<SearchScreen>
         // Start a timer to check if the map has been created
         _startMapCreationTimer();
 
-        // Search for nearby clinics immediately if map is already created
-        if (_mapCreated) {
-          _searchNearbyHospitals();
-        }
+        _searchClinicsWhenMapIsReady();
       } catch (e) {
         Logger.error(
             'Error getting high accuracy position, trying with lower accuracy',
@@ -495,6 +503,8 @@ class SearchScreenState extends State<SearchScreen>
 
           // Start a timer to check if the map has been created
           _startMapCreationTimer();
+
+          _searchClinicsWhenMapIsReady();
         } catch (e2) {
           Logger.error(
               'Error getting position with any accuracy, using default', e2);
@@ -540,8 +550,25 @@ class SearchScreenState extends State<SearchScreen>
     // Start a timer to check if the map has been created
     _startMapCreationTimer();
 
+    _searchClinicsWhenMapIsReady();
+
     // Show a dialog to inform the user about using default location
     _showDefaultLocationDialog();
+  }
+
+  void _searchClinicsWhenMapIsReady() {
+    if (_currentPosition == null) return;
+
+    if (_mapCreated) {
+      _searchNearbyHospitals();
+      return;
+    }
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && _mapCreated && _nearbyPlaces.isEmpty) {
+        _searchNearbyHospitals();
+      }
+    });
   }
 
   // Dialog to show when using default location
@@ -638,265 +665,30 @@ class SearchScreenState extends State<SearchScreen>
           infoWindow: const InfoWindow(title: 'Your Location'),
         ));
 
-        // No longer adding sample clinics - we'll use real data from the API
-        // _addSampleClinics();
       });
     }
   }
 
-  void _addSampleClinics() {
-    // Only add sample clinics if we have a current position
-    if (_currentPosition == null) return;
-
-    // Add realistic mental health clinics around the current location
-    final lat = _currentPosition!.latitude;
-    final lng = _currentPosition!.longitude;
-
-    final List<Map<String, dynamic>> clinics = [
-      {
-        'place_id': 'sample_clinic1',
-        'name': 'Serenity Medical Center',
-        'vicinity': '1245 Wellness Blvd, 1.2km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.01,
-            'lng': lng + 0.01,
-          }
-        },
-        'rating': 4.8,
-        'types': [
-          'mental_health',
-          'health',
-          'point_of_interest',
-          'establishment'
-        ],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic2',
-        'name': 'Wellness Medical Associates',
-        'vicinity': '478 Tranquility Lane, 1.8km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.01,
-            'lng': lng + 0.005,
-          }
-        },
-        'rating': 4.6,
-        'types': ['mental_health', 'therapy', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic3',
-        'name': 'Harmony Medical Services',
-        'vicinity': '892 Peaceful Road, 2.3km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.005,
-            'lng': lng - 0.01,
-          }
-        },
-        'rating': 4.7,
-        'types': ['mental_health', 'psychiatry', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic4',
-        'name': 'Health & Wellness Treatment Center',
-        'vicinity': '105 Healing Path, 1.5km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.015,
-            'lng': lng - 0.008,
-          }
-        },
-        'rating': 4.9,
-        'types': ['mental_health', 'therapy', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic5',
-        'name': 'Comprehensive Care Clinic',
-        'vicinity': '327 Compassion Way, 2.7km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.018,
-            'lng': lng - 0.015,
-          }
-        },
-        'rating': 4.5,
-        'types': ['mental_health', 'therapy', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic6',
-        'name': 'Resilience Medical Services',
-        'vicinity': '550 Recovery Avenue, 3.1km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.02,
-            'lng': lng + 0.018,
-          }
-        },
-        'rating': 4.4,
-        'types': ['mental_health', 'psychology', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic7',
-        'name': 'Balanced Health Center',
-        'vicinity': '712 Serenity Street, 1.9km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.008,
-            'lng': lng + 0.022,
-          }
-        },
-        'rating': 4.7,
-        'types': ['mental_health', 'wellness', 'health', 'establishment'],
-        'isSample': true,
-      },
-      // Additional clinics
-      {
-        'place_id': 'sample_clinic8',
-        'name': 'Mindful Health Hospital',
-        'vicinity': '230 Healing Avenue, 2.5km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.017,
-            'lng': lng - 0.019,
-          }
-        },
-        'rating': 4.9,
-        'types': ['hospital', 'health', 'point_of_interest', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic9',
-        'name': 'Community General Hospital',
-        'vicinity': '1050 Main Street, 3.3km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.023,
-            'lng': lng + 0.007,
-          }
-        },
-        'rating': 4.3,
-        'types': ['hospital', 'health', 'point_of_interest', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic10',
-        'name': 'Tranquility Psychiatric Center',
-        'vicinity': '475 Peaceful Lane, 2.1km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.013,
-            'lng': lng + 0.015,
-          }
-        },
-        'rating': 4.6,
-        'types': ['mental_health', 'psychiatry', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic11',
-        'name': 'Healing Minds Therapy Center',
-        'vicinity': '825 Wellness Road, 1.7km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.012,
-            'lng': lng - 0.008,
-          }
-        },
-        'rating': 4.8,
-        'types': ['mental_health', 'therapy', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic12',
-        'name': 'Serenity Behavioral Health',
-        'vicinity': '333 Calm Street, 2.9km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.022,
-            'lng': lng - 0.014,
-          }
-        },
-        'rating': 4.5,
-        'types': ['mental_health', 'psychology', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic13',
-        'name': 'Riverside Medical Clinic',
-        'vicinity': '1200 River Road, 3.5km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.025,
-            'lng': lng - 0.022,
-          }
-        },
-        'rating': 4.2,
-        'types': ['clinic', 'health', 'point_of_interest', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic14',
-        'name': 'Harmony Wellness Institute',
-        'vicinity': '650 Peaceful Path, 2.2km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat - 0.014,
-            'lng': lng + 0.012,
-          }
-        },
-        'rating': 4.7,
-        'types': ['mental_health', 'wellness', 'health', 'establishment'],
-        'isSample': true,
-      },
-      {
-        'place_id': 'sample_clinic15',
-        'name': 'City General Hospital',
-        'vicinity': '2000 Hospital Drive, 4.0km from your location',
-        'geometry': {
-          'location': {
-            'lat': lat + 0.03,
-            'lng': lng + 0.025,
-          }
-        },
-        'rating': 4.1,
-        'types': ['hospital', 'health', 'point_of_interest', 'establishment'],
-        'isSample': true,
-      },
-    ];
-
-    // Store sample clinics in _nearbyPlaces
-    _nearbyPlaces = clinics;
-
-    for (var clinic in clinics) {
-      final lat = clinic['geometry']!['location']!['lat'] as double;
-      final lng = clinic['geometry']!['location']!['lng'] as double;
-
-      _markers.add(Marker(
-        markerId: MarkerId(clinic['place_id'] as String),
-        position: LatLng(lat, lng),
-        infoWindow: InfoWindow(
-          title: clinic['name'] as String,
-          snippet: clinic['vicinity'] as String,
-        ),
-        icon: _mentalHealthMarkerIcon,
-        onTap: () {
-          Logger.debug('Marker tapped: ${clinic['name']}');
-          _onMarkerTapped(clinic['place_id'] as String);
-        },
-      ));
-    }
+  // Rounds a lat/lng to ~100m precision so nearby repeat searches can reuse
+  // the cache instead of re-spending Google Places quota.
+  String _cacheKeyFor(Position position) {
+    final lat = (position.latitude * 1000).round() / 1000;
+    final lng = (position.longitude * 1000).round() / 1000;
+    return '$lat,$lng';
   }
 
   Future<void> _searchNearbyHospitals() async {
     if (_currentPosition == null) {
       Logger.error('Cannot search: current position is null');
+      return;
+    }
+
+    final cacheKey = _cacheKeyFor(_currentPosition!);
+    final cached = _searchCache[cacheKey];
+    if (cached != null &&
+        DateTime.now().difference(cached.fetchedAt) < _cacheTtl) {
+      Logger.info('Using cached clinic results for $cacheKey');
+      _applyClinicResults(cached.places, fromCache: true);
       return;
     }
 
@@ -909,16 +701,19 @@ class SearchScreenState extends State<SearchScreen>
       Logger.info(
           'Searching for nearby hospitals at ${_currentPosition!.latitude},${_currentPosition!.longitude}');
 
-      // Base URL for Google Places API
-      String baseUrl =
-          'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
+      final baseUrl = '$_proxyBaseUrl/placesNearbySearch';
 
-      // Try with API keys
       Response? response;
       bool apiSuccess = false;
+      String? lastApiError;
 
-      // Define search configurations to try in order
+      // Mental-health-specific facilities are tried first since this is an
+      // anxiety-support app; general hospitals/clinics are the fallback.
       final searchConfigs = [
+        {
+          'keyword': 'mental health clinic psychiatrist psychologist',
+          'radius': '5000',
+        },
         {
           'type': 'hospital',
           'keyword': 'hospital clinic medical center healthcare',
@@ -940,130 +735,166 @@ class SearchScreenState extends State<SearchScreen>
         },
       ];
 
-      // Try each search configuration until we get results
+      List<Map<String, dynamic>> results = [];
+
       for (final config in searchConfigs) {
         Logger.info('Trying search with config: $config');
 
-        // Try with main API key and backup keys if needed
-        for (String apiKey in [_apiKey, ..._backupApiKeys]) {
-          try {
-            Logger.info('Trying API key: ${apiKey.substring(0, 8)}...');
+        try {
+          final queryParams = {
+            'location':
+                '${_currentPosition!.latitude},${_currentPosition!.longitude}',
+            'rankby': 'prominence',
+            ...config,
+          };
 
-            final queryParams = {
-              'location':
-                  '${_currentPosition!.latitude},${_currentPosition!.longitude}',
-              'rankby': 'prominence',
-              'key': apiKey,
-              ...config,
-            };
+          response = await dio.get(baseUrl, queryParameters: queryParams);
 
-            Logger.debug('Query params: $queryParams');
-
-            response = await dio.get(
-              baseUrl,
-              queryParameters: queryParams,
-            );
-
-            if (response.statusCode == 200) {
-              final data = response.data;
-              if (data['status'] == 'OK' &&
-                  (data['results'] as List).isNotEmpty) {
-                Logger.info(
-                    'Found ${(data['results'] as List).length} results with config: $config');
-                apiSuccess = true;
-                break;
-              } else if (data['status'] == 'ZERO_RESULTS') {
-                Logger.warning(
-                    'No results found with this config, trying next config');
-                break; // Try next config
-              } else if (data['status'] == 'OVER_QUERY_LIMIT') {
-                Logger.warning('API key quota exceeded, trying next key');
-                continue; // Try next key
-              } else {
-                Logger.warning('API returned status: ${data['status']}');
-                break; // Try next config
-              }
+          if (response.statusCode == 200) {
+            final data = response.data;
+            if (data['status'] == 'OK' &&
+                (data['results'] as List).isNotEmpty) {
+              Logger.info(
+                  'Found ${(data['results'] as List).length} results with config: $config');
+              results = List<Map<String, dynamic>>.from(data['results']);
+              results = await _fetchAdditionalPages(baseUrl, data, results);
+              apiSuccess = true;
+              break;
+            } else if (data['status'] == 'ZERO_RESULTS') {
+              lastApiError = 'No nearby results for config: $config';
+              Logger.warning(
+                  'No results found with this config, trying next config');
+              continue;
+            } else {
+              lastApiError =
+                  'Google Places ${data['status']}: ${data['error_message'] ?? 'No details'}';
+              Logger.warning(lastApiError);
+              continue;
             }
-          } catch (e) {
-            Logger.error('Error with API key ${apiKey.substring(0, 8)}', e);
-            continue; // Try next key
           }
+        } catch (e) {
+          lastApiError = e.toString();
+          Logger.error('Error querying clinic search proxy', e);
+          continue;
         }
-
-        // If we got successful results, stop trying configurations
-        if (apiSuccess) break;
       }
 
       if (!apiSuccess) {
-        throw Exception('All API keys failed or quota exceeded');
+        _lastPlacesApiError = lastApiError;
+
+        final textSearchSucceeded = await _searchWithTextSearch(
+          showErrorOnFailure: false,
+        );
+        if (textSearchSucceeded) return;
+
+        _showSearchFailedState(
+          lastApiError ??
+              'Google Places did not return clinic results for this area.',
+        );
+        return;
       }
 
-      final data = response!.data;
-      if (data['status'] == 'OK') {
-        final results = data['results'] as List;
-        Logger.info('Found ${results.length} facilities');
-
-        setState(() {
-          _markers.clear();
-          _nearbyPlaces = List<Map<String, dynamic>>.from(results);
-
-          // First add current location marker
-          _markers.add(Marker(
-            markerId: const MarkerId('current_location'),
-            position:
-                LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-            infoWindow: const InfoWindow(title: 'Your Location'),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            zIndex: 2, // Make sure it's on top of other markers
-          ));
-
-          // Then add all the hospital/clinic markers
-          for (var place in results) {
-            final lat = place['geometry']['location']['lat'];
-            final lng = place['geometry']['location']['lng'];
-            final name = place['name'] ?? 'Unknown Facility';
-            final vicinity = place['vicinity'] ?? 'Address unavailable';
-
-            Logger.debug('Adding marker for: $name at $lat,$lng');
-
-            _markers.add(Marker(
-              markerId: MarkerId(place['place_id']),
-              position: LatLng(lat, lng),
-              infoWindow: InfoWindow(
-                title: name,
-                snippet: vicinity,
-              ),
-              icon: _mentalHealthMarkerIcon,
-              onTap: () {
-                Logger.debug('Marker tapped: $name');
-                _onMarkerTapped(place['place_id']);
-              },
-            ));
-          }
-
-          _isLoading = false;
-          _errorMessage = '';
-        });
-      } else {
-        throw Exception('API returned status: ${data['status']}');
-      }
+      _searchCache[cacheKey] = _CachedClinicSearch(results, DateTime.now());
+      _applyClinicResults(results);
     } catch (e) {
       Logger.error('Error searching for nearby hospitals', e);
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Error searching for clinics: ${e.toString()}';
-        });
-
-        // Show error dialog with retry option
-        _showErrorDialog(
-          'Search Error',
-          'Failed to search for nearby clinics and hospitals. Please check your internet connection and try again.',
-        );
-      }
+      _showSearchFailedState(_lastPlacesApiError ?? e.toString());
     }
+  }
+
+  // Follows Google's next_page_token to pull a second page of results when
+  // available (Places API requires a short delay before a fresh token is
+  // valid, so we only fetch one extra page rather than looping indefinitely).
+  Future<List<Map<String, dynamic>>> _fetchAdditionalPages(
+    String baseUrl,
+    Map<String, dynamic> firstPageData,
+    List<Map<String, dynamic>> results,
+  ) async {
+    final nextPageToken = firstPageData['next_page_token'] as String?;
+    if (nextPageToken == null || nextPageToken.isEmpty) return results;
+
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+      final response = await dio.get(
+        baseUrl,
+        queryParameters: {'pagetoken': nextPageToken},
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['status'] == 'OK') {
+          results.addAll(List<Map<String, dynamic>>.from(data['results']));
+        }
+      }
+    } catch (e) {
+      Logger.error('Error fetching additional clinic results page', e);
+    }
+    return results;
+  }
+
+  // Applies a successful (or cached) clinic search result to map state.
+  void _applyClinicResults(
+    List<Map<String, dynamic>> results, {
+    bool fromCache = false,
+  }) {
+    if (!mounted || _currentPosition == null) return;
+
+    setState(() {
+      _markers.clear();
+      _nearbyPlaces = results;
+      _usingFallbackClinics = false;
+      _lastPlacesApiError = null;
+
+      _markers.add(Marker(
+        markerId: const MarkerId('current_location'),
+        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        infoWindow: const InfoWindow(title: 'Your Location'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        zIndex: 2,
+      ));
+
+      for (var place in results) {
+        final lat = place['geometry']['location']['lat'];
+        final lng = place['geometry']['location']['lng'];
+        final name = place['name'] ?? 'Unknown Facility';
+        final vicinity = place['vicinity'] ?? 'Address unavailable';
+
+        Logger.debug('Adding marker for: $name at $lat,$lng');
+
+        _markers.add(Marker(
+          markerId: MarkerId(place['place_id']),
+          position: LatLng(lat, lng),
+          infoWindow: InfoWindow(title: name, snippet: vicinity),
+          icon: _mentalHealthMarkerIcon,
+          onTap: () {
+            Logger.debug('Marker tapped: $name');
+            _onMarkerTapped(place['place_id']);
+          },
+        ));
+      }
+
+      _isLoading = false;
+      _errorMessage = fromCache ? '' : '';
+    });
+  }
+
+  // Honest failure state: no more inventing fake clinics. Shows a clear
+  // error with a retry action instead of misleading users in a mental
+  // health crisis with non-existent "clinics" at made-up coordinates.
+  void _showSearchFailedState(String reason) {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      _usingFallbackClinics = false;
+      _nearbyPlaces = [];
+      _errorMessage = 'Could not load nearby clinics right now. $reason';
+    });
+
+    _showErrorDialog(
+      'Search Error',
+      'Failed to search live clinic data.\n\n$reason\n\n'
+          'Please check your internet connection and try again.',
+    );
   }
 
   // Show error dialog
@@ -1119,13 +950,6 @@ class SearchScreenState extends State<SearchScreen>
                     ? 'Lat: ${_currentPosition!.latitude}, Lng: ${_currentPosition!.longitude}'
                     : 'No position available'),
                 const SizedBox(height: 16),
-                const Text('API Key:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(
-                  _apiKey,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-                const SizedBox(height: 16),
                 const Text('Markers:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 Text('Total markers: ${_markers.length}'),
@@ -1133,6 +957,15 @@ class SearchScreenState extends State<SearchScreen>
                 const Text('Nearby Places:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 Text('Total places: ${_nearbyPlaces.length}'),
+                if (_lastPlacesApiError != null) ...[
+                  const SizedBox(height: 16),
+                  const Text('Last Google Places Error:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  SelectableText(
+                    _lastPlacesApiError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ],
                 if (_nearbyPlaces.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   const Text('First place:',
@@ -1167,8 +1000,8 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   // Try using the Text Search API instead of Nearby Search
-  Future<void> _searchWithTextSearch() async {
-    if (_currentPosition == null) return;
+  Future<bool> _searchWithTextSearch({bool showErrorOnFailure = true}) async {
+    if (_currentPosition == null) return false;
 
     setState(() {
       _isLoading = true;
@@ -1176,112 +1009,92 @@ class SearchScreenState extends State<SearchScreen>
     });
 
     try {
-      // Base URL for Google Places Text Search API
-      String baseUrl =
-          'https://maps.googleapis.com/maps/api/place/textsearch/json';
-
-      Response? response;
+      final baseUrl = '$_proxyBaseUrl/placesTextSearch';
       bool apiSuccess = false;
 
-      // Try with main API key and backup keys if needed
-      for (String apiKey in [_apiKey, ..._backupApiKeys]) {
-        try {
-          Logger.info(
-              'Trying Text Search API with key: ${apiKey.substring(0, 8)}...');
+      try {
+        final response = await dio.get(
+          baseUrl,
+          queryParameters: {
+            'query': 'mental health clinic hospital near me',
+            'location':
+                '${_currentPosition!.latitude},${_currentPosition!.longitude}',
+            'radius': '5000',
+          },
+        );
 
-          response = await dio.get(
-            baseUrl,
-            queryParameters: {
-              'query': 'hospitals clinics near me',
-              'location':
-                  '${_currentPosition!.latitude},${_currentPosition!.longitude}',
-              'radius': '5000',
-              'key': apiKey,
-            },
-          );
+        if (response.statusCode == 200) {
+          final data = response.data;
+          if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+            apiSuccess = true;
+            _lastPlacesApiError = null;
 
-          if (response.statusCode == 200) {
-            final data = response.data;
-            if (data['status'] == 'OK' &&
-                (data['results'] as List).isNotEmpty) {
-              apiSuccess = true;
+            final results = List<Map<String, dynamic>>.from(data['results']);
+            Logger.info(
+                'Found ${results.length} facilities with Text Search API');
 
-              // Process results
-              final results = data['results'] as List;
-              Logger.info(
-                  'Found ${results.length} facilities with Text Search API');
+            final cacheKey = _cacheKeyFor(_currentPosition!);
+            _searchCache[cacheKey] =
+                _CachedClinicSearch(results, DateTime.now());
+            _applyClinicResults(results);
 
-              setState(() {
-                _markers.clear();
-                _nearbyPlaces = List<Map<String, dynamic>>.from(results);
-
-                // Add current location marker
-                _markers.add(Marker(
-                  markerId: const MarkerId('current_location'),
-                  position: LatLng(
-                      _currentPosition!.latitude, _currentPosition!.longitude),
-                  infoWindow: const InfoWindow(title: 'Your Location'),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueBlue),
-                  zIndex: 2,
-                ));
-
-                // Add facility markers
-                for (var place in results) {
-                  final lat = place['geometry']['location']['lat'];
-                  final lng = place['geometry']['location']['lng'];
-                  final name = place['name'] ?? 'Unknown Facility';
-
-                  _markers.add(Marker(
-                    markerId: MarkerId(place['place_id']),
-                    position: LatLng(lat, lng),
-                    infoWindow: InfoWindow(
-                      title: name,
-                      snippet: place['formatted_address'] ?? '',
-                    ),
-                    icon: _mentalHealthMarkerIcon,
-                    onTap: () {
-                      _onMarkerTapped(place['place_id']);
-                    },
-                  ));
-                }
-
-                _isLoading = false;
-                _errorMessage = '';
-              });
-
-              // Close the debug dialog if mounted
-              if (mounted) {
-                Navigator.of(context).pop();
-              }
-
-              break;
+            // Close the debug dialog only for manual debug-dialog retries.
+            if (mounted && showErrorOnFailure) {
+              Navigator.of(context).pop();
             }
+          } else {
+            _lastPlacesApiError =
+                'Google Text Search ${data['status']}: ${data['error_message'] ?? 'No details'}';
+            Logger.warning(_lastPlacesApiError!);
           }
-        } catch (e) {
-          Logger.error('Error with Text Search API', e);
-          continue;
         }
+      } catch (e) {
+        _lastPlacesApiError = e.toString();
+        Logger.error('Error with Text Search API', e);
       }
 
       if (!apiSuccess) {
         throw Exception('Text Search API failed');
       }
+
+      return true;
     } catch (e) {
       Logger.error('Error with Text Search API', e);
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Error searching with Text Search API: ${e.toString()}';
-      });
+      if (showErrorOnFailure && mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              'Error searching with Text Search API: ${e.toString()}';
+        });
+      }
+      return false;
     }
   }
 
   // Get travel mode string for API
   String _getTravelModeString() {
-    return _selectedTravelModeString;
+    switch (_selectedTravelMode) {
+      case TravelMode.walking:
+        return 'walking';
+      case TravelMode.bicycling:
+        return 'bicycling';
+      case TravelMode.transit:
+        return 'transit';
+      case TravelMode.driving:
+        return 'driving';
+    }
   }
 
-  // Travel mode selector has been removed as we no longer show the snackbar
+  // Switches travel mode and re-fetches directions for the selected clinic.
+  void _setTravelMode(TravelMode mode) {
+    if (_selectedTravelMode == mode) return;
+    setState(() {
+      _selectedTravelMode = mode;
+    });
+    if (_selectedPlace != null) {
+      _getDirections();
+    }
+  }
 
   // Calculate bearing between two points
   double _getBearing(LatLng start, LatLng end) {
@@ -1408,64 +1221,52 @@ class SearchScreenState extends State<SearchScreen>
       Logger.info(
           'Getting directions to ${_selectedPlace!['name']} by ${_getTravelModeString()}');
 
-      // Get directions from Google Directions API
-      String baseUrl = 'https://maps.googleapis.com/maps/api/directions/json';
+      // Get directions via our Cloud Functions proxy (keeps the Maps key
+      // server-side instead of embedded in the app).
+      final baseUrl = '$_proxyBaseUrl/mapsDirections';
 
-      // Using the main API key
       Response? response;
       bool apiSuccess = false;
       dynamic lastError;
       StackTrace? lastStack;
 
-      // Try with main API key and backup keys if needed
-      for (String apiKey in [_apiKey, ..._backupApiKeys]) {
-        try {
-          Logger.info(
-              'Trying directions with API key: ${apiKey.substring(0, 8)}...');
+      try {
+        response = await dio.get(
+          baseUrl,
+          queryParameters: {
+            'origin':
+                '${_currentPosition!.latitude},${_currentPosition!.longitude}',
+            'destination':
+                '${_selectedPlace!['geometry']['location']['lat']},${_selectedPlace!['geometry']['location']['lng']}',
+            'mode': _getTravelModeString(),
+          },
+          options: Options(
+            sendTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 10),
+          ),
+        );
 
-          // Add a timeout to the request
-          response = await dio.get(
-            baseUrl,
-            queryParameters: {
-              'origin':
-                  '${_currentPosition!.latitude},${_currentPosition!.longitude}',
-              'destination':
-                  '${_selectedPlace!['geometry']['location']['lat']},${_selectedPlace!['geometry']['location']['lng']}',
-              'mode': _getTravelModeString(),
-              'key': apiKey,
-            },
-            options: Options(
-              sendTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 10),
-            ),
-          );
-
-          if (response.statusCode == 200) {
-            final data = response.data;
-            if (data['status'] == 'OK') {
-              apiSuccess = true;
-              break;
-            } else {
-              // Log the non-OK status
-              Logger.warning('API returned non-OK status: ${data['status']}');
-              lastError =
-                  'API status: ${data['status']} - ${data['error_message'] ?? 'No error message'}';
-            }
+        if (response.statusCode == 200) {
+          final data = response.data;
+          if (data['status'] == 'OK') {
+            apiSuccess = true;
           } else {
-            // Log non-200 status code
-            Logger.warning('API returned status code: ${response.statusCode}');
-            lastError = 'HTTP status: ${response.statusCode}';
+            Logger.warning('API returned non-OK status: ${data['status']}');
+            lastError =
+                'API status: ${data['status']} - ${data['error_message'] ?? 'No error message'}';
           }
-        } catch (e, stack) {
-          Logger.error('Error with API key ${apiKey.substring(0, 8)}', e);
-          lastError = e;
-          lastStack = stack;
-          continue;
+        } else {
+          Logger.warning('API returned status code: ${response.statusCode}');
+          lastError = 'HTTP status: ${response.statusCode}';
         }
+      } catch (e, stack) {
+        Logger.error('Error requesting directions', e);
+        lastError = e;
+        lastStack = stack;
       }
 
       if (!apiSuccess) {
-        Logger.error('All API keys failed for directions request', lastError);
+        Logger.error('Directions request failed', lastError);
 
         setState(() {
           _isLoading = false;
@@ -1558,18 +1359,17 @@ class SearchScreenState extends State<SearchScreen>
 
         // Get route color based on travel mode
         Color routeColor;
-        switch (_selectedTravelModeString) {
-          case 'walking':
+        switch (_selectedTravelMode) {
+          case TravelMode.walking:
             routeColor = Colors.green;
             break;
-          case 'bicycling':
+          case TravelMode.bicycling:
             routeColor = Colors.orange;
             break;
-          case 'transit':
+          case TravelMode.transit:
             routeColor = Colors.purple;
             break;
-          case 'driving':
-          default:
+          case TravelMode.driving:
             routeColor = Colors.blue;
         }
 
@@ -1582,7 +1382,7 @@ class SearchScreenState extends State<SearchScreen>
                   points.map((point) => LatLng(point[0], point[1])).toList(),
               color: routeColor,
               width: 6,
-              patterns: _selectedTravelModeString == 'driving'
+              patterns: _selectedTravelMode == TravelMode.driving
                   ? []
                   : [PatternItem.dash(15), PatternItem.gap(10)],
               endCap: Cap.roundCap,
@@ -1780,25 +1580,10 @@ class SearchScreenState extends State<SearchScreen>
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Your API Key (copy for troubleshooting):',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  'Places/Directions requests go through our server-side '
+                  'proxy, so no API key is stored in the app.',
+                  style: TextStyle(fontStyle: FontStyle.italic),
                 ),
-                SelectableText(
-                  _apiKey,
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Backup API Keys:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                ...List.generate(
-                    _backupApiKeys.length,
-                    (index) => SelectableText(
-                          '• Backup key ${index + 1}: ${_backupApiKeys[index]}',
-                          style: const TextStyle(
-                              fontFamily: 'monospace', fontSize: 12),
-                        )),
                 const SizedBox(height: 16),
                 const Text(
                   'Troubleshooting Steps:',
@@ -1810,7 +1595,8 @@ class SearchScreenState extends State<SearchScreen>
                   '   - Places API\n'
                   '   - Directions API\n\n'
                   '2. Check API key restrictions:\n'
-                  '   - Make sure Android app restrictions (if any) match your package name\n'
+                  '   - Maps SDK can use Android app restrictions\n'
+                  '   - Places/Directions REST calls need a key that is allowed for web-service API calls\n'
                   '   - Check if API key has billing enabled\n'
                   '   - Verify the key is not disabled or expired\n\n'
                   '3. Verify internet connectivity\n\n'
@@ -2174,6 +1960,31 @@ class SearchScreenState extends State<SearchScreen>
                           ],
                         ),
                       ),
+                      if (_usingFallbackClinics) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 14,
+                                color: Colors.orange[700],
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Showing approximate locations while live clinic search is unavailable.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2258,9 +2069,11 @@ class SearchScreenState extends State<SearchScreen>
                               : Icons.psychology;
                           final typeLabel = isHospital ? 'Hospital' : 'Clinic';
 
-                          // Status indicator (open/closed simulation - would come from API in real app)
-                          final bool isOpen = DateTime.now().hour > 8 &&
-                              DateTime.now().hour < 20;
+                          // Real open/closed status from Places API, when
+                          // Google provides it. Null means "unknown" - we no
+                          // longer fabricate a fake status from the clock.
+                          final bool? isOpen =
+                              place['opening_hours']?['open_now'] as bool?;
 
                           // Calculate distance
                           String distance = '';
@@ -2309,23 +2122,27 @@ class SearchScreenState extends State<SearchScreen>
                                           child: Icon(typeIcon,
                                               color: typeColor, size: 28),
                                         ),
-                                        Positioned(
-                                          right: 0,
-                                          bottom: 0,
-                                          child: Container(
-                                            width: 14,
-                                            height: 14,
-                                            decoration: BoxDecoration(
-                                              color: isOpen
-                                                  ? Colors.green
-                                                  : Colors.orange,
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                  color: Colors.white,
-                                                  width: 2),
+                                        // Only show the status dot when
+                                        // Google actually reports open/closed
+                                        // for this place - no fabricated guess.
+                                        if (isOpen != null)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              width: 14,
+                                              height: 14,
+                                              decoration: BoxDecoration(
+                                                color: isOpen
+                                                    ? Colors.green
+                                                    : Colors.orange,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                    color: Colors.white,
+                                                    width: 2),
+                                              ),
                                             ),
                                           ),
-                                        ),
                                       ],
                                     ),
                                     const SizedBox(width: 16),
@@ -2403,18 +2220,21 @@ class SearchScreenState extends State<SearchScreen>
                                                   style: const TextStyle(
                                                       fontSize: 13)),
 
-                                              // Open/closed status
-                                              const SizedBox(width: 12),
-                                              Text(
-                                                isOpen ? 'Open' : 'Closed',
-                                                style: TextStyle(
-                                                  color: isOpen
-                                                      ? Colors.green
-                                                      : Colors.orange,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
+                                              // Open/closed status - only
+                                              // shown when Google reports it
+                                              if (isOpen != null) ...[
+                                                const SizedBox(width: 12),
+                                                Text(
+                                                  isOpen ? 'Open' : 'Closed',
+                                                  style: TextStyle(
+                                                    color: isOpen
+                                                        ? Colors.green
+                                                        : Colors.orange,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
                                                 ),
-                                              ),
+                                              ],
                                             ],
                                           ),
                                         ],
@@ -2521,6 +2341,41 @@ class SearchScreenState extends State<SearchScreen>
           ),
         );
       },
+    );
+  }
+
+  // A single selectable travel-mode chip (Drive/Walk/Transit/Bike).
+  Widget _buildTravelModeChip(TravelMode mode, IconData icon, String label) {
+    final bool isSelected = _selectedTravelMode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _setTravelMode(mode),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.blue.shade600 : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected ? Colors.white : Colors.grey.shade700,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2839,6 +2694,28 @@ class SearchScreenState extends State<SearchScreen>
               ),
 
               const SizedBox(height: 16),
+
+              // Travel mode selector - lets the user actually pick a mode
+              // instead of always silently using driving directions.
+              if (!_isNavigating)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    children: [
+                      _buildTravelModeChip(
+                          TravelMode.driving, Icons.directions_car, 'Drive'),
+                      const SizedBox(width: 8),
+                      _buildTravelModeChip(
+                          TravelMode.walking, Icons.directions_walk, 'Walk'),
+                      const SizedBox(width: 8),
+                      _buildTravelModeChip(
+                          TravelMode.transit, Icons.directions_bus, 'Transit'),
+                      const SizedBox(width: 8),
+                      _buildTravelModeChip(TravelMode.bicycling,
+                          Icons.directions_bike, 'Bike'),
+                    ],
+                  ),
+                ),
 
               // Travel info row
               Row(

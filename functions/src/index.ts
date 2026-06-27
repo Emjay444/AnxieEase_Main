@@ -54,6 +54,14 @@ export {
   clearAnxietyRateLimits,
 } from "./realTimeSustainedAnxietyDetection";
 
+// Server-side proxy for Google Maps Platform REST APIs (keeps the Maps key
+// out of the Flutter app bundle)
+export {
+  placesNearbySearch,
+  placesTextSearch,
+  mapsDirections,
+} from "./placesProxy";
+
 // Import auto-cleanup functions
 export { autoCleanup } from "./autoCleanup";
 export { manualCleanup } from "./autoCleanup";
@@ -1172,26 +1180,20 @@ export const sendWellnessReminders = functions.pubsub
         return null;
       }
 
-      // Send FCM notification
+      // Send FCM notification (data-only so Android doesn't auto-display it —
+      // the app's background handler is the single source of truth for display,
+      // otherwise the OS auto-display plus the handler's local notification both fire)
       const fcmMessage = {
         data: {
           type: "wellness_reminder",
           category: timeCategory,
           messageType: message.type,
-          timestamp: Date.now().toString(),
-        },
-        notification: {
           title: message.title,
-          body: message.body,
+          message: message.body,
+          timestamp: Date.now().toString(),
         },
         android: {
           priority: "normal" as const,
-          notification: {
-            channelId: "wellness_reminders",
-            priority: "default" as const,
-            defaultSound: true,
-            tag: `wellness_${timeCategory}_${Date.now()}`,
-          },
         },
         topic: "wellness_reminders",
       };
@@ -1230,20 +1232,12 @@ export const sendManualWellnessReminder = functions.https.onCall(
           type: "wellness_reminder",
           category: timeCategory,
           messageType: message.type,
-          timestamp: Date.now().toString(),
-        },
-        notification: {
           title: message.title,
-          body: message.body,
+          message: message.body,
+          timestamp: Date.now().toString(),
         },
         android: {
           priority: "normal" as const,
-          notification: {
-            channelId: "wellness_reminders",
-            priority: "default" as const,
-            defaultSound: true,
-            tag: `manual_wellness_${timeCategory}_${Date.now()}`,
-          },
         },
         topic: "wellness_reminders",
       };

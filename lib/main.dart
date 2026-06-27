@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
@@ -42,7 +43,102 @@ import 'package:flutter/services.dart';
 // Global completer to signal when services finish initialization (replaces polling bool)
 final Completer<void> servicesInitializedCompleter = Completer<void>();
 // Toggle this to enable/disable verbose logging app‑wide
-const bool kVerboseLogging = true;
+const bool kVerboseLogging = false;
+const bool kStoreUserLevelFcmTokenInRealtimeDb = false;
+
+const List<String> _quietLogPatterns = [
+  'AuthWrapper -',
+  'LoginScreen -',
+  'StorageService',
+  'SplashScreen -',
+  'Supabase initialized',
+  'Supabase is already initialized',
+  'Initializing Supabase',
+  'No .env loaded',
+  'Early sync attempt',
+  'Checking for expired appointments',
+  'Firebase reference initialized',
+  'Session user:',
+  'Session expires',
+  'Session access token',
+  'Session found during initialization',
+  'No session found',
+  'Setting up auth state listener',
+  'Auth state listener setup complete',
+  'Auth state changed',
+  'Session exists:',
+  'User exists:',
+  'Initial session restored',
+  'Processing initial session',
+  'Handling sign in',
+  'Fetching user profile',
+  'Found existing user profile',
+  'User profile loaded successfully',
+  'No profile images found',
+  'Updated notification badge count',
+  'NotificationService initialized successfully',
+  'Heart rate updated',
+  'No pending appointments found',
+  '_syncPendingNotifications',
+  'Checking for background notification markers',
+  'background notification markers',
+  'Syncing pending notifications',
+  'pending notifications',
+  'Strategy 1:',
+  'Strategy 2:',
+  'Strategy 3:',
+  'Setting up streamlined sync strategies',
+  'Setting up periodic FCM token refresh',
+  'Validating assignment FCM token',
+  'FCM Token Assignment Check',
+  '   - isAssigned:',
+  '   - status:',
+  '   - canUseDevice:',
+  'Fresh FCM registration token',
+  'FCM token refreshed',
+  'Deleted old FCM token',
+  'Cleaned up old device-level FCM token',
+  'User has no device assigned',
+  'Normal app open:',
+  'Post-FCM sync attempt',
+  'All services initialized successfully',
+  'First frame rendered',
+  'Avatar debug',
+  'getNotifications called',
+  'getNotifications success',
+  'Checking for appointments created before',
+  'Subscribed/re-subscribed',
+  'FCM topic subscriptions completed successfully',
+  '_waitForAuthReady',
+  'Auth status:',
+  'Auth is ready',
+];
+
+bool _shouldPrintDebugMessage(String message) {
+  if (kVerboseLogging) return true;
+
+  final lower = message.toLowerCase();
+  final isImportant = lower.contains('error') ||
+      lower.contains('failed') ||
+      lower.contains('exception') ||
+      lower.contains('denied') ||
+      lower.contains('expired') ||
+      lower.contains('permission') ||
+      lower.contains('warning') ||
+      lower.contains('warn:');
+
+  if (isImportant) return true;
+
+  return !_quietLogPatterns.any(message.contains);
+}
+
+void _configureDebugLogging() {
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message == null || _shouldPrintDebugMessage(message)) {
+      debugPrintSynchronously(message, wrapWidth: wrapWidth);
+    }
+  };
+}
 
 // Global keys for navigation and in-app banners (usable outside widget context)
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -153,6 +249,7 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
+  _configureDebugLogging();
   AppLogger.verbose = kVerboseLogging;
 
   // Register FCM background message handler early
@@ -336,15 +433,9 @@ Future<void> _initializeRemainingServices(
     // Add frame break after permissions
     await Future.delayed(Duration.zero);
 
-    // Initialize storage service with frame break and timeout handling
+    // Initialize storage service with frame break.
     try {
-      await Future.any([
-        StorageService().init(),
-        Future.delayed(const Duration(seconds: 5), () {
-          AppLogger.w(
-              '! StorageService initialization timed out, continuing anyway');
-        })
-      ]);
+      await StorageService().init();
     } catch (e) {
       AppLogger.w(
           'StorageService initialization failed: $e, continuing anyway');
@@ -373,12 +464,16 @@ Future<void> _initializeRemainingServices(
     // make sure auth is ready and then sync any pending background-stored notifications
     debugPrint('⏳ Normal app open: waiting for auth readiness...');
 
-    // Don't wait too long for auth - sync regardless
+    // Don't wait too long for auth - sync regardless.
+    var authReadyBeforeTimeout = false;
     Future.any([
-      _waitForAuthReady(
-          ensureAuthenticated: false), // Don't require authentication
+      _waitForAuthReady(ensureAuthenticated: false).then((_) {
+        authReadyBeforeTimeout = true;
+      }),
       Future.delayed(const Duration(seconds: 5), () {
-        debugPrint('! Auth timeout - proceeding with sync anyway');
+        if (!authReadyBeforeTimeout) {
+          AppLogger.d('Auth wait timed out; proceeding with sync');
+        }
       })
     ]).then((_) async {
       debugPrint('✅ Normal app open: proceeding with sync...');
@@ -508,6 +603,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.resumed:
+        // Hide keyboard and force an immediate rebuild so the UI doesn't
+        // render with stale/misaligned layout after returning from the
+        // background (same fix already used in verify_reset_code.dart).
+        FocusManager.instance.primaryFocus?.unfocus();
+        if (mounted) setState(() {});
+
         // App became active/foreground - refresh FCM token and sync notifications
         debugPrint(
             '🔄 App resumed - refreshing FCM token and syncing notifications...');
@@ -639,12 +740,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _handleAppLink(Uri uri) {
-    print('🔗 Deep link received: $uri');
+    // Log routing-relevant parts only - never the raw query/fragment, since
+    // reset tokens/codes are carried there.
     print('🔗 URI scheme: ${uri.scheme}');
     print('🔗 URI host: ${uri.host}');
     print('🔗 URI path: ${uri.path}');
-    print('🔗 URI query: ${uri.queryParameters}');
-    print('🔗 URI fragment: ${uri.fragment}');
+    print('🔗 URI query keys: ${uri.queryParameters.keys.toList()}');
+    print('🔗 URI has fragment: ${uri.fragment.isNotEmpty}');
 
     // Check if this is a reset password link - look for different path variations
     bool isResetPasswordLink = uri.path == '/reset-password' ||
@@ -663,13 +765,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // Check for various token formats in the URI
       if (uri.queryParameters.containsKey('code')) {
         token = uri.queryParameters['code'];
-        print('Code parameter found: $token');
+        print('Code parameter found (length: ${token?.length ?? 0})');
       }
 
       // Check for token parameter (alternative approach)
       if (token == null && uri.queryParameters.containsKey('token')) {
         token = uri.queryParameters['token'];
-        print('Token parameter found: $token');
+        print('Token parameter found (length: ${token?.length ?? 0})');
       }
 
       // Check for access_token in fragment (Supabase often uses this)
@@ -677,7 +779,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final fragmentParams = Uri.splitQueryString(uri.fragment);
         if (fragmentParams.containsKey('access_token')) {
           token = fragmentParams['access_token'];
-          print('Access token found in fragment: $token');
+          print(
+              'Access token found in fragment (length: ${token?.length ?? 0})');
         }
       }
 
@@ -690,14 +793,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final pinMatch = pinRegExp.firstMatch(fullUrl);
         if (pinMatch != null && pinMatch.groupCount >= 1) {
           token = pinMatch.group(1);
-          print('6-digit PIN extracted from URL: $token');
+          print('6-digit PIN extracted from URL (redacted)');
         } else {
           // Look for code= parameter in the full URL
           final codeRegExp = RegExp(r'code=([^&]+)');
           final codeMatch = codeRegExp.firstMatch(fullUrl);
           if (codeMatch != null && codeMatch.groupCount >= 1) {
             token = codeMatch.group(1);
-            print('Code extracted from URL: $token');
+            print('Code extracted from URL (length: ${token?.length ?? 0})');
           }
         }
       }
@@ -705,12 +808,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // Extract email from query parameters
       if (uri.queryParameters.containsKey('email')) {
         email = uri.queryParameters['email'];
-        print('Email parameter found: $email');
+        print('Email parameter found: ${email != null}');
       }
 
       // If we have a token, navigate to reset password screen
       if (token != null) {
-        print('Navigating to verification screen with token: $token');
+        print('Navigating to verification screen with token (redacted)');
+
+        // Unfocus deterministically right before replacing the whole
+        // navigation stack, so the swap doesn't race a lifecycle-resume
+        // handler on the screen being replaced.
+        FocusManager.instance.primaryFocus?.unfocus();
 
         // Navigate to verification screen with the token
         _navigatorKey.currentState?.pushAndRemoveUntil(
@@ -727,6 +835,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // If we have an email but no token, navigate to the verification screen
         if (email != null) {
           print('Navigating to verification screen with email');
+          FocusManager.instance.primaryFocus?.unfocus();
           _navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) =>
@@ -737,6 +846,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           return;
         } else {
           // No token and no email - show error
+          FocusManager.instance.primaryFocus?.unfocus();
           _navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => const ResetPasswordScreen(
@@ -1074,7 +1184,7 @@ Future<void> _configureFCM() async {
 
     // Handle token refresh (tokens can change automatically)
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-      debugPrint('🔄 FCM token refreshed: $newToken');
+      AppLogger.d('FCM token refreshed');
       await _storeTokenAtAssignmentLevel(newToken);
     });
 
@@ -1726,30 +1836,15 @@ void _triggerNotificationRefresh() {
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
       // Find the NotificationProvider and trigger refresh
+      // A single call is enough: triggerNotificationRefresh() synchronously
+      // calls notifyListeners(), so firing it repeatedly with delays only
+      // causes listening screens (e.g. NotificationsScreen) to reload multiple
+      // times for the same event.
       final notificationProvider =
           Provider.of<NotificationProvider>(context, listen: false);
       notificationProvider.triggerNotificationRefresh();
       debugPrint(
           '✅ Triggered notification refresh in home screen successfully');
-
-      // Also trigger additional refreshes with delays to ensure UI updates
-      Future.delayed(const Duration(milliseconds: 500), () {
-        try {
-          notificationProvider.triggerNotificationRefresh();
-          debugPrint('✅ Triggered delayed notification refresh (500ms)');
-        } catch (e) {
-          debugPrint('⚠️ Delayed refresh failed: $e');
-        }
-      });
-
-      Future.delayed(const Duration(seconds: 1), () {
-        try {
-          notificationProvider.triggerNotificationRefresh();
-          debugPrint('✅ Triggered delayed notification refresh (1s)');
-        } catch (e) {
-          debugPrint('⚠️ Delayed refresh (1s) failed: $e');
-        }
-      });
     } else {
       debugPrint(
           '⚠️ No context available for notification refresh - will retry');
@@ -1903,21 +1998,20 @@ Future<void> _refreshAndStoreToken() async {
 
   while (retryCount < maxRetries) {
     try {
-      // TEMPORARY FIX: Force delete old token to get fresh one
-      // This ensures stale tokens don't prevent notifications
-      await FirebaseMessaging.instance.deleteToken();
-      debugPrint('🗑️ Deleted old FCM token (forcing refresh)');
+      // Reuse the current token during normal startup/resume. Deleting it here
+      // causes unnecessary token churn and repeated database writes.
+      AppLogger.d('Checking current FCM token');
 
-      // Wait a moment for token deletion to complete
-      await Future.delayed(Duration(seconds: retryCount + 1));
+      if (retryCount > 0) {
+        await Future.delayed(Duration(seconds: retryCount + 1));
+      }
 
-      // Force token refresh to get the latest token
       final token = await FirebaseMessaging.instance.getToken();
 
       if (token != null) {
-        debugPrint('🔑 Fresh FCM registration token: $token');
+        AppLogger.d('FCM registration token available');
         await _storeTokenAtAssignmentLevel(token);
-        debugPrint('✅ FCM token stored successfully');
+        AppLogger.d('FCM token stored successfully');
         return; // Success, exit retry loop
       } else {
         debugPrint(
@@ -2127,10 +2221,16 @@ Future<void> _validateAndRefreshAssignmentToken() async {
 // Store user-level FCM token for wellness notifications and general app notifications
 Future<void> _storeUserLevelFCMToken(String token) async {
   try {
+    if (!kStoreUserLevelFcmTokenInRealtimeDb) {
+      AppLogger.d(
+          'Skipping user-level FCM token write; Realtime Database rules do not allow this path.');
+      return;
+    }
+
     final supabaseService = SupabaseService();
     final user = supabaseService.client.auth.currentUser;
     if (user == null) {
-      debugPrint('⚠️ No authenticated user for FCM token storage');
+      AppLogger.d('No authenticated user for FCM token storage');
       return;
     }
 

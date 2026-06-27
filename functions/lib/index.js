@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.mapsDirections = exports.placesTextSearch = exports.placesNearbySearch = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -45,6 +45,12 @@ Object.defineProperty(exports, "autoCreateDeviceHistory", { enumerable: true, ge
 var realTimeSustainedAnxietyDetection_1 = require("./realTimeSustainedAnxietyDetection");
 Object.defineProperty(exports, "realTimeSustainedAnxietyDetection", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.realTimeSustainedAnxietyDetection; } });
 Object.defineProperty(exports, "clearAnxietyRateLimits", { enumerable: true, get: function () { return realTimeSustainedAnxietyDetection_1.clearAnxietyRateLimits; } });
+// Server-side proxy for Google Maps Platform REST APIs (keeps the Maps key
+// out of the Flutter app bundle)
+var placesProxy_1 = require("./placesProxy");
+Object.defineProperty(exports, "placesNearbySearch", { enumerable: true, get: function () { return placesProxy_1.placesNearbySearch; } });
+Object.defineProperty(exports, "placesTextSearch", { enumerable: true, get: function () { return placesProxy_1.placesTextSearch; } });
+Object.defineProperty(exports, "mapsDirections", { enumerable: true, get: function () { return placesProxy_1.mapsDirections; } });
 // Import auto-cleanup functions
 var autoCleanup_1 = require("./autoCleanup");
 Object.defineProperty(exports, "autoCleanup", { enumerable: true, get: function () { return autoCleanup_1.autoCleanup; } });
@@ -1042,26 +1048,20 @@ exports.sendWellnessReminders = functions.pubsub
             console.log("No new messages available for", timeCategory);
             return null;
         }
-        // Send FCM notification
+        // Send FCM notification (data-only so Android doesn't auto-display it —
+        // the app's background handler is the single source of truth for display,
+        // otherwise the OS auto-display plus the handler's local notification both fire)
         const fcmMessage = {
             data: {
                 type: "wellness_reminder",
                 category: timeCategory,
                 messageType: message.type,
-                timestamp: Date.now().toString(),
-            },
-            notification: {
                 title: message.title,
-                body: message.body,
+                message: message.body,
+                timestamp: Date.now().toString(),
             },
             android: {
                 priority: "normal",
-                notification: {
-                    channelId: "wellness_reminders",
-                    priority: "default",
-                    defaultSound: true,
-                    tag: `wellness_${timeCategory}_${Date.now()}`,
-                },
             },
             topic: "wellness_reminders",
         };
@@ -1090,20 +1090,12 @@ exports.sendManualWellnessReminder = functions.https.onCall(async (data, context
                 type: "wellness_reminder",
                 category: timeCategory,
                 messageType: message.type,
-                timestamp: Date.now().toString(),
-            },
-            notification: {
                 title: message.title,
-                body: message.body,
+                message: message.body,
+                timestamp: Date.now().toString(),
             },
             android: {
                 priority: "normal",
-                notification: {
-                    channelId: "wellness_reminders",
-                    priority: "default",
-                    defaultSound: true,
-                    tag: `manual_wellness_${timeCategory}_${Date.now()}`,
-                },
             },
             topic: "wellness_reminders",
         };

@@ -202,6 +202,9 @@ class AuthProvider extends ChangeNotifier {
             await _supabaseService.client.from('users').upsert({
               'id': user.id,
               'email': user.email ?? '',
+              // Legacy column from before this app moved to Supabase Auth;
+              // placeholder only, real auth is handled by Supabase Auth.
+              'password_hash': 'managed_by_supabase_auth',
               'first_name': firstName,
               'last_name': lastName,
               'role': 'patient',
@@ -229,8 +232,16 @@ class AuthProvider extends ChangeNotifier {
 
   // Helper method to load user profile with recovery attempts
   Future<UserModel?> _loadUserProfileWithRecovery(User user) async {
+    // Fetch the profile outside the recovery try/catch: a thrown error here
+    // means the request itself failed (auth/network/clock-skew, etc.), not
+    // that the profile is missing. Rethrowing lets _handleSignIn's own
+    // catch build a graceful fallback user instead of us running the
+    // "recreate the profile" recovery flow against a profile that's
+    // actually fine - which previously failed anyway on the
+    // users.password_hash NOT NULL constraint and left the user stuck.
+    final userProfile = await _supabaseService.getUserProfile();
+
     try {
-      final userProfile = await _supabaseService.getUserProfile();
       if (userProfile != null) {
         debugPrint('✅ Found existing user profile for: ${user.email}');
         // Ensure required fields exist (email may not be in user_profiles)
@@ -329,6 +340,10 @@ class AuthProvider extends ChangeNotifier {
       await _supabaseService.client.from('users').upsert({
         'id': user.id,
         'email': user.email ?? '',
+        // Legacy column from before this app moved to Supabase Auth -
+        // real password security is handled by Supabase Auth itself, this
+        // is just a placeholder to satisfy the NOT NULL constraint.
+        'password_hash': 'managed_by_supabase_auth',
         'first_name': metadata['first_name'] ?? '',
         'middle_name': metadata['middle_name'] ?? '',
         'last_name': metadata['last_name'] ?? '',

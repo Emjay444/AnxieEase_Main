@@ -106,7 +106,6 @@ flutter:
     - assets/audio/severe_alerts.mp3
     - assets/audio/critical_alerts.mp3
     - assets/animations/
-    - .env
     # - assets/audio/soft_bells.mp3
     # - assets/audio/ocean_waves.mp3
 

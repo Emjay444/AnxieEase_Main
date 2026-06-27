@@ -10,7 +10,7 @@ class AppLogger {
   }
 
   static void i(String msg) {
-    debugPrint('INFO:  $msg');
+    if (verbose) debugPrint('INFO:  $msg');
   }
 
   static void w(String msg) {

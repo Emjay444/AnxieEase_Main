@@ -202,22 +202,9 @@ class _AdminAssignedDeviceScreenState extends State<AdminAssignedDeviceScreen> {
                             const SizedBox(height: 12),
                             _buildDetailRow('Device', 'AnxieEase001'),
                             _buildDetailRow(
-                                'Assigned By',
-                                _assignmentInfo!['assigned_by_admin']
-                                        ?['full_name'] ??
-                                    'Admin'),
-                            _buildDetailRow(
-                                'Assigned At',
+                                'Linked At',
                                 _formatDateTime(
-                                    _assignmentInfo!['assigned_at'])),
-                            if (_assignmentInfo!['expires_at'] != null)
-                              _buildDetailRow(
-                                  'Expires At',
-                                  _formatDateTime(
-                                      _assignmentInfo!['expires_at'])),
-                            if (_assignmentInfo!['admin_notes'] != null)
-                              _buildDetailRow(
-                                  'Notes', _assignmentInfo!['admin_notes']),
+                                    _assignmentInfo!['linked_at'])),
                           ],
                         ),
                       ),

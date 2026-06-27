@@ -14,7 +14,8 @@ class ResetPasswordScreen extends StatefulWidget {
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+class _ResetPasswordScreenState extends State<ResetPasswordScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
@@ -37,10 +38,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   void initState() {
     super.initState();
+    // Observe app lifecycle to stabilize UI when returning from external apps
+    WidgetsBinding.instance.addObserver(this);
     if (widget.token != null) {
-      print('Reset password screen initialized with token: ${widget.token}');
+      print(
+          'Reset password screen initialized with token (length: ${widget.token?.length ?? 0})');
       if (widget.email != null) {
-        print('Reset password screen initialized with email: ${widget.email}');
+        print('Reset password screen initialized with email: ${widget.email != null}');
       }
     }
 
@@ -137,8 +141,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       // If we have a token from the reset password link or verification code
       if (widget.token != null) {
         try {
-          print(
-              'Attempting to update password with recovery token: ${widget.token}');
+          print('Attempting to update password with recovery token '
+              '(length: ${widget.token?.length ?? 0})');
 
           // Use our updated method to handle token reset
           await SupabaseService()
@@ -208,9 +212,25 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Unfocus immediately - cheap and always safe.
+      FocusManager.instance.primaryFocus?.unfocus();
+      // Defer the rebuild slightly so an in-flight deep-link navigation
+      // (which fully replaces this screen) has a chance to win the race
+      // and dispose this screen first, instead of both happening at once.
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (!mounted) return;
+        setState(() {});
+      });
+    }
   }
 
   @override

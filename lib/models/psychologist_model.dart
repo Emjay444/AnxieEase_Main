@@ -28,7 +28,7 @@ class PsychologistModel {
       : 'contact@anxiease.com',
       contactPhone: json['contact_phone'] ?? 'N/A',
       biography: json['biography'] ?? 'No biography available',
-      imageUrl: json['image_url'],
+      imageUrl: json['avatar_url'],
     );
   }
 
@@ -40,7 +40,7 @@ class PsychologistModel {
       'contact_email': contactEmail,
       'contact_phone': contactPhone,
       'biography': biography,
-      'image_url': imageUrl,
+      'avatar_url': imageUrl,
     };
   }
 

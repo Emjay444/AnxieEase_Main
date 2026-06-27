@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'services/supabase_service.dart';
 import 'reset_password.dart';
 
+const int _resetCodeLength = 8;
+
 class VerifyResetCodeScreen extends StatefulWidget {
   final String email;
 
@@ -15,8 +17,9 @@ class VerifyResetCodeScreen extends StatefulWidget {
 class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final List<TextEditingController> _codeControllers =
-      List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+      List.generate(_resetCodeLength, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes =
+      List.generate(_resetCodeLength, (_) => FocusNode());
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -66,11 +69,17 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Hide keyboard and rebuild to prevent janky/misaligned UI on resume
+      // Unfocus immediately - cheap and always safe.
       FocusManager.instance.primaryFocus?.unfocus();
-      // Restart subtle fade
-      _animationController?.forward(from: 0);
-      if (mounted) setState(() {});
+      // Defer the rebuild/animation restart slightly so an in-flight
+      // deep-link navigation (which fully replaces this screen via
+      // pushAndRemoveUntil in main.dart) has a chance to win the race and
+      // dispose this screen first, instead of both happening at once.
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (!mounted) return;
+        _animationController?.forward(from: 0);
+        setState(() {});
+      });
     }
   }
 
@@ -86,13 +95,22 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
       return;
     }
 
+    if (code.length != _resetCodeLength) {
+      setState(() {
+        _errorMessage =
+            'Please enter the complete $_resetCodeLength-digit code';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      print('Attempting to verify code: $code for email: ${widget.email}');
+      print(
+          'Attempting to verify code (length: ${code.length}) for email: ${widget.email.isNotEmpty}');
 
       // Verify the OTP code first
       final isVerified = await SupabaseService().verifyPasswordResetCode(
@@ -208,7 +226,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          "Enter the 6-digit code sent to ${widget.email}",
+                          "Enter the $_resetCodeLength-digit code sent to ${widget.email}",
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 16,
@@ -221,12 +239,12 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
                       const SizedBox(height: 15),
 
                       // New instruction text
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          "You can find the code at the end of the reset password link in your email. Look for 'code=' followed by 6 characters.",
+                          "You can find the code in your reset password email. Look for the $_resetCodeLength-digit PIN code.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 14,
                             color: Colors.white70,
                             height: 1.5,
@@ -305,7 +323,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
             // Info message about email link
             _buildStatusMessage(
               message:
-                  "Enter the 6-digit PIN code from your email. The code is displayed in the email body.",
+                  "Enter the $_resetCodeLength-digit PIN code from your email. The code is displayed in the email body.",
               icon: Icons.info_outline,
               color: Colors.blue,
             ),
@@ -340,18 +358,29 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
   }
 
   Widget _buildCodeInputFields() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(
-        6,
-        (index) => _buildSingleDigitField(index),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 6.0;
+        final fieldWidth =
+            ((constraints.maxWidth - (gap * (_resetCodeLength - 1))) /
+                    _resetCodeLength)
+                .clamp(32.0, 45.0)
+                .toDouble();
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(
+            _resetCodeLength,
+            (index) => _buildSingleDigitField(index, fieldWidth),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSingleDigitField(int index) {
+  Widget _buildSingleDigitField(int index, double width) {
     return SizedBox(
-      width: 45,
+      width: width,
       child: TextFormField(
         controller: _codeControllers[index],
         focusNode: _focusNodes[index],
@@ -380,7 +409,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen>
           FilteringTextInputFormatter.digitsOnly,
         ],
         onChanged: (value) {
-          if (value.isNotEmpty && index < 5) {
+          if (value.isNotEmpty && index < _resetCodeLength - 1) {
             _focusNodes[index + 1].requestFocus();
           }
         },
@@ -488,8 +517,9 @@ class _VerifyResetCodeScreenWithOptionalEmailState
     with WidgetsBindingObserver {
   final TextEditingController _emailController = TextEditingController();
   final List<TextEditingController> _codeControllers =
-      List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+      List.generate(_resetCodeLength, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes =
+      List.generate(_resetCodeLength, (_) => FocusNode());
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -519,9 +549,16 @@ class _VerifyResetCodeScreenWithOptionalEmailState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Hide keyboard and rebuild to avoid broken layout after returning from email app
+      // Unfocus immediately - cheap and always safe.
       FocusManager.instance.primaryFocus?.unfocus();
-      if (mounted) setState(() {});
+      // Defer the rebuild slightly so an in-flight deep-link navigation
+      // (which fully replaces this screen via pushAndRemoveUntil in
+      // main.dart) has a chance to win the race and dispose this screen
+      // first, instead of both happening at once.
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (!mounted) return;
+        setState(() {});
+      });
     }
   }
 
@@ -540,9 +577,10 @@ class _VerifyResetCodeScreenWithOptionalEmailState
     }
 
     // Validate the code is complete
-    if (_fullCode.length != 6) {
+    if (_fullCode.length != _resetCodeLength) {
       setState(() {
-        _errorMessage = 'Please enter the complete 6-digit code';
+        _errorMessage =
+            'Please enter the complete $_resetCodeLength-digit code';
       });
       return;
     }
@@ -673,12 +711,12 @@ class _VerifyResetCodeScreenWithOptionalEmailState
                     const SizedBox(height: 16),
 
                     // Subtitle
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Text(
-                        "Enter your email and the 6-digit verification code",
+                        "Enter your email and the $_resetCodeLength-digit verification code",
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
                           color: Colors.white,
                           height: 1.5,
@@ -689,12 +727,12 @@ class _VerifyResetCodeScreenWithOptionalEmailState
                     const SizedBox(height: 15),
 
                     // Instruction text
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Text(
-                        "You can find the code at the end of the reset password link in your email. Look for 'code=' followed by 6 characters.",
+                        "You can find the code in your reset password email. Look for the $_resetCodeLength-digit PIN code.",
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
                           color: Colors.white70,
                           height: 1.5,
@@ -778,53 +816,71 @@ class _VerifyResetCodeScreenWithOptionalEmailState
                             const SizedBox(height: 8),
 
                             // Code Input Fields
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: List.generate(
-                                6,
-                                (index) => SizedBox(
-                                  width: 45,
-                                  child: TextFormField(
-                                    controller: _codeControllers[index],
-                                    focusNode: _focusNodes[index],
-                                    keyboardType: TextInputType.number,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF3AA772),
-                                    ),
-                                    decoration: InputDecoration(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              vertical: 16),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide(
-                                            color: Colors.grey.shade300,
-                                            width: 2),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                const gap = 6.0;
+                                final fieldWidth = ((constraints.maxWidth -
+                                            (gap * (_resetCodeLength - 1))) /
+                                        _resetCodeLength)
+                                    .clamp(32.0, 45.0)
+                                    .toDouble();
+
+                                return Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: List.generate(
+                                    _resetCodeLength,
+                                    (index) => SizedBox(
+                                      width: fieldWidth,
+                                      child: TextFormField(
+                                        controller: _codeControllers[index],
+                                        focusNode: _focusNodes[index],
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF3AA772),
+                                        ),
+                                        decoration: InputDecoration(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  vertical: 16),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            borderSide: BorderSide(
+                                                color: Colors.grey.shade300,
+                                                width: 2),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            borderSide: const BorderSide(
+                                                color: Color(0xFF3AA772),
+                                                width: 2),
+                                          ),
+                                          filled: true,
+                                          fillColor: Colors.grey.shade50,
+                                        ),
+                                        inputFormatters: [
+                                          LengthLimitingTextInputFormatter(1),
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
+                                        ],
+                                        onChanged: (value) {
+                                          if (value.isNotEmpty &&
+                                              index < _resetCodeLength - 1) {
+                                            _focusNodes[index + 1]
+                                                .requestFocus();
+                                          }
+                                        },
+                                        enabled: !_isLoading,
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: const BorderSide(
-                                            color: Color(0xFF3AA772), width: 2),
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.grey.shade50,
                                     ),
-                                    inputFormatters: [
-                                      LengthLimitingTextInputFormatter(1),
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    onChanged: (value) {
-                                      if (value.isNotEmpty && index < 5) {
-                                        _focusNodes[index + 1].requestFocus();
-                                      }
-                                    },
-                                    enabled: !_isLoading,
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             ),
 
                             const SizedBox(height: 30),

@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -288,6 +288,9 @@ class SupabaseService {
       final profileData = {
         'id': userId,
         'email': pendingData['email'],
+        // Legacy column from before this app moved to Supabase Auth;
+        // placeholder only, real auth is handled by Supabase Auth.
+        'password_hash': 'managed_by_supabase_auth',
         'first_name': pendingData['first_name'] ?? '',
         'middle_name': pendingData['middle_name'] ?? '',
         'last_name': pendingData['last_name'] ?? '',
@@ -411,8 +414,7 @@ class SupabaseService {
         // Automatically refresh tokens
         autoRefreshToken: true,
       ),
-      // Add debug mode for better logging in development
-      debug: kDebugMode,
+      debug: false,
     );
     _supabaseClient = Supabase.instance.client;
 
@@ -689,17 +691,24 @@ class SupabaseService {
           .maybeSingle();
       return response;
     } catch (e) {
+      // Rethrow instead of swallowing to null: a thrown error here means
+      // the request failed (auth/network/clock-skew), NOT that the profile
+      // doesn't exist. maybeSingle() already returns null on its own for a
+      // genuinely missing row without throwing. Conflating the two used to
+      // make callers "recover" a perfectly fine profile by recreating it,
+      // which then failed on the users.password_hash NOT NULL constraint.
       print('Error fetching user profile: $e');
-      return null;
+      rethrow;
     }
   }
 
   Future<void> recoverPassword(String token, String newPassword,
       {String? email}) async {
     try {
-      print('Attempting to recover password with token: $token');
+      print(
+          'Attempting to recover password with token (length: ${token.length})');
       if (email != null) {
-        print('Email provided for recovery: $email');
+        print('Email provided for recovery: ${email.isNotEmpty}');
       }
 
       final client = Supabase.instance.client;
@@ -776,7 +785,8 @@ class SupabaseService {
 
   Future<bool> verifyPasswordResetCode(String email, String token) async {
     try {
-      print('Verifying password reset code: $token for email: $email');
+      print(
+          'Verifying password reset code (length: ${token.length}) for email: ${email.isNotEmpty}');
 
       // Verify the OTP
       final response = await client.auth.verifyOTP(
@@ -861,36 +871,48 @@ class SupabaseService {
       print(
           'Successfully updated user profile: ${updatedData.keys.join(', ')}');
     } catch (e) {
-      if (e.toString().contains('Could not find')) {
-        // If we get a PostgrestException about missing columns, try to update each field individually
-        print(
-            'Warning: Schema error detected. Trying individual field updates...');
-
-        // Always update the timestamp
-        try {
-          await client.from('users').update({
-            'updated_at': DateTime.now().toIso8601String(),
-          }).eq('id', user.id);
-        } catch (_) {
-          // Ignore errors with timestamp update
-        }
-
-        // Try each field individually
-        for (var entry in data.entries) {
-          try {
-            await client.from('users').update({
-              entry.key: entry.value,
-            }).eq('id', user.id);
-            print('Successfully updated field: ${entry.key}');
-          } catch (fieldError) {
-            print('Failed to update field ${entry.key}: $fieldError');
-            // Continue with other fields
-          }
-        }
-      } else {
-        // For other errors, rethrow
+      // Only fall back to per-field updates for a genuine Postgrest
+      // schema-cache-miss error, not for network/auth/other failures.
+      final isSchemaCacheMiss =
+          e is PostgrestException && e.message.contains('Could not find');
+      if (!isSchemaCacheMiss) {
         print('Error updating user profile: $e');
         rethrow;
+      }
+
+      // If we get a PostgrestException about missing columns, try to update each field individually
+      print(
+          'Warning: Schema error detected. Trying individual field updates...');
+
+      // Always update the timestamp
+      try {
+        await client.from('users').update({
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', user.id);
+      } catch (_) {
+        // Ignore errors with timestamp update
+      }
+
+      // Try each field individually, tracking whether anything actually saved
+      var anyFieldSucceeded = false;
+      Object? lastFieldError;
+      for (var entry in data.entries) {
+        try {
+          await client.from('users').update({
+            entry.key: entry.value,
+          }).eq('id', user.id);
+          print('Successfully updated field: ${entry.key}');
+          anyFieldSucceeded = true;
+        } catch (fieldError) {
+          print('Failed to update field ${entry.key}: $fieldError');
+          lastFieldError = fieldError;
+          // Continue with other fields
+        }
+      }
+
+      if (!anyFieldSucceeded && data.isNotEmpty) {
+        // Every individual field update also failed - do not report success.
+        throw Exception('Failed to update profile: $lastFieldError');
       }
     }
   }
@@ -1520,18 +1542,7 @@ class SupabaseService {
       }
     } catch (e) {
       Logger.error('Error fetching assigned psychologist', e);
-
-      // Fallback to hardcoded data in case of error
-      return {
-        'id': 'psy-001',
-        'name': 'Dr. Sarah Johnson',
-        'specialization': 'Clinical Psychologist, Anxiety Specialist',
-        'contact_email': 'sarah.johnson@anxiease.com',
-        'contact_phone': '(555) 123-4567',
-        'biography':
-            'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management. She completed her Ph.D. at Stanford University and has published numerous research papers on cognitive behavioral therapy techniques for anxiety management. Dr. Johnson takes a holistic approach to mental health, combining evidence-based therapeutic techniques with mindfulness practices to help patients develop effective coping strategies for their anxiety.',
-        'image_url': null,
-      };
+      rethrow;
     }
   }
 
@@ -1541,9 +1552,6 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      // First try to create the table if it doesn't exist
-      await createAppointmentsTableIfNotExists();
-
       // Query appointments table for this user
       try {
         final response = await client
@@ -1591,62 +1599,7 @@ class SupabaseService {
       }
     } catch (e) {
       Logger.error('Error fetching appointments', e);
-
-      // Fallback to hardcoded data in case of error
-      final now = DateTime.now();
-      return [
-        // Past appointments (only 2)
-        {
-          'id': 'apt-001',
-          'psychologist_id': 'psy-001',
-          'user_id': user.id,
-          'appointment_date': DateTime(now.year, now.month, now.day - 30, 10, 0)
-              .toIso8601String(),
-          'reason': 'Initial consultation and anxiety assessment',
-          'status': 'completed',
-          'created_at':
-              DateTime(now.year, now.month, now.day - 35).toIso8601String(),
-        },
-        {
-          'id': 'apt-002',
-          'psychologist_id': 'psy-001',
-          'user_id': user.id,
-          'appointment_date': DateTime(now.year, now.month, now.day - 7, 11, 0)
-              .toIso8601String(),
-          'reason': 'Discuss progress with breathing exercises',
-          'status': 'cancelled',
-          'created_at':
-              DateTime(now.year, now.month, now.day - 10).toIso8601String(),
-        },
-      ];
-    }
-  }
-
-  // Method to create the appointments table if it doesn't exist
-  Future<bool> createAppointmentsTableIfNotExists() async {
-    try {
-      // First check if the table exists by querying it
-      try {
-        await client.from('appointments').select('count').limit(1);
-        Logger.info('Appointments table already exists');
-        return true; // Table exists
-      } catch (e) {
-        final errorMsg = e.toString().toLowerCase();
-        if (errorMsg.contains('does not exist') ||
-            errorMsg.contains('relation "appointments" does not exist')) {
-          // Table doesn't exist, create it using SQL
-          Logger.info('Creating appointments table...');
-          await client.rpc('create_appointments_table');
-          Logger.info('Appointments table created successfully');
-          return true;
-        } else {
-          Logger.error('Error checking appointments table', e);
-          return false;
-        }
-      }
-    } catch (e) {
-      Logger.error('Error creating appointments table', e);
-      return false;
+      rethrow;
     }
   }
 
@@ -1656,9 +1609,6 @@ class SupabaseService {
     if (user == null) throw Exception('User not authenticated');
 
     try {
-      // First try to create the table if it doesn't exist
-      await createAppointmentsTableIfNotExists();
-
       // Get the current timestamp for created_at
       final timestamp = DateTime.now().toIso8601String();
 
@@ -1681,21 +1631,6 @@ class SupabaseService {
       return response[0]['id'];
     } catch (e) {
       Logger.error('Error requesting appointment', e);
-
-      // If it's a table-not-exists error, create a notification as fallback
-      final errorMsg = e.toString().toLowerCase();
-      if (errorMsg.contains('does not exist') ||
-          errorMsg.contains('relation "appointments" does not exist')) {
-        // Create a notification record as fallback
-        await createNotification(
-          title: 'New Appointment Request',
-          message:
-              'You requested an appointment with a psychologist. Please contact them directly.',
-          type: 'alert',
-        );
-        return 'temp-${DateTime.now().millisecondsSinceEpoch}';
-      }
-
       throw Exception('Failed to request appointment: ${e.toString()}');
     }
   }
@@ -1928,24 +1863,19 @@ class SupabaseService {
       return regex.hasMatch(s);
     }
 
-    // Normalize type to match DB enum values
+    // Normalize type to match DB enum values: alert, reminder, log
     String normalizedType = type;
-    const allowedTypes = {
-      'alert',
-      'reminder'
-    }; // conservative set proven to work
+    const allowedTypes = {'alert', 'reminder', 'log'};
     if (!allowedTypes.contains(normalizedType)) {
       // map common aliases
       if (normalizedType == 'anxiety_log' ||
           normalizedType == 'anxiety_alert' ||
           normalizedType == 'warning' ||
-          normalizedType == 'info' ||
-          normalizedType == 'system' ||
           normalizedType == 'appointment_request' ||
           normalizedType == 'wellness' ||
           normalizedType == 'emergency' ||
           normalizedType == 'medication' ||
-          normalizedType == 'log') {
+          normalizedType == 'device_offline') {
         debugPrint(
             'ℹ️ Mapping notification type "$type" → "alert" to satisfy DB enum');
         normalizedType = 'alert';
@@ -1954,6 +1884,10 @@ class SupabaseService {
         debugPrint(
             'ℹ️ Mapping notification type "$type" → "reminder" to satisfy DB enum');
         normalizedType = 'reminder';
+      } else if (normalizedType == 'info' || normalizedType == 'system') {
+        debugPrint(
+            'ℹ️ Mapping notification type "$type" → "log" to satisfy DB enum');
+        normalizedType = 'log';
       } else {
         // default fallback
         debugPrint(
@@ -2018,23 +1952,23 @@ class SupabaseService {
       return regex.hasMatch(s);
     }
 
-    // Normalize type to match DB enum values
+    // Normalize type to match DB enum values: alert, reminder, log
     String normalizedType = type;
-    const allowedTypes = {
-      'alert',
-      'reminder'
-    }; // conservative set proven to work
+    const allowedTypes = {'alert', 'reminder', 'log'};
     if (!allowedTypes.contains(normalizedType)) {
       // map common aliases
       if (normalizedType == 'anxiety_log' ||
           normalizedType == 'anxiety_alert' ||
           normalizedType == 'warning' ||
-          normalizedType == 'info' ||
-          normalizedType == 'system' ||
           normalizedType == 'appointment_request' ||
           normalizedType == 'appointment_expiration' ||
-          normalizedType == 'log') {
+          normalizedType == 'device_offline') {
         normalizedType = 'alert';
+      } else if (normalizedType == 'wellness_reminder' ||
+          normalizedType == 'breathing_reminder') {
+        normalizedType = 'reminder';
+      } else if (normalizedType == 'info' || normalizedType == 'system') {
+        normalizedType = 'log';
       } else {
         debugPrint(
             '⚠️ createNotificationWithTimestamp: unmapped type "$type", using "alert"');
@@ -2087,40 +2021,7 @@ class SupabaseService {
           .map((psychologist) => _ensurePsychologistFields(psychologist)));
     } catch (e) {
       Logger.error('Error fetching all psychologists', e);
-
-      // Fallback to hardcoded data in case of error
-      return [
-        {
-          'id': 'psy-001',
-          'name': 'Dr. Sarah Johnson',
-          'specialization': 'Clinical Psychologist, Anxiety Specialist',
-          'contact_email': 'sarah.johnson@anxiease.com',
-          'contact_phone': '(555) 123-4567',
-          'biography':
-              'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management.',
-          'image_url': null,
-        },
-        {
-          'id': 'psy-002',
-          'name': 'Dr. Michael Chen',
-          'specialization': 'Psychiatrist, Depression & Anxiety Treatment',
-          'contact_email': 'michael.chen@anxiease.com',
-          'contact_phone': '(555) 234-5678',
-          'biography':
-              'Dr. Michael Chen is a board-certified psychiatrist specializing in medication management for anxiety and depression. He combines pharmacological approaches with lifestyle interventions.',
-          'image_url': null,
-        },
-        {
-          'id': 'psy-003',
-          'name': 'Dr. Emily Rodriguez',
-          'specialization': 'Cognitive Behavioral Therapist',
-          'contact_email': 'emily.rodriguez@anxiease.com',
-          'contact_phone': '(555) 345-6789',
-          'biography':
-              'Dr. Emily Rodriguez is an expert in cognitive behavioral therapy (CBT) with a focus on helping clients overcome anxiety through evidence-based techniques and practical coping strategies.',
-          'image_url': null,
-        },
-      ];
+      rethrow;
     }
   }
 
@@ -2180,7 +2081,7 @@ class SupabaseService {
       'biography': psychologist['bio'] ??
           psychologist['biography'] ??
           'No biography available',
-      'image_url': psychologist['image_url'] ?? psychologist['avatar_url'],
+      'avatar_url': psychologist['avatar_url'],
     };
   }
 
@@ -2203,7 +2104,7 @@ class SupabaseService {
       // Update psychologist record with image URL
       await client
           .from('psychologists')
-          .update({'image_url': imageUrl}).eq('id', psychologistId);
+          .update({'avatar_url': imageUrl}).eq('id', psychologistId);
 
       return imageUrl;
     } catch (e) {

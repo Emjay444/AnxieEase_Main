@@ -48,26 +48,23 @@ class AdminDeviceManagementService {
         return DeviceAssignmentStatus.notAssigned();
       }
 
+      // The query above already filtered on user_id == this user, so any
+      // row returned means the device is assigned to them. is_active tracks
+      // hardware connectivity, not assignment, and must not gate this check
+      // (the admin's web assignment never sets is_active).
       final device = response;
-      final assignmentStatus =
-          (device['is_active'] as bool? ?? false) ? 'active' : 'inactive';
+      const assignmentStatus = 'assigned';
       AppLogger.d(
           'AdminDeviceManagementService: Assignment status: $assignmentStatus');
-      final assignedAt = device['assigned_at'] != null
-          ? DateTime.parse(device['assigned_at'] as String)
-          : null;
-      final expiresAt = device['expires_at'] != null
-          ? DateTime.parse(device['expires_at'] as String)
-          : null;
 
-      // If no assigned_at date but status is assigned, use created_at or current time
-      final effectiveAssignedAt = assignedAt ?? DateTime.now();
+      // wearable_devices has no assigned_at column; use linked_at instead.
+      final linkedAt = device['linked_at'] != null
+          ? DateTime.parse(device['linked_at'] as String)
+          : DateTime.now();
 
       return DeviceAssignmentStatus.fromDatabase(
         status: assignmentStatus,
-        assignedAt: effectiveAssignedAt,
-        expiresAt: expiresAt,
-        sessionNotes: device['session_notes'] as String?,
+        assignedAt: linkedAt,
       );
     } catch (e) {
       AppLogger.e('Error checking device assignment', e);
@@ -126,18 +123,14 @@ class AdminDeviceManagementService {
 /// Device assignment status from admin
 class DeviceAssignmentStatus {
   final bool isAssigned;
-  final String status; // 'assigned', 'active', 'completed', 'expired'
+  final String status; // 'assigned', 'active', 'not_assigned', 'error'
   final DateTime? assignedAt;
-  final DateTime? expiresAt;
-  final String? sessionNotes;
   final String? errorMessage;
 
   DeviceAssignmentStatus({
     required this.isAssigned,
     required this.status,
     this.assignedAt,
-    this.expiresAt,
-    this.sessionNotes,
     this.errorMessage,
   });
 
@@ -159,18 +152,11 @@ class DeviceAssignmentStatus {
   factory DeviceAssignmentStatus.fromDatabase({
     required String status,
     required DateTime assignedAt,
-    DateTime? expiresAt,
-    String? sessionNotes,
   }) {
-    final now = DateTime.now();
-    final isExpired = expiresAt != null && now.isAfter(expiresAt);
-
     return DeviceAssignmentStatus(
-      isAssigned: !isExpired && (status == 'assigned' || status == 'active'),
-      status: isExpired ? 'expired' : status,
+      isAssigned: status == 'assigned' || status == 'active',
+      status: status,
       assignedAt: assignedAt,
-      expiresAt: expiresAt,
-      sessionNotes: sessionNotes,
     );
   }
 
@@ -184,7 +170,6 @@ class DeviceAssignmentStatus {
 
   bool get canUseDevice =>
       isAssigned && (status == 'assigned' || status == 'active');
-  bool get isExpired => status == 'expired';
   bool get isActive => status == 'active';
 
   String get displayMessage {
@@ -195,8 +180,6 @@ class DeviceAssignmentStatus {
         return 'Testing session active.';
       case 'completed':
         return 'Testing session completed.';
-      case 'expired':
-        return 'Device assignment has expired.';
       case 'not_assigned':
         return 'Device not assigned. Contact admin to assign device.';
       case 'error':
