@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../services/admin_device_management_service.dart';
+import '../models/wearable_device.dart';
+import '../services/device_service.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 
-/// Modern device linking screen with beautiful UI
+/// Read-only "My Device" screen.
 ///
-/// Allows users to input their wearable device ID and link it to their account.
-/// Features input validation, error handling, and smooth animations.
+/// Devices are assigned to patients by an admin or a psychologist with
+/// granted admin access -- this screen only ever reads and displays that
+/// assignment. It must never write to wearable_devices; there is no
+/// link/unlink/assign/release action anywhere here.
 class DeviceLinkingScreen extends StatefulWidget {
   const DeviceLinkingScreen({Key? key}) : super(key: key);
 
@@ -18,13 +21,9 @@ class DeviceLinkingScreen extends StatefulWidget {
 
 class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
     with TickerProviderStateMixin {
-  final TextEditingController _deviceIdController = TextEditingController();
-  final AdminDeviceManagementService _adminDeviceService =
-      AdminDeviceManagementService();
+  final DeviceService _deviceService = DeviceService();
 
-  bool _isCheckingAssignment = true;
-  bool _hasDeviceAssigned = false;
-  String? _assignedDeviceId;
+  bool _isLoading = true;
   String? _errorMessage;
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -35,7 +34,6 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
   void initState() {
     super.initState();
 
-    // Initialize animations
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -45,56 +43,45 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeInOut,
-    ));
-
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
+    );
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic));
 
-    // Start animations
     _fadeController.forward();
     _slideController.forward();
 
-    // Check device assignment status
-    _checkDeviceAssignment();
+    _deviceService.addListener(_onDeviceServiceUpdate);
+    _loadAssignedDevice();
   }
 
-  Future<void> _checkDeviceAssignment() async {
+  void _onDeviceServiceUpdate() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadAssignedDevice() async {
     try {
       setState(() {
-        _isCheckingAssignment = true;
+        _isLoading = true;
         _errorMessage = null;
       });
 
-      final status = await _adminDeviceService.checkDeviceAssignment();
-
-      setState(() {
-        _hasDeviceAssigned = status.isAssigned && status.canUseDevice;
-        _assignedDeviceId = _hasDeviceAssigned ? 'AnxieEase001' : null;
-        _isCheckingAssignment = false;
-      });
+      await _deviceService.initialize();
     } catch (e) {
       setState(() {
-        _hasDeviceAssigned = false;
-        _isCheckingAssignment = false;
-        _errorMessage = 'Error checking device assignment: $e';
+        _errorMessage = 'Error checking your assigned device: $e';
       });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   void dispose() {
-    _deviceIdController.dispose();
+    _deviceService.removeListener(_onDeviceServiceUpdate);
     _fadeController.dispose();
     _slideController.dispose();
     super.dispose();
@@ -102,29 +89,34 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
 
   @override
   Widget build(BuildContext context) {
+    final device = _deviceService.linkedDevice;
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: const Text(
-          'Device Assignment',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
+          'My Device',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         backgroundColor: AppTheme.primaryColor,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadAssignedDevice,
+          ),
+        ],
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: SlideTransition(
           position: _slideAnimation,
           child: SafeArea(
-            child: _isCheckingAssignment
+            child: _isLoading
                 ? _buildLoadingView()
-                : _hasDeviceAssigned
-                    ? _buildAssignedDeviceView()
+                : device != null
+                    ? _buildAssignedDeviceView(device)
                     : _buildNoAssignmentView(),
           ),
         ),
@@ -144,11 +136,8 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
             ),
             SizedBox(height: 20),
             Text(
-              'Checking device assignment...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+              'Checking your assigned device...',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ],
         ),
@@ -156,17 +145,48 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
     );
   }
 
-  Widget _buildAssignedDeviceView() {
+  /// "Last updated" text shown whenever status isn't live.
+  String? _getLastUpdatedText() {
+    final status = _deviceService.connectionStatus;
+    if (status == DeviceConnectionStatus.live) return null;
+
+    final lastReading = _deviceService.lastReadingTime;
+    if (lastReading == null) return null;
+
+    final age = DateTime.now().difference(lastReading);
+    final label = status == DeviceConnectionStatus.stale
+        ? 'Last known reading'
+        : 'No recent wearable data';
+
+    if (age.inMinutes < 1) return '$label • just now';
+    if (age.inMinutes < 60) return '$label • ${age.inMinutes}m ago';
+    return '$label • ${age.inHours}h ago';
+  }
+
+  Widget _buildAssignedDeviceView(WearableDevice device) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.currentUser;
+    final status = _deviceService.connectionStatus;
+    final isLive = status == DeviceConnectionStatus.live;
+    final statusColor = switch (status) {
+      DeviceConnectionStatus.live => Colors.green,
+      DeviceConnectionStatus.stale => Colors.orange,
+      DeviceConnectionStatus.offline => Colors.grey,
+    };
+    final statusText = switch (status) {
+      DeviceConnectionStatus.live => 'Your device is live',
+      DeviceConnectionStatus.stale => 'Stale - reconnecting',
+      DeviceConnectionStatus.offline => 'No recent wearable data',
+    };
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
         children: [
           const SizedBox(height: 10),
+          if (_errorMessage != null) _buildErrorMessage(),
 
-          // Success header with illustration
+          // Status header
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -174,15 +194,12 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Colors.green.shade400,
-                  Colors.green.shade500,
-                ],
+                colors: [statusColor.shade400, statusColor.shade500],
               ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withOpacity(0.3),
+                  color: statusColor.withOpacity(0.3),
                   spreadRadius: 2,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
@@ -191,33 +208,22 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
             ),
             child: Column(
               children: [
-                // Success icon with animation
                 Container(
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.9),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
                   ),
                   child: Icon(
-                    Icons.check_circle,
-                    color: Colors.green.shade600,
+                    isLive ? Icons.check_circle : Icons.watch,
+                    color: statusColor.shade600,
                     size: 48,
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Welcome message
                 Text(
-                  'Hello, ${user?.firstName ?? 'User'}! 👋',
+                  'Hello, ${user?.firstName ?? 'User'}! \u{1F44B}',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -226,21 +232,31 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Device Successfully Assigned',
-                  style: TextStyle(
+                Text(
+                  statusText,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
                   textAlign: TextAlign.center,
                 ),
+                if (_getLastUpdatedText() != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _getLastUpdatedText()!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 const SizedBox(height: 16),
-
-                // Device ID card
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(12),
@@ -249,16 +265,12 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.devices,
-                        color: Colors.green.shade700,
-                        size: 20,
-                      ),
+                      Icon(Icons.devices, color: statusColor.shade700, size: 20),
                       const SizedBox(width: 10),
                       Text(
-                        'Device ID: ${_assignedDeviceId ?? 'AnxieEase001'}',
+                        device.deviceName,
                         style: TextStyle(
-                          color: Colors.green.shade800,
+                          color: statusColor.shade800,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -266,13 +278,18 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
                     ],
                   ),
                 ),
+                if (status == DeviceConnectionStatus.offline)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: _buildOfflineMessage(device),
+                  ),
               ],
             ),
           ),
 
           const SizedBox(height: 24),
 
-          // Device Setup Requirements
+          // Device details (read-only)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -292,143 +309,73 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
+                const Text(
+                  'Device Details',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textColor,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildDetailRow('Device ID', device.deviceId),
+                _buildDetailRow(
+                    'Battery',
+                    device.batteryLevel != null
+                        ? '${device.batteryLevel!.toStringAsFixed(0)}%'
+                        : 'Unknown'),
+                _buildDetailRow(
+                    'Firmware', device.firmwareVersion ?? 'Unknown'),
+                _buildDetailRow(
+                    'Baseline HR',
+                    device.baselineHR != null
+                        ? '${device.baselineHR!.toStringAsFixed(0)} BPM'
+                        : 'Not recorded yet'),
+                _buildDetailRow(
+                    'Last Seen', _formatDateTime(device.lastSeenAt)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Read-only troubleshooting help (not an action flow)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Icon(
-                        Icons.settings,
-                        color: Colors.orange.shade600,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
+                    Icon(Icons.help_outline, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Device Setup Requirements',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textColor,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Follow these steps to connect your device:',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Device showing offline? Try this',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade800,
+                        ),
                       ),
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 20),
-
-                // Setup steps
-                _buildEnhancedInstructionStep(
-                  1,
-                  'Turn ON your AnxieEase wearable device',
-                  'Press and hold the power button until the screen lights up',
-                  Icons.power_settings_new,
-                  Colors.green,
-                ),
-                const SizedBox(height: 16),
-                _buildEnhancedInstructionStep(
-                  2,
-                  'Enable WiFi hotspot on your phone named "AnxieEase"',
-                  'Go to Settings > Hotspot & tethering > WiFi hotspot',
-                  Icons.wifi_tethering,
-                  Colors.blue,
-                ),
-                const SizedBox(height: 16),
-                _buildEnhancedInstructionStep(
-                  3,
-                  'Set hotspot password to "11112222"',
-                  'Use exactly this password for device connection',
-                  Icons.lock,
-                  Colors.purple,
-                ),
-                const SizedBox(height: 16),
-                _buildEnhancedInstructionStep(
-                  4,
-                  'Wait for device to connect to your hotspot',
-                  'Device LCD will show "Connected" when successful',
-                  Icons.bluetooth_connected,
-                  Colors.teal,
-                ),
-
-                const SizedBox(height: 20),
-
-                // Success message
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.blue.shade50,
-                        Colors.blue.shade100.withOpacity(0.3),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade100,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.info,
-                          color: Colors.blue.shade700,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Ready to Monitor!',
-                              style: TextStyle(
-                                color: Colors.blue.shade800,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Once connected, you can start monitoring your health metrics through the app.',
-                              style: TextStyle(
-                                color: Colors.blue.shade700,
-                                fontSize: 12,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 14),
+                _buildInstructionStep(
+                    '1', 'Make sure your AnxieEase wearable is turned on'),
+                const SizedBox(height: 10),
+                _buildInstructionStep('2',
+                    'Make sure it is connected to its usual "AnxieEase" WiFi hotspot'),
+                const SizedBox(height: 10),
+                _buildInstructionStep('3',
+                    'If it still won\'t connect, contact your administrator or psychologist'),
               ],
             ),
           ),
@@ -439,94 +386,142 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
     );
   }
 
-  Widget _buildEnhancedInstructionStep(
-    int stepNumber,
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-  ) {
+  /// Shown when there's been no recent wearable data at all (>5min old).
+  Widget _buildOfflineMessage(WearableDevice device) {
+    final lastBattery = device.batteryLevel;
+    final lowBatteryWhileOffline =
+        lastBattery != null && lastBattery < DeviceService.lowBatteryThreshold;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: Colors.white.withOpacity(0.9),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Step number and icon
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.3), width: 2),
+          Text(
+            'No recent wearable data. Please check if the device is '
+            'charged, powered on, worn, and connected to WiFi.',
+            style: TextStyle(
+                color: Colors.grey.shade800, fontSize: 12, height: 1.3),
+          ),
+          if (lowBatteryWhileOffline) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Device may be low battery. Please charge the wearable.',
+              style: TextStyle(
+                color: Colors.orange.shade800,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            child: Stack(
-              children: [
-                Center(
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 20,
-                  ),
-                ),
-                Positioned(
-                  top: 2,
-                  right: 2,
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        stepNumber.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          const SizedBox(width: 16),
-
-          // Text content
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    height: 1.2,
-                  ),
-                ),
-              ],
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textColor,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionStep(String number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: Colors.blue.shade100,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: TextStyle(
+                color: Colors.blue.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.blue.shade800,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorMessage() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red[200]!),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red[600], size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -540,326 +535,85 @@ class _DeviceLinkingScreenState extends State<DeviceLinkingScreen>
       child: Column(
         children: [
           const SizedBox(height: 20),
-
-          // Welcome section
-          _buildWelcomeSection(user?.firstName ?? 'User'),
+          Text(
+            'Hello, ${user?.firstName ?? 'User'}! \u{1F44B}',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 30),
-
-          // Device illustration
-          _buildDeviceIllustration(),
+          Container(
+            width: 150,
+            height: 150,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.primaryColor.withOpacity(0.1),
+                  AppTheme.primaryColor.withOpacity(0.05),
+                ],
+              ),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.2),
+                width: 2,
+              ),
+            ),
+            child: const Icon(Icons.watch, size: 80, color: AppTheme.primaryColor),
+          ),
           const SizedBox(height: 30),
-
-          // Error message
           if (_errorMessage != null) _buildErrorMessage(),
-
-          // Instructions
-          _buildInstructions(),
-
-          // Bottom padding
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.admin_panel_settings, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'No device assigned',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No device assigned. Please contact your administrator/psychologist.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.blue[800],
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-  Widget _buildWelcomeSection(String firstName) {
-    return Column(
-      children: [
-        Text(
-          'Hello, $firstName! 👋',
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textColor,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Please contact your administrator for device assignment.',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey[600],
-            height: 1.4,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDeviceIllustration() {
-    return Container(
-      width: 150,
-      height: 150,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.1),
-            AppTheme.primaryColor.withOpacity(0.05),
-          ],
-        ),
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
-          width: 2,
-        ),
-      ),
-      child: const Icon(
-        Icons.watch,
-        size: 80,
-        color: AppTheme.primaryColor,
-      ),
-    );
-  }
-
-  Widget _buildErrorMessage() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red[200]!),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, color: Colors.red[600], size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _errorMessage!,
-              style: TextStyle(
-                color: Colors.red[700],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInstructions() {
-    return Column(
-      children: [
-        // Admin Assignment Notice
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.blue.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[100],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.admin_panel_settings,
-                        color: Colors.blue[700], size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: const Text(
-                      'Admin Device Assignment Required',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Please contact your administrator to have a wearable device assigned to your account.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.blue[800],
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.blue[100],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[300]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info, color: Colors.blue[700], size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'This ensures proper device management and security for all users.',
-                        style: TextStyle(
-                          color: Colors.blue[800],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Device Setup Information (for when device is assigned)
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[50],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.settings,
-                        color: Colors.orange[600], size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Device Setup Requirements',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textColor,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'When your device is assigned, ensure:',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildInstructionStep(
-                '1',
-                'Turn ON your AnxieEase wearable device',
-                Icons.power_settings_new,
-                Colors.green,
-              ),
-              const SizedBox(height: 12),
-              _buildInstructionStep(
-                '2',
-                'Enable WiFi hotspot on your phone named "AnxieEase"',
-                Icons.wifi_tethering,
-                Colors.blue,
-              ),
-              const SizedBox(height: 12),
-              _buildInstructionStep(
-                '3',
-                'Set hotspot password to "11112222"',
-                Icons.lock,
-                Colors.purple,
-              ),
-              const SizedBox(height: 12),
-              _buildInstructionStep(
-                '4',
-                'Wait for device to connect to your hotspot (LCD shows "connected")',
-                Icons.bluetooth_connected,
-                Colors.teal,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInstructionStep(String number, String text,
-      [IconData? icon, Color? iconColor]) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: iconColor?.withOpacity(0.1) ??
-                AppTheme.primaryColor.withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: iconColor ?? AppTheme.primaryColor,
-              width: 2,
-            ),
-          ),
-          child: Center(
-            child: icon != null
-                ? Icon(icon,
-                    size: 16, color: iconColor ?? AppTheme.primaryColor)
-                : Text(
-                    number,
-                    style: TextStyle(
-                      color: iconColor ?? AppTheme.primaryColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+  String _formatDateTime(DateTime? dt) {
+    if (dt == null) return 'Never';
+    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

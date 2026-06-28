@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'supabase_service.dart';
+import 'device_service.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
@@ -28,6 +29,7 @@ class NotificationService extends ChangeNotifier {
   static const int duplicateWindowMinutes = 30; // 30 minute window
 
   final SupabaseService _supabaseService = SupabaseService();
+  final DeviceService _deviceService = DeviceService();
   DatabaseReference? _firebaseRef;
   String? _currentDeviceId;
   String _currentSeverity = 'unknown';
@@ -523,6 +525,19 @@ class NotificationService extends ChangeNotifier {
       // Notify listeners if any data changed
       if (shouldNotifyListeners) {
         notifyListeners();
+      }
+
+      // Ownership + staleness guard: never trigger an anxiety alert or
+      // write an anxiety_records row from data that isn't actually live.
+      // Reuses DeviceService's shared status (same /current path, same
+      // thresholds) instead of re-deriving its own. This is the actual
+      // automatic anxiety_records write path, so it's the most important
+      // place for this check in the whole app.
+      if (!_deviceService.hasLinkedDevice ||
+          _deviceService.connectionStatus != DeviceConnectionStatus.live) {
+        debugPrint(
+            '🔇 Suppressing anxiety notification -- device data is not live (status: ${_deviceService.connectionStatus})');
+        return;
       }
 
       // Handle notifications:

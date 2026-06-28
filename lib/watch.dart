@@ -69,6 +69,41 @@ class _WatchScreenState extends State<WatchScreen>
     return null;
   }
 
+  /// Called when DeviceService's state changes -- either a full
+  /// unassignment, or a live/stale/offline status flip from its periodic
+  /// re-check (which is what actually catches "the device went silent",
+  /// since neither service has a new Firebase event to react to in that
+  /// case).
+  void _onDeviceServiceChanged() {
+    if (!mounted) return;
+
+    if (!_deviceService.hasLinkedDevice) {
+      if (!_hasRealtimeData) return;
+      debugPrint(
+          '📱 WatchScreen: Device no longer assigned to current user -- stopping live readings');
+      _iotDataSubscription?.cancel();
+      _iotDataSubscription = null;
+      setState(() {
+        isConnected = false;
+        _hasRealtimeData = false;
+        heartRateValue = null;
+        bodyTempValue = null;
+      });
+      return;
+    }
+
+    // Still assigned, but the live/stale/offline status may have changed
+    // (e.g. the device stopped sending data). Re-sync isConnected and
+    // rebuild so the status badge/messages reflect it immediately.
+    final nowLive =
+        _deviceService.connectionStatus == DeviceConnectionStatus.live;
+    if (nowLive != isConnected) {
+      setState(() {
+        isConnected = nowLive;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -113,6 +148,11 @@ class _WatchScreenState extends State<WatchScreen>
       _iotSensorService = Provider.of<IoTSensorService>(context, listen: false);
       _deviceService = DeviceService();
 
+      // React if DeviceService detects this user has been unassigned/
+      // reassigned away from their device mid-session (see
+      // _onDeviceServiceChanged below).
+      _deviceService.addListener(_onDeviceServiceChanged);
+
       // Check if device is setup (you can modify this logic based on your app's requirements)
       await _checkDeviceSetup();
 
@@ -144,27 +184,41 @@ class _WatchScreenState extends State<WatchScreen>
           // Test Firebase connection by doing a one-time read
           _testFirebaseConnection();
 
-          // Listen to real-time current data updates - SIMPLIFIED VERSION
+          // Listen to real-time current data updates
           _iotDataSubscription = _currentDataRef.onValue.listen((event) {
+            // Ownership guard: if DeviceService has since detected we're
+            // no longer assigned to this device, ignore the event rather
+            // than display it. _onDeviceServiceChanged already updates
+            // the UI state for this case.
+            if (!_deviceService.hasLinkedDevice) {
+              debugPrint(
+                  '📱 WatchScreen: Ignoring device update -- no device currently linked');
+              return;
+            }
+
             if (event.snapshot.value != null) {
               try {
                 final data = event.snapshot.value as Map<dynamic, dynamic>;
                 debugPrint('📱 WatchScreen: Raw Firebase data: $data');
 
+                // Always record the latest known values -- never hide the
+                // last reading. Whether it's labeled live/stale/offline
+                // comes from DeviceService.connectionStatus (it watches
+                // this same path and applies the shared thresholds), not
+                // from a second, independently-thresholded check here.
                 setState(() {
-                  // Simply extract and display all data without any suppression logic
                   heartRateValue = _asDouble(data['heartRate']) ?? 0.0;
                   bodyTempValue = _asDouble(data['bodyTemp']) ?? 0.0;
                   ambientTempValue = _asDouble(data['ambientTemp']) ?? 0.0;
                   batteryPercentage = _asDouble(data['battPerc']) ?? 0.0;
                   isDeviceWorn = _asBool(data['worn']) ?? false;
 
-                  // Always show as connected if we receive any data
-                  isConnected = true;
+                  isConnected = _deviceService.connectionStatus ==
+                      DeviceConnectionStatus.live;
                   _hasRealtimeData = true;
 
                   debugPrint(
-                      '📱 WatchScreen: HR: $heartRateValue, Temp: $bodyTempValue, Battery: $batteryPercentage%, Worn: $isDeviceWorn');
+                      '📱 WatchScreen: HR: $heartRateValue, Temp: $bodyTempValue, Battery: $batteryPercentage%, Worn: $isDeviceWorn, status: ${_deviceService.connectionStatus}');
                 });
 
                 // Update pulse animation
@@ -487,6 +541,7 @@ class _WatchScreenState extends State<WatchScreen>
     _iotDataSubscription?.cancel();
 
     _iotSensorService.removeListener(_onIoTSensorChanged);
+    _deviceService.removeListener(_onDeviceServiceChanged);
     super.dispose();
   }
 
@@ -555,10 +610,17 @@ class _WatchScreenState extends State<WatchScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Low battery warning banner
-            if (isConnected &&
+            // Offline message (no recent data at all)
+            if (_deviceService.connectionStatus ==
+                DeviceConnectionStatus.offline)
+              _buildOfflineMessage(),
+
+            // Low battery warning banner (only while still receiving data --
+            // once offline, _buildOfflineMessage() covers the battery note)
+            if (_deviceService.connectionStatus !=
+                    DeviceConnectionStatus.offline &&
                 batteryPercentage != null &&
-                batteryPercentage! <= 10 &&
+                batteryPercentage! < DeviceService.lowBatteryThreshold &&
                 batteryPercentage! > 0)
               _buildLowBatteryWarning(),
 
@@ -834,7 +896,18 @@ class _WatchScreenState extends State<WatchScreen>
                         ),
                       ],
                     ),
-                    // Removed 'Last seen' per request
+                    if (_getLastUpdatedText() != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _getLastUpdatedText()!,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -892,12 +965,13 @@ class _WatchScreenState extends State<WatchScreen>
 
   Widget _buildBatteryStatusItem() {
     final battery = batteryPercentage ?? 0;
-    final isDisconnected = !isConnected;
-    final isLowBattery = battery <= 10;
-    final isCriticalBattery = battery <= 5;
-    // Treat disconnected or stale as offline for battery display
-    final isBatteryOffline =
-        isDisconnected || batteryPercentage == null || battery <= 0;
+    final isLowBattery = battery < DeviceService.lowBatteryThreshold;
+    final isCriticalBattery = battery < DeviceService.criticalBatteryThreshold;
+    // No battery reading yet, or no recent data at all -- show unknown
+    // rather than implying a live, healthy battery level.
+    final isBatteryOffline = batteryPercentage == null ||
+        battery <= 0 ||
+        _deviceService.connectionStatus == DeviceConnectionStatus.offline;
 
     // Choose appropriate icon and color
     IconData batteryIcon;
@@ -997,9 +1071,71 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
+  /// Shown when there's been no recent wearable data at all (>5min old).
+  /// Last known values stay visible elsewhere on screen, clearly labeled
+  /// as stale -- this banner is purely the "what to do" guidance.
+  Widget _buildOfflineMessage() {
+    final lastBattery = batteryPercentage;
+    final lowBatteryWhileOffline = lastBattery != null &&
+        lastBattery > 0 &&
+        lastBattery < DeviceService.lowBatteryThreshold;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[400]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.cloud_off, color: Colors.grey[700], size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'No recent wearable data. Please check if the device is '
+                  'charged, powered on, worn, and connected to WiFi.',
+                  style: TextStyle(
+                    color: Colors.grey[800],
+                    fontSize: 13,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (lowBatteryWhileOffline) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.battery_alert, color: Colors.orange[800], size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Device may be low battery. Please charge the wearable.',
+                    style: TextStyle(
+                      color: Colors.orange[800],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildLowBatteryWarning() {
     final battery = batteryPercentage ?? 0;
-    final isCritical = battery <= 5;
+    final isCritical = battery <= DeviceService.criticalBatteryThreshold;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1288,17 +1424,44 @@ class _WatchScreenState extends State<WatchScreen>
   }
 
   Color _getConnectionStatusColor() {
-    if (!isConnected) return Colors.red;
-
-    if (!isDeviceWorn) return Colors.orange;
-    return Colors.green;
+    switch (_deviceService.connectionStatus) {
+      case DeviceConnectionStatus.live:
+        return isDeviceWorn ? Colors.green : Colors.orange;
+      case DeviceConnectionStatus.stale:
+        return Colors.orange;
+      case DeviceConnectionStatus.offline:
+        return Colors.red;
+    }
   }
 
   String _getConnectionStatusText() {
-    if (!isConnected) return 'Disconnected';
+    switch (_deviceService.connectionStatus) {
+      case DeviceConnectionStatus.live:
+        return isDeviceWorn ? 'Live' : 'Disconnected';
+      case DeviceConnectionStatus.stale:
+        return 'Stale - Reconnecting';
+      case DeviceConnectionStatus.offline:
+        return 'Offline';
+    }
+  }
 
-    if (!isDeviceWorn) return 'Disconnected';
-    return 'Active';
+  /// "Last updated" text shown whenever status isn't live, so a stale or
+  /// offline reading is never presented without saying how old it is.
+  String? _getLastUpdatedText() {
+    final status = _deviceService.connectionStatus;
+    if (status == DeviceConnectionStatus.live) return null;
+
+    final lastReading = _deviceService.lastReadingTime;
+    if (lastReading == null) return null;
+
+    final age = DateTime.now().difference(lastReading);
+    final label = status == DeviceConnectionStatus.stale
+        ? 'Last known reading'
+        : 'No recent wearable data';
+
+    if (age.inMinutes < 1) return '$label • just now';
+    if (age.inMinutes < 60) return '$label • ${age.inMinutes}m ago';
+    return '$label • ${age.inHours}h ago';
   }
 
   // Last seen formatter removed because the label was removed from UI

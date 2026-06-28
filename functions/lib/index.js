@@ -1225,9 +1225,12 @@ exports.monitorDeviceBattery = functions.database
             console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ""}`);
             return null;
         }
-        // Check if we need to send notifications
-        const shouldSendLowBattery = afterBattery <= 10 && beforeBattery > 10;
-        const shouldSendCriticalBattery = afterBattery <= 5 && beforeBattery > 5;
+        // Check if we need to send notifications.
+        // Thresholds match the shared spec used across the app: low <20%,
+        // critical <10% (lib/services/device_service.dart's
+        // DeviceService.lowBatteryThreshold / criticalBatteryThreshold).
+        const shouldSendLowBattery = afterBattery < 20 && beforeBattery >= 20;
+        const shouldSendCriticalBattery = afterBattery < 10 && beforeBattery >= 10;
         const shouldSendDeviceOffline = afterBattery === 0 && beforeBattery > 0;
         if (shouldSendDeviceOffline) {
             await sendBatteryNotification(fcmToken, "device_offline", afterBattery, deviceId);

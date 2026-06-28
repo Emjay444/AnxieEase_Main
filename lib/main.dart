@@ -33,7 +33,6 @@ import 'services/appointment_service.dart';
 import 'breathing_screen.dart';
 import 'grounding_screen.dart';
 import 'screens/device_linking_screen.dart';
-import 'screens/device_setup_wizard_screen.dart';
 import 'screens/baseline_recording_screen.dart';
 import 'screens/health_dashboard_screen.dart';
 import 'search.dart';
@@ -935,7 +934,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         '/breathing': (context) => const BreathingScreen(),
         '/grounding': (context) => const GroundingScreen(),
         '/device-linking': (context) => const DeviceLinkingScreen(),
-        '/device-setup-wizard': (context) => const DeviceSetupWizardScreen(),
         '/baseline-recording': (context) => const BaselineRecordingScreen(),
         '/health-dashboard': (context) => const HealthDashboardScreen(),
       },

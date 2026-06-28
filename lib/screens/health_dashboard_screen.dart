@@ -510,7 +510,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Please link a wearable device to view your health metrics.',
+              'No device assigned. Please contact your administrator/psychologist.',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[600],
@@ -526,7 +526,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
                 backgroundColor: AppTheme.primaryColor,
               ),
               child: const Text(
-                'Link Device',
+                'Go Back',
                 style: TextStyle(color: Colors.white),
               ),
             ),
@@ -612,6 +612,18 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
                         ),
                       ],
                     ),
+                    if (_getLastUpdatedText() != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          _getLastUpdatedText()!,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -641,6 +653,48 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
               ),
             ],
           ),
+          if (_deviceService.connectionStatus ==
+              DeviceConnectionStatus.offline)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: _buildOfflineMessage(metrics),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown when there's been no recent wearable data at all (>5min old).
+  Widget _buildOfflineMessage(HealthMetrics? metrics) {
+    final lastBattery = metrics?.batteryLevel;
+    final lowBatteryWhileOffline =
+        lastBattery != null && lastBattery < DeviceService.lowBatteryThreshold;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'No recent wearable data. Please check if the device is '
+            'charged, powered on, worn, and connected to WiFi.',
+            style: TextStyle(color: Colors.white, fontSize: 12, height: 1.3),
+          ),
+          if (lowBatteryWhileOffline) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Device may be low battery. Please charge the wearable.',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1045,17 +1099,45 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen>
   }
 
   Color _getConnectionStatusColor(HealthMetrics? metrics) {
-    if (metrics == null) return Colors.grey;
-    if (!metrics.isConnected) return Colors.red;
-    if (!metrics.isWorn) return Colors.orange;
-    return Colors.green;
+    switch (_deviceService.connectionStatus) {
+      case DeviceConnectionStatus.live:
+        if (metrics?.isWorn == false) return Colors.orange;
+        return Colors.green;
+      case DeviceConnectionStatus.stale:
+        return Colors.orange;
+      case DeviceConnectionStatus.offline:
+        return Colors.grey;
+    }
   }
 
   String _getConnectionStatusText(HealthMetrics? metrics) {
-    if (metrics == null) return 'Unknown';
-    if (!metrics.isConnected) return 'Disconnected';
-    if (!metrics.isWorn) return 'Not Worn';
-    return 'Active';
+    switch (_deviceService.connectionStatus) {
+      case DeviceConnectionStatus.live:
+        if (metrics?.isWorn == false) return 'Not Worn';
+        return 'Live';
+      case DeviceConnectionStatus.stale:
+        return 'Stale - Reconnecting';
+      case DeviceConnectionStatus.offline:
+        return 'Offline';
+    }
+  }
+
+  /// "Last updated" text shown whenever status isn't live.
+  String? _getLastUpdatedText() {
+    final status = _deviceService.connectionStatus;
+    if (status == DeviceConnectionStatus.live) return null;
+
+    final lastReading = _deviceService.lastReadingTime;
+    if (lastReading == null) return null;
+
+    final age = DateTime.now().difference(lastReading);
+    final label = status == DeviceConnectionStatus.stale
+        ? 'Last known reading'
+        : 'No recent wearable data';
+
+    if (age.inMinutes < 1) return '$label • just now';
+    if (age.inMinutes < 60) return '$label • ${age.inMinutes}m ago';
+    return '$label • ${age.inHours}h ago';
   }
 
   Color _getHeartRateStatusColor(HeartRateStatus status) {

@@ -32,13 +32,15 @@ interface DeviceAssignment {
 }
 
 /**
- * Verifies the caller is a real, currently-valid Supabase user with
- * role = 'admin' in public.user_profiles. The caller's Firebase Auth
- * context (context.auth) has no relationship to Supabase identities in
- * this app (the mobile/web clients authenticate via Supabase, not
- * Firebase Auth), so admin status can only be established by validating
- * a genuine Supabase access token server-side -- never by trusting any
- * role the client claims to have.
+ * Verifies the caller is a real, currently-valid Supabase user who has a
+ * row in public.admin_profiles (the live schema's admin/admin-granted-
+ * psychologist model -- there is no role column on a user_profiles table;
+ * that table doesn't exist). The caller's Firebase Auth context
+ * (context.auth) has no relationship to Supabase identities in this app
+ * (the mobile/web clients authenticate via Supabase, not Firebase Auth),
+ * so admin status can only be established by validating a genuine
+ * Supabase access token server-side -- never by trusting any role the
+ * client claims to have.
  */
 async function verifySupabaseAdmin(accessToken?: unknown): Promise<boolean> {
   if (
@@ -66,10 +68,12 @@ async function verifySupabaseAdmin(accessToken?: unknown): Promise<boolean> {
     const uid = userData?.id;
     if (!uid || typeof uid !== "string") return false;
 
-    // Look up the role server-side with the service-role key (bypasses
+    // Look up admin status server-side with the service-role key (bypasses
     // RLS by design -- this is the one trusted, server-only check).
-    const roleResp = await fetchImpl(
-      `${SUPABASE_URL}/rest/v1/user_profiles?id=eq.${uid}&select=role`,
+    // Admin/admin-granted-psychologist status = a row exists in
+    // admin_profiles for this user id.
+    const adminResp = await fetchImpl(
+      `${SUPABASE_URL}/rest/v1/admin_profiles?id=eq.${uid}&select=id`,
       {
         headers: {
           apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -77,10 +81,10 @@ async function verifySupabaseAdmin(accessToken?: unknown): Promise<boolean> {
         },
       }
     );
-    if (!roleResp.ok) return false;
+    if (!adminResp.ok) return false;
 
-    const rows = await roleResp.json();
-    const isAdmin = Array.isArray(rows) && rows[0]?.role === "admin";
+    const rows = await adminResp.json();
+    const isAdmin = Array.isArray(rows) && rows.length > 0;
     if (isAdmin) {
       console.log(`✅ Verified admin request from Supabase user ${uid}`);
     }
@@ -370,6 +374,39 @@ export const assignDeviceToUser = functions.https.onCall(
           );
         }
 
+        // If the device is already assigned to a different user, close
+        // out their session and clear the stale current reading BEFORE
+        // applying the new assignment, so it starts clean. Without this,
+        // a direct re-assign (skipping "unassign") would leave the prior
+        // user's session open and their last reading visible to the
+        // next user.
+        const priorAssignmentSnapshot = await assignmentRef.once("value");
+        if (priorAssignmentSnapshot.exists()) {
+          const priorAssignment =
+            priorAssignmentSnapshot.val() as DeviceAssignment;
+          if (
+            priorAssignment.assignedUser &&
+            priorAssignment.assignedUser !== userId
+          ) {
+            if (priorAssignment.activeSessionId) {
+              await db
+                .ref(
+                  `/users/${priorAssignment.assignedUser}/sessions/${priorAssignment.activeSessionId}/metadata`
+                )
+                .update({
+                  endTime: admin.database.ServerValue.TIMESTAMP,
+                  status: "completed",
+                  unassignedBy: context.auth.uid,
+                  endReason: "device_reassigned",
+                });
+            }
+            await db.ref("/devices/AnxieEase001/current").remove();
+            console.log(
+              `🧹 Closed prior session and cleared stale current reading for ${priorAssignment.assignedUser} before reassigning to ${userId}`
+            );
+          }
+        }
+
         const assignmentData: DeviceAssignment = {
           assignedUser: userId,
           activeSessionId: sessionId,
@@ -421,6 +458,11 @@ export const assignDeviceToUser = functions.https.onCall(
         }
 
         await assignmentRef.remove();
+
+        // Clear the stale current reading so it can't be displayed or
+        // copied under whichever user is assigned next.
+        await db.ref("/devices/AnxieEase001/current").remove();
+
         console.log(`✅ Device unassigned`);
         return { success: true, message: "Device unassigned successfully" };
       } else {

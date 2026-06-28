@@ -38,6 +38,36 @@ catch (_d) { }
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increased from 2 to prevent duplicates)
 // Sustained anxiety detection configuration
 const MIN_SUSTAINED_DURATION_SECONDS = 120; // Require 120+ seconds of continuous elevation (2 minutes) - prevents false alerts from sudden HR spikes
+// Shared staleness cutoff -- matches the mobile app's "Offline" threshold
+// (lib/services/device_service.dart's DeviceService.staleThreshold). A
+// reading older than this must never drive anxiety detection or alerts.
+const STALE_READING_CUTOFF_MS = 5 * 60 * 1000; // 5 minutes
+/**
+ * Age of a device reading in milliseconds, or null if the timestamp is
+ * missing/unparseable. Accepts either a numeric epoch-millis timestamp or
+ * the device's "YYYY-MM-DD HH:MM:SS" string format.
+ */
+function getReadingAgeMs(rawTimestamp) {
+    if (rawTimestamp == null)
+        return null;
+    let readingMs;
+    if (typeof rawTimestamp === "number") {
+        readingMs = rawTimestamp;
+    }
+    else if (typeof rawTimestamp === "string") {
+        const normalized = rawTimestamp.includes(" ") && !rawTimestamp.includes("T")
+            ? rawTimestamp.replace(" ", "T")
+            : rawTimestamp;
+        const parsed = new Date(normalized).getTime();
+        if (isNaN(parsed))
+            return null;
+        readingMs = parsed;
+    }
+    else {
+        return null;
+    }
+    return Date.now() - readingMs;
+}
 /**
  * Real-time anxiety detection with user-specific analysis
  * Triggers when device current data is updated
@@ -54,6 +84,15 @@ exports.realTimeSustainedAnxietyDetection = functions.database
         !afterData.heartRate ||
         typeof afterData.heartRate !== "number") {
         console.log("❌ Missing or invalid heart rate data");
+        return null;
+    }
+    // STALENESS GUARD: never run sustained-anxiety analysis, send an FCM
+    // alert, or persist a notification from a reading that's already old.
+    // Protects against delayed/buffered writes and leftover data from a
+    // device that has gone offline.
+    const readingAgeMs = getReadingAgeMs(afterData.timestamp);
+    if (readingAgeMs !== null && readingAgeMs > STALE_READING_CUTOFF_MS) {
+        console.log(`🔇 Ignoring stale reading for device ${deviceId} (${Math.round(readingAgeMs / 1000)}s old) -- skipping anxiety detection`);
         return null;
     }
     try {

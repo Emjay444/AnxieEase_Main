@@ -8,13 +8,19 @@ import '../services/supabase_service.dart';
 import '../services/iot_sensor_service.dart';
 import '../services/anxiety_detection_engine.dart';
 import '../services/notification_service.dart';
-import '../services/device_sharing_service.dart';
 import '../utils/logger.dart';
+
+/// Shared live/stale/offline status for the linked wearable, derived from
+/// how old the last received reading is. Used consistently across
+/// DeviceService, WatchScreen, the health dashboard, and the My Device
+/// screen so they never disagree about whether data is "live".
+enum DeviceConnectionStatus { live, stale, offline }
 
 /// Comprehensive device service for wearable device integration
 ///
 /// Handles:
-/// - Device linking to user accounts
+/// - Reading the device assigned to the current user (admin-assigned only;
+///   this service never links/unlinks/assigns a device itself)
 /// - Resting heart rate baseline collection
 /// - Real-time data streaming via Firebase
 /// - Permanent data storage via Supabase
@@ -27,13 +33,31 @@ class DeviceService extends ChangeNotifier {
   final IoTSensorService _iotSensorService = IoTSensorService();
   final AnxietyDetectionEngine _anxietyDetectionEngine =
       AnxietyDetectionEngine();
-  final NotificationService _notificationService = NotificationService();
-  final DeviceSharingService _deviceSharingService = DeviceSharingService();
 
   // Firebase references
   FirebaseDatabase get _realtimeDb => FirebaseDatabase.instance;
   DatabaseReference? _deviceRef;
   StreamSubscription<DatabaseEvent>? _realtimeSubscription;
+
+  // Periodically re-confirms the linked device is still assigned to the
+  // current user in Supabase (the authoritative source -- Firebase's
+  // assignment mirror depends on a webhook that may not be configured).
+  // Lets a patient's app detect being unassigned/reassigned mid-session
+  // instead of indefinitely showing whatever the device streams next.
+  Timer? _assignmentCheckTimer;
+  static const Duration _assignmentCheckInterval = Duration(seconds: 30);
+
+  // Shared live/stale/offline thresholds. Public so other screens
+  // (watch.dart, health_dashboard_screen.dart, device_linking_screen.dart)
+  // can reference the exact same cutoffs instead of hardcoding their own.
+  static const Duration liveThreshold = Duration(seconds: 60);
+  static const Duration staleThreshold = Duration(minutes: 5);
+  static const double lowBatteryThreshold = 20;
+  static const double criticalBatteryThreshold = 10;
+
+  DeviceConnectionStatus _connectionStatus = DeviceConnectionStatus.offline;
+  Timer? _statusCheckTimer;
+  static const Duration _statusCheckInterval = Duration(seconds: 15);
 
   // Current state
   WearableDevice? _linkedDevice;
@@ -59,6 +83,13 @@ class DeviceService extends ChangeNotifier {
   bool get isRecordingBaseline => _isRecordingBaseline;
   bool get hasLinkedDevice => _linkedDevice != null;
   bool get hasBaseline => _currentBaseline != null;
+
+  /// Shared live/stale/offline status -- see DeviceConnectionStatus.
+  DeviceConnectionStatus get connectionStatus => _connectionStatus;
+
+  /// Timestamp of the last received reading (kept even once stale/offline,
+  /// so the UI can still show "last known reading" + when it was taken).
+  DateTime? get lastReadingTime => _currentMetrics?.timestamp;
 
   // Anxiety detection getters
   bool get canDetectAnxiety => hasBaseline && hasLinkedDevice;
@@ -89,97 +120,23 @@ class DeviceService extends ChangeNotifier {
       // Load user's linked device and baseline
       await _loadLinkedDevice();
 
+      // Recompute live/stale/offline on a timer so status changes even
+      // when no new Firebase event arrives (e.g. the device just stops
+      // sending entirely -- the previous behaviour froze on whatever the
+      // last event set, showing "live" forever).
+      _statusCheckTimer?.cancel();
+      _statusCheckTimer = Timer.periodic(
+        _statusCheckInterval,
+        (_) => _recomputeConnectionStatus(),
+      );
+      _recomputeConnectionStatus();
+
       _isInitialized = true;
       AppLogger.d('DeviceService: Initialized successfully');
 
       notifyListeners();
     } catch (e) {
       AppLogger.e('DeviceService: Initialization failed', e as Object?);
-      rethrow;
-    }
-  }
-
-  /// Link a device to the current user's account
-  Future<bool> linkDevice(String deviceId) async {
-    try {
-      AppLogger.d('DeviceService: Linking device $deviceId');
-
-      // Validate device ID format
-      if (!_isValidDeviceId(deviceId)) {
-        throw ArgumentError(
-            'Invalid device ID format. Expected format: AnxieEaseXXX');
-      }
-
-      // Normalize device ID case (AnxieEase should have proper case)
-      String normalizedDeviceId = deviceId;
-      if (deviceId.toLowerCase().startsWith('anxieease')) {
-        normalizedDeviceId = 'AnxieEase${deviceId.substring(9)}';
-      }
-
-      // For testing phase: Create user-specific virtual device ID
-      final virtualDeviceId =
-          await _deviceSharingService.getCurrentUserDeviceId();
-      AppLogger.d(
-          'DeviceService: Using virtual device ID for testing: $virtualDeviceId');
-
-      AppLogger.d('DeviceService: Normalized device ID: $normalizedDeviceId');
-
-      final user = _supabaseService.client.auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      // Check if device exists and is available
-      final existingDevice = await _getDeviceFromDatabase(normalizedDeviceId);
-      if (existingDevice != null &&
-          existingDevice.isLinked &&
-          existingDevice.userId != user.id) {
-        throw Exception('Device is already linked to another user');
-      }
-
-      // Validate device is actually connected and sending data
-      AppLogger.d('DeviceService: Validating device connection...');
-      final isConnected = await _validateDeviceConnection(normalizedDeviceId);
-      if (!isConnected) {
-        throw Exception('Device not found or not connected. Please ensure:\n'
-            '1. Device is turned ON\n'
-            '2. Device is connected to "AnxieEase" WiFi hotspot\n'
-            '3. Hotspot password is "11112222"\n'
-            '4. Device is actively sending data to the system');
-      }
-
-      // Create or update device record (use normalized device ID for Supabase)
-      final device = WearableDevice(
-        deviceId: normalizedDeviceId, // Use actual device ID for DB consistency
-        deviceName:
-            _deviceSharingService.getDeviceDisplayName(normalizedDeviceId),
-        userId: user.id,
-        linkedAt: DateTime.now(),
-        isActive: true,
-        lastSeenAt: DateTime.now(),
-      );
-
-      // Save to Supabase with real device ID
-      await _saveDeviceToDatabase(device);
-
-      // Set up Firebase real-time streaming (use virtual device ID for user separation)
-      await _setupRealtimeStreaming(virtualDeviceId);
-
-      _linkedDevice = device;
-
-      // Update notification service to use the virtual device reference for Firebase
-      _notificationService.updateDeviceReference(virtualDeviceId);
-
-      // Reset anxiety detection engine for new device
-      _anxietyDetectionEngine.reset();
-
-      notifyListeners();
-
-      AppLogger.d(
-          'DeviceService: Device $normalizedDeviceId linked successfully (entered as: $deviceId)');
-      return true;
-    } catch (e) {
-      AppLogger.e('DeviceService: Failed to link device', e as Object?);
       rethrow;
     }
   }
@@ -427,13 +384,12 @@ class DeviceService extends ChangeNotifier {
           'DeviceService: Saving baseline to databases: ${baseline.baselineHR.toStringAsFixed(1)} BPM');
       try {
         await _saveBaselineToDatabase(baseline);
-        await _saveDeviceToDatabase(updatedDevice);
 
         // Also save baseline to Firebase for Cloud Functions access
         await _saveBaselineToFirebase(baseline);
 
         AppLogger.d(
-            'DeviceService: Baseline and device saved to all databases successfully');
+            'DeviceService: Baseline saved to all databases successfully');
       } catch (e) {
         AppLogger.w(
             'DeviceService: Database save failed, baseline available locally: $e');
@@ -480,120 +436,6 @@ class DeviceService extends ChangeNotifier {
 
     // IoT sensor service is now read-only, nothing to stop
     AppLogger.d('DeviceService: Baseline cleanup complete');
-  }
-
-  /// Validate device connection by checking if it's sending data to Firebase
-  Future<bool> _validateDeviceConnection(String deviceId) async {
-    try {
-      AppLogger.d('DeviceService: Validating device: $deviceId');
-      final deviceRef = _realtimeDb.ref('devices/$deviceId');
-
-      // Check if device exists in Firebase
-      final snapshot = await deviceRef.once();
-      if (!snapshot.snapshot.exists) {
-        AppLogger.w(
-            'DeviceService: Device $deviceId not found in Firebase at path: devices/$deviceId');
-        return false;
-      }
-
-      AppLogger.d('DeviceService: Device $deviceId found in Firebase');
-
-      // Check if device has recent data
-      final currentRef = deviceRef.child('current');
-      final currentSnapshot = await currentRef.once();
-
-      if (!currentSnapshot.snapshot.exists) {
-        AppLogger.w(
-            'DeviceService: No current data for device $deviceId at path: devices/$deviceId/current');
-        return false;
-      }
-
-      AppLogger.d('DeviceService: Current data found for device $deviceId');
-
-      final data =
-          Map<String, dynamic>.from(currentSnapshot.snapshot.value as Map);
-
-      AppLogger.d(
-          'DeviceService: Device $deviceId data keys: ${data.keys.toList()}');
-      AppLogger.d(
-          'DeviceService: Device $deviceId timestamp: ${data['timestamp']}');
-      AppLogger.d(
-          'DeviceService: Device $deviceId battery: ${data['battPerc']}');
-      AppLogger.d('DeviceService: Device $deviceId status: ${data['status']}');
-
-      // Check if data is recent (within last 60 seconds for setup)
-      final timestampValue = data['timestamp'];
-      if (timestampValue != null) {
-        DateTime? dataTime;
-
-        // Handle different timestamp formats
-        if (timestampValue is int) {
-          dataTime = DateTime.fromMillisecondsSinceEpoch(timestampValue);
-        } else if (timestampValue is String) {
-          try {
-            // Try parsing as ISO string first
-            dataTime = DateTime.parse(timestampValue);
-          } catch (e) {
-            try {
-              // Try parsing as int string
-              final intValue = int.tryParse(timestampValue);
-              if (intValue != null) {
-                dataTime = DateTime.fromMillisecondsSinceEpoch(intValue);
-              }
-            } catch (e2) {
-              // Try parsing custom format like "2025-09-23 00:16:00"
-              try {
-                dataTime = DateTime.parse(timestampValue.replaceAll(' ', 'T'));
-              } catch (e3) {
-                AppLogger.w(
-                    'DeviceService: Could not parse timestamp: $timestampValue');
-              }
-            }
-          }
-        }
-
-        if (dataTime != null) {
-          final timeDifference = DateTime.now().difference(dataTime);
-
-          if (timeDifference.inSeconds > 60) {
-            AppLogger.w(
-                'DeviceService: Device $deviceId data is stale (${timeDifference.inSeconds}s old)');
-            return false;
-          }
-        }
-      }
-
-      // Determine connection status more flexibly for device setup
-      final rawConn = (data['connectionStatus'] ?? '').toString().toLowerCase();
-      final isConnectedFlag = data['isConnected'];
-      final hasVitals = (data['heartRate'] != null) || (data['spo2'] != null);
-      final hasBattery = data['battPerc'] != null;
-      final isExplicitlyDisconnected =
-          rawConn == 'disconnected' || isConnectedFlag == false;
-
-      // For device setup validation, we're more lenient:
-      // - Device just needs to be sending ANY data (not necessarily worn)
-      // - Check if device has recent timestamp and battery info
-      // - Don't require worn status during setup phase
-      final hasRecentData = timestampValue != null;
-      final deviceSendingData =
-          hasRecentData && (hasBattery || hasVitals || data.isNotEmpty);
-
-      var isConnected = !isExplicitlyDisconnected && deviceSendingData;
-
-      if (!isConnected) {
-        AppLogger.w(
-            'DeviceService: Device $deviceId appears inactive (no recent data or explicitly disconnected)');
-        return false;
-      }
-
-      AppLogger.d(
-          'DeviceService: Device $deviceId validation successful - connected, data: $deviceSendingData, battery: $hasBattery');
-      return true;
-    } catch (e) {
-      AppLogger.e('DeviceService: Device validation error', e as Object?);
-      return false;
-    }
   }
 
   /// Set up real-time data streaming from Firebase
@@ -651,6 +493,16 @@ class DeviceService extends ChangeNotifier {
 
   /// Update current health metrics from Firebase data
   void _updateCurrentMetrics(Map<String, dynamic> data) {
+    // Ownership guard: if we've been unassigned (or never linked), drop
+    // this callback instead of applying it. Protects against an in-flight
+    // event landing after _handleUnassigned() ran but before the Firebase
+    // subscription fully tears down.
+    if (_linkedDevice == null) {
+      AppLogger.d(
+          'DeviceService: Ignoring device data update -- no device currently linked');
+      return;
+    }
+
     try {
       var metrics = HealthMetrics.fromFirebase(
         data,
@@ -701,6 +553,7 @@ class DeviceService extends ChangeNotifier {
 
       _currentMetrics = metrics;
       _recentReadings.add(metrics);
+      _recomputeConnectionStatus();
 
       // Keep only last 30 readings (5 minutes worth at 10s intervals)
       if (_recentReadings.length > 30) {
@@ -1254,11 +1107,108 @@ class DeviceService extends ChangeNotifier {
         // Inform NotificationService about the current deviceId
         NotificationService().updateDeviceReference(_linkedDevice!.deviceId);
 
+        // Watch for the admin reassigning/unassigning this device away
+        // from us while the app is open.
+        _startAssignmentWatch();
+
         AppLogger.d(
             'DeviceService: Loaded linked device: ${_linkedDevice!.deviceId}');
       }
     } catch (e) {
       AppLogger.w('DeviceService: Error loading linked device: $e');
+    }
+  }
+
+  /// Start periodically re-checking that the linked device is still
+  /// assigned to the current user. Safe to call once per link; cancels
+  /// any prior timer first.
+  void _startAssignmentWatch() {
+    _assignmentCheckTimer?.cancel();
+    _assignmentCheckTimer = Timer.periodic(
+      _assignmentCheckInterval,
+      (_) => _checkStillAssigned(),
+    );
+  }
+
+  /// Re-confirm against Supabase that the linked device is still assigned
+  /// to the current user. On any ambiguous/network failure this fails
+  /// open (assumes still assigned) so a transient error never disrupts a
+  /// legitimate session -- it only acts on a definitive mismatch.
+  Future<void> _checkStillAssigned() async {
+    final device = _linkedDevice;
+    if (device == null) return;
+
+    try {
+      final user = _supabaseService.client.auth.currentUser;
+      if (user == null) return;
+
+      final response = await _supabaseService.client
+          .from('wearable_devices')
+          .select('user_id, is_active')
+          .eq('device_id', device.deviceId)
+          .maybeSingle();
+
+      final stillAssignedToMe = response != null &&
+          response['user_id'] == user.id &&
+          response['is_active'] == true;
+
+      if (!stillAssignedToMe) {
+        AppLogger.d(
+            'DeviceService: Device ${device.deviceId} no longer assigned to current user -- clearing local state');
+        await _handleUnassigned();
+      }
+    } catch (e) {
+      AppLogger.w('DeviceService: Assignment re-check failed (ignoring): $e');
+    }
+  }
+
+  /// Tear down everything tied to the now-stale assignment: stop the
+  /// realtime listener so no further callbacks can apply incoming
+  /// readings, clear the displayed metrics/device, and notify listeners
+  /// so the UI falls back to "no device assigned". Never writes to
+  /// wearable_devices -- this only reacts to a change made by an admin.
+  Future<void> _handleUnassigned() async {
+    await _realtimeSubscription?.cancel();
+    _realtimeSubscription = null;
+    _deviceRef = null;
+    _assignmentCheckTimer?.cancel();
+    _assignmentCheckTimer = null;
+
+    _linkedDevice = null;
+    _currentMetrics = null;
+    _currentBaseline = null;
+    _connectionStatus = DeviceConnectionStatus.offline;
+
+    notifyListeners();
+  }
+
+  /// Recompute live/stale/offline from the age of the last received
+  /// reading. Called periodically (every 15s) and right after any new
+  /// reading is applied, so status changes are caught both when data
+  /// keeps arriving (now possibly stale-on-arrival) and when it stops
+  /// arriving altogether (the device went silent).
+  void _recomputeConnectionStatus() {
+    final DeviceConnectionStatus next;
+    final ts = _currentMetrics?.timestamp;
+
+    if (_linkedDevice == null || ts == null) {
+      next = DeviceConnectionStatus.offline;
+    } else {
+      final age = DateTime.now().difference(ts);
+      if (age <= liveThreshold) {
+        next = DeviceConnectionStatus.live;
+      } else if (age <= staleThreshold) {
+        next = DeviceConnectionStatus.stale;
+      } else {
+        next = DeviceConnectionStatus.offline;
+      }
+    }
+
+    if (next != _connectionStatus) {
+      AppLogger.d(
+          'DeviceService: Connection status changed: $_connectionStatus -> $next');
+      _connectionStatus = next;
+      notifyListeners();
     }
   }
 
@@ -1284,35 +1234,6 @@ class DeviceService extends ChangeNotifier {
       }
     } catch (e) {
       AppLogger.w('DeviceService: Error loading baseline data: $e');
-    }
-  }
-
-  /// Get device from Supabase database
-  Future<WearableDevice?> _getDeviceFromDatabase(String deviceId) async {
-    try {
-      final response = await _supabaseService.client
-          .from('wearable_devices')
-          .select()
-          .eq('device_id', deviceId)
-          .maybeSingle();
-
-      return response != null ? WearableDevice.fromSupabase(response) : null;
-    } catch (e) {
-      AppLogger.w('DeviceService: Error fetching device from database: $e');
-      return null;
-    }
-  }
-
-  /// Save device to Supabase database
-  Future<void> _saveDeviceToDatabase(WearableDevice device) async {
-    try {
-      await _supabaseService.client
-          .from('wearable_devices')
-          .upsert(device.toSupabase());
-    } catch (e) {
-      AppLogger.e(
-          'DeviceService: Error saving device to database', e as Object?);
-      rethrow;
     }
   }
 
@@ -1465,70 +1386,7 @@ class DeviceService extends ChangeNotifier {
     }
   }
 
-  /// Unlink current device
-  Future<void> unlinkDevice() async {
-    if (_linkedDevice == null) return;
-
-    try {
-      AppLogger.d('DeviceService: Unlinking device ${_linkedDevice!.deviceId}');
-
-      // Update device in database
-      await _supabaseService.client.from('wearable_devices').update({
-        'user_id': null,
-        'is_active': false,
-        'linked_at': null,
-      }).eq('device_id', _linkedDevice!.deviceId);
-
-      // Stop real-time streaming
-      await _realtimeSubscription?.cancel();
-      _realtimeSubscription = null;
-      _deviceRef = null;
-
-      // Clear current state
-      _linkedDevice = null;
-      _currentMetrics = null;
-      _currentBaseline = null;
-
-      // Reset notification service to default device (fallback)
-      _notificationService.updateDeviceReference('AnxieEase001');
-
-      notifyListeners();
-      AppLogger.d('DeviceService: Device unlinked successfully');
-    } catch (e) {
-      AppLogger.e('DeviceService: Failed to unlink device', e as Object?);
-      rethrow;
-    }
-  }
-
-  /// Validate device ID format
-  bool _isValidDeviceId(String deviceId) {
-    // Expected format: AnxieEaseXXX where XXX can be letters or numbers (case insensitive)
-    final regex = RegExp(r'^anxieease[a-z0-9]{3}$', caseSensitive: false);
-    return regex.hasMatch(deviceId);
-  }
-
   // Removed unused _getDeviceDisplayName helper
-
-  /// Update device battery level
-  Future<void> updateDeviceBatteryLevel(double batteryLevel) async {
-    if (_linkedDevice == null) return;
-
-    try {
-      await _supabaseService.client.from('wearable_devices').update({
-        'battery_level': batteryLevel,
-        'last_seen_at': DateTime.now().toIso8601String(),
-      }).eq('device_id', _linkedDevice!.deviceId);
-
-      _linkedDevice = _linkedDevice!.copyWith(
-        batteryLevel: batteryLevel,
-        lastSeenAt: DateTime.now(),
-      );
-
-      notifyListeners();
-    } catch (e) {
-      AppLogger.w('DeviceService: Error updating battery level: $e');
-    }
-  }
 
   /// Get device connection status
   bool get isDeviceConnected => _currentMetrics?.isConnected ?? false;

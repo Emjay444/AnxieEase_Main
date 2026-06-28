@@ -104,6 +104,31 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             return;
         }
         console.log("🔄 Syncing Firebase with Supabase changes...");
+        // Step 2b: If this is a reassignment to a different user, clean up
+        // the old user's state FIRST so the new assignment starts clean --
+        // clear the stale /current reading (same deletion autoCleanup.ts's
+        // cleanupCurrentData would eventually do, just applied immediately
+        // instead of waiting for its next scheduled run) and end their
+        // active session. Without this, the new user's listeners/Cloud
+        // Functions could briefly see the old user's last reading.
+        if (currentAssignment &&
+            currentAssignment.assignedUser &&
+            currentAssignment.assignedUser !== userId) {
+            const oldUserId = currentAssignment.assignedUser;
+            const oldSessionId = currentAssignment.activeSessionId;
+            await db.ref(`/devices/${deviceId}/current`).remove();
+            console.log(`🧹 Cleared stale current reading for ${deviceId} before reassigning from ${oldUserId} to ${userId}`);
+            if (oldSessionId) {
+                await db
+                    .ref(`/users/${oldUserId}/sessions/${oldSessionId}/metadata`)
+                    .update({
+                    status: "ended",
+                    endTime: admin.database.ServerValue.TIMESTAMP,
+                    endReason: "device_reassigned_by_admin_webhook",
+                });
+                console.log(`✅ Old user session ended: ${oldUserId}`);
+            }
+        }
         // Step 3: Update Firebase assignment
         const newSessionId = `session_${Date.now()}`;
         const newAssignment = {
@@ -163,23 +188,8 @@ exports.syncDeviceAssignment = functions.https.onRequest(async (req, res) => {
             });
             console.log(`✅ User session initialized: ${newSessionId}`);
         }
-        // Step 6: Clean up old user session
-        if (currentAssignment &&
-            currentAssignment.assignedUser &&
-            currentAssignment.assignedUser !== userId) {
-            const oldUserId = currentAssignment.assignedUser;
-            const oldSessionId = currentAssignment.activeSessionId;
-            if (oldSessionId) {
-                await db
-                    .ref(`/users/${oldUserId}/sessions/${oldSessionId}/metadata`)
-                    .update({
-                    status: "ended",
-                    endTime: admin.database.ServerValue.TIMESTAMP,
-                    endReason: "device_reassigned_by_admin_webhook",
-                });
-                console.log(`✅ Old user session ended: ${oldUserId}`);
-            }
-        }
+        // (Old session cleanup + /current clearing now happens earlier, in
+        // Step 2b, before the new assignment is written.)
         console.log("🎉 Webhook sync completed successfully");
         res.status(200).json({
             success: true,

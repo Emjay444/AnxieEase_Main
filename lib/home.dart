@@ -403,9 +403,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   children: [
                     _buildHealthOption(
-                      title: 'Device Assignment',
-                      subtitle: 'Connect your wearable device',
-                      icon: Icons.link,
+                      title: 'My Device',
+                      subtitle: 'View your assigned wearable',
+                      icon: Icons.watch,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.pushNamed(context, '/device-linking');
