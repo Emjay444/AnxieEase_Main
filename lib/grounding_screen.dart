@@ -572,7 +572,10 @@ class _GroundingScreenState extends State<GroundingScreen>
               ),
           ],
         ),
-        resizeToAvoidBottomInset: false,
+        // Allow the body to resize when the keyboard opens so the input
+        // screen's SingleChildScrollView can actually scroll fields above
+        // it instead of being covered or overflowing on small screens.
+        resizeToAvoidBottomInset: true,
         body: _showIntroduction
             ? _buildIntroductionScreen()
             : Container(
@@ -787,7 +790,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                                   icon: Icons.psychology,
                                   title: 'What is Grounding?',
                                   content:
-                                      'Grounding is a powerful technique that helps anchor you to the present moment when feeling overwhelmed by anxiety, stress, or intrusive thoughts.',
+                                      'Use this technique to help ground yourself during stressful moments by gently anchoring your attention to the present moment.',
                                 ),
                                 const Divider(height: 30),
                                 _buildExplanationSection(
@@ -801,7 +804,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                                   icon: Icons.favorite,
                                   title: 'Benefits',
                                   content:
-                                      '• Reduces anxiety and stress\n• Helps manage panic attacks\n• Brings you back to the present\n• Creates mental space from overwhelming thoughts\n• Can be done anywhere, anytime',
+                                      '• May help you feel calmer\n• Can support you during stressful moments\n• Brings your attention back to the present\n• Creates mental space from overwhelming thoughts\n• Can be done anywhere, anytime',
                                 ),
                                 const Divider(height: 30),
                                 _buildExplanationSection(
@@ -1366,13 +1369,14 @@ class _GroundingScreenState extends State<GroundingScreen>
   Widget _buildInputScreen() {
     final currentStep = _steps[_currentStep];
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+    // Scrollable so the "5 things you see" step (and any long text the
+    // user types) doesn't overflow on small screens, and so fields stay
+    // reachable above the keyboard instead of being covered by it.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
             Text(
               'What ${currentStep.count} thing${currentStep.count > 1 ? 's' : ''} can you ${currentStep.sense.toLowerCase()}?',
               style: const TextStyle(
@@ -1674,8 +1678,7 @@ class _GroundingScreenState extends State<GroundingScreen>
                 ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

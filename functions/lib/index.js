@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWellnessReminder = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.mapsDirections = exports.placesTextSearch = exports.placesNearbySearch = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
+exports.sendWellnessReminder = exports.checkDeviceOfflineStatus = exports.monitorDeviceBattery = exports.sendDailyBreathingReminder = exports.sendManualWellnessReminder = exports.sendWellnessReminders = exports.testCriticalNotification = exports.testSevereNotification = exports.testModerateNotification = exports.testMildNotification = exports.subscribeToAnxietyAlertsV2 = exports.onNativeAlertCreate = exports.periodicDeviceSync = exports.syncDeviceAssignment = exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = exports.mapsDirections = exports.placesTextSearch = exports.placesNearbySearch = exports.clearAnxietyRateLimits = exports.realTimeSustainedAnxietyDetection = exports.autoCreateDeviceHistory = exports.handleUserConfirmationResponse = exports.cleanupOldSessions = exports.getDeviceAssignment = exports.assignDeviceToUser = exports.monitorDuplicationPrevention = exports.removeTimestampDuplicates = exports.smartDeviceDataSync = exports.monitorFirebaseUsage = exports.aggregateHealthDataHourly = exports.cleanupHealthData = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin SDK
@@ -1196,55 +1196,180 @@ function getRandomWellnessMessage(timeCategory) {
 // BATTERY MONITORING FUNCTIONS
 // ========================
 // Cloud Function to monitor device battery levels and send FCM notifications
+// Battery/offline notification thresholds and dedupe state.
+// UI-only warning stays at <20% (lib/services/device_service.dart's
+// DeviceService.lowBatteryThreshold) -- only <=10% ever pushes a
+// notification, and only once per low-battery period.
+const CRITICAL_BATTERY_THRESHOLD = 10;
+const BATTERY_ALERT_RESET_THRESHOLD = 20;
+const OFFLINE_THRESHOLD_MS = 5 * 60 * 1000; // matches the mobile "Offline" status
+const MONITORED_DEVICE_ID = "AnxieEase001"; // single shared device, same assumption used throughout this codebase
+/**
+ * Age of a device reading in milliseconds, or null if the timestamp is
+ * missing/unparseable. Accepts either a numeric epoch-millis timestamp or
+ * the device's "YYYY-MM-DD HH:MM:SS" string format. (Mirrors the helper
+ * in realTimeSustainedAnxietyDetection.ts -- duplicated rather than
+ * cross-imported, consistent with how small helpers are kept per-file in
+ * this codebase.)
+ */
+function getReadingAgeMs(rawTimestamp) {
+    if (rawTimestamp == null)
+        return null;
+    let readingMs;
+    if (typeof rawTimestamp === "number") {
+        readingMs = rawTimestamp;
+    }
+    else if (typeof rawTimestamp === "string") {
+        const normalized = rawTimestamp.includes(" ") && !rawTimestamp.includes("T")
+            ? rawTimestamp.replace(" ", "T")
+            : rawTimestamp;
+        const parsed = new Date(normalized).getTime();
+        if (isNaN(parsed))
+            return null;
+        readingMs = parsed;
+    }
+    else {
+        return null;
+    }
+    return Date.now() - readingMs;
+}
 exports.monitorDeviceBattery = functions.database
     .ref("/devices/{deviceId}/current/battPerc")
     .onUpdate(async (change, context) => {
+    var _a;
     try {
         const deviceId = context.params.deviceId;
-        const beforeBattery = change.before.val();
         const afterBattery = change.after.val();
-        console.log(`🔋 Battery changed for device ${deviceId}: ${beforeBattery}% → ${afterBattery}%`);
-        // Only trigger notifications on battery decrease (not increase/charging)
-        if (afterBattery >= beforeBattery) {
-            console.log("✅ Battery increased or stayed same, no notification needed");
+        if (typeof afterBattery !== "number") {
             return null;
         }
-        // Get assigned user ID from device assignment
-        const assignmentRef = admin
-            .database()
-            .ref(`/devices/${deviceId}/assignment`);
-        const assignmentSnapshot = await assignmentRef.once("value");
-        let assignedUserId = null;
-        if (assignmentSnapshot.exists()) {
-            const assignmentData = assignmentSnapshot.val();
-            assignedUserId = assignmentData === null || assignmentData === void 0 ? void 0 : assignmentData.assignedUser;
+        console.log(`🔋 Battery update for device ${deviceId}: ${afterBattery}%`);
+        const db = admin.database();
+        const notifStateRef = db.ref(`/devices/${deviceId}/notificationState`);
+        const [assignmentSnapshot, notifStateSnapshot] = await Promise.all([
+            db.ref(`/devices/${deviceId}/assignment`).once("value"),
+            notifStateRef.once("value"),
+        ]);
+        const assignment = assignmentSnapshot.exists()
+            ? assignmentSnapshot.val()
+            : null;
+        const assignedUserId = (_a = assignment === null || assignment === void 0 ? void 0 : assignment.assignedUser) !== null && _a !== void 0 ? _a : null;
+        const assignedAt = typeof (assignment === null || assignment === void 0 ? void 0 : assignment.assignedAt) === "number" ? assignment.assignedAt : 0;
+        const notifState = notifStateSnapshot.val() || {};
+        const lastCriticalAt = typeof notifState.lastCriticalBatteryAlertAt === "number"
+            ? notifState.lastCriticalBatteryAlertAt
+            : 0;
+        // Only honour the "already sent" flag if it was set during the
+        // CURRENT assignment period -- a stale flag left over from a
+        // previous patient must never suppress notifying the new one.
+        const alreadySentForThisAssignment = notifState.criticalBatteryAlertSent === true &&
+            lastCriticalAt >= assignedAt;
+        // Reset eligibility once battery recovers above the safe threshold.
+        if (afterBattery > BATTERY_ALERT_RESET_THRESHOLD &&
+            notifState.criticalBatteryAlertSent === true) {
+            await notifStateRef.update({ criticalBatteryAlertSent: false });
+            console.log(`🔋 Device ${deviceId} battery recovered to ${afterBattery}% -- reset critical battery alert flag`);
         }
-        // Get user FCM token for this device (with user validation)
+        // 20% stays UI-only (mobile shows its own low-battery warning from
+        // the live reading). Only <=10% ever sends a push, and only once
+        // per low-battery period.
+        if (afterBattery > CRITICAL_BATTERY_THRESHOLD) {
+            return null;
+        }
+        if (alreadySentForThisAssignment) {
+            console.log(`🔇 Critical battery alert already sent for device ${deviceId} this assignment period -- skipping`);
+            return null;
+        }
+        if (!assignedUserId) {
+            console.log(`⚠️ Device ${deviceId} battery critical (${afterBattery}%) but not assigned to anyone -- not notifying anyone`);
+            return null;
+        }
         const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
         if (!fcmToken) {
-            console.log(`❌ No FCM token found for device ${deviceId}${assignedUserId ? ` (assigned to user: ${assignedUserId})` : ""}`);
+            console.log(`❌ No FCM token found for device ${deviceId} (assigned to user: ${assignedUserId})`);
             return null;
         }
-        // Check if we need to send notifications.
-        // Thresholds match the shared spec used across the app: low <20%,
-        // critical <10% (lib/services/device_service.dart's
-        // DeviceService.lowBatteryThreshold / criticalBatteryThreshold).
-        const shouldSendLowBattery = afterBattery < 20 && beforeBattery >= 20;
-        const shouldSendCriticalBattery = afterBattery < 10 && beforeBattery >= 10;
-        const shouldSendDeviceOffline = afterBattery === 0 && beforeBattery > 0;
-        if (shouldSendDeviceOffline) {
-            await sendBatteryNotification(fcmToken, "device_offline", afterBattery, deviceId);
-        }
-        else if (shouldSendCriticalBattery) {
-            await sendBatteryNotification(fcmToken, "critical_battery", afterBattery, deviceId);
-        }
-        else if (shouldSendLowBattery) {
-            await sendBatteryNotification(fcmToken, "low_battery", afterBattery, deviceId);
-        }
+        await sendBatteryNotification(fcmToken, afterBattery, deviceId);
+        await notifStateRef.update({
+            criticalBatteryAlertSent: true,
+            lastCriticalBatteryAlertAt: admin.database.ServerValue.TIMESTAMP,
+        });
+        console.log(`✅ Critical battery notification sent for device ${deviceId} (${afterBattery}%) to user ${assignedUserId}`);
         return null;
     }
     catch (error) {
         console.error("❌ Error in battery monitoring:", error);
+        return null;
+    }
+});
+/**
+ * Scheduled checker for "no recent wearable data" (the device may have
+ * stopped sending for any reason -- dead battery, powered off, WiFi
+ * disconnected, not worn). RTDB onWrite/onUpdate triggers can't catch
+ * this, since by definition nothing is being written anymore -- this is
+ * the scheduled equivalent of the mobile app's offline status.
+ */
+exports.checkDeviceOfflineStatus = functions.pubsub
+    .schedule("every 2 minutes")
+    .onRun(async () => {
+    var _a, _b;
+    const deviceId = MONITORED_DEVICE_ID;
+    const db = admin.database();
+    try {
+        const [currentSnapshot, assignmentSnapshot, notifStateSnapshot] = await Promise.all([
+            db.ref(`/devices/${deviceId}/current`).once("value"),
+            db.ref(`/devices/${deviceId}/assignment`).once("value"),
+            db.ref(`/devices/${deviceId}/notificationState`).once("value"),
+        ]);
+        const ageMs = getReadingAgeMs((_a = currentSnapshot.val()) === null || _a === void 0 ? void 0 : _a.timestamp);
+        if (ageMs === null) {
+            console.log(`ℹ️ Device ${deviceId} has no current timestamp yet -- skipping offline check`);
+            return null;
+        }
+        const notifStateRef = db.ref(`/devices/${deviceId}/notificationState`);
+        const notifState = notifStateSnapshot.val() || {};
+        const isOffline = ageMs > OFFLINE_THRESHOLD_MS;
+        if (!isOffline) {
+            if (notifState.offlineAlertSent === true) {
+                await notifStateRef.update({ offlineAlertSent: false });
+                console.log(`✅ Device ${deviceId} has fresh data again -- reset offline alert flag`);
+            }
+            return null;
+        }
+        const assignment = assignmentSnapshot.exists()
+            ? assignmentSnapshot.val()
+            : null;
+        const assignedUserId = (_b = assignment === null || assignment === void 0 ? void 0 : assignment.assignedUser) !== null && _b !== void 0 ? _b : null;
+        const assignedAt = typeof (assignment === null || assignment === void 0 ? void 0 : assignment.assignedAt) === "number" ? assignment.assignedAt : 0;
+        const lastOfflineAt = typeof notifState.lastOfflineAlertAt === "number"
+            ? notifState.lastOfflineAlertAt
+            : 0;
+        // Same cross-assignment safety as the battery check: a flag set
+        // during a previous patient's assignment must never suppress
+        // notifying the currently assigned patient.
+        const alreadySentForThisPeriod = notifState.offlineAlertSent === true && lastOfflineAt >= assignedAt;
+        if (alreadySentForThisPeriod) {
+            return null; // already notified for this offline period -- no spam
+        }
+        if (!assignedUserId) {
+            console.log(`⚠️ Device ${deviceId} offline (${Math.round(ageMs / 1000)}s) but not assigned to anyone -- not notifying anyone`);
+            return null;
+        }
+        const fcmToken = await getDeviceFCMToken(deviceId, assignedUserId);
+        if (!fcmToken) {
+            console.log(`❌ No FCM token for offline device ${deviceId} (assigned to user: ${assignedUserId})`);
+            return null;
+        }
+        await sendOfflineNotification(fcmToken, deviceId);
+        await notifStateRef.update({
+            offlineAlertSent: true,
+            lastOfflineAlertAt: admin.database.ServerValue.TIMESTAMP,
+        });
+        console.log(`📴 Offline notification sent for device ${deviceId} to user ${assignedUserId} (${Math.round(ageMs / 1000)}s since last reading)`);
+        return null;
+    }
+    catch (error) {
+        console.error(`❌ Error checking offline status for device ${deviceId}:`, error);
         return null;
     }
 });
@@ -1284,14 +1409,18 @@ async function getDeviceFCMToken(deviceId, userId) {
         return null;
     }
 }
-// Helper function to send battery notifications
-async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
+/**
+ * Sends the single critical-battery push notification (<=10% only -- 20%
+ * is UI-only on the mobile side, never pushed from here).
+ */
+async function sendBatteryNotification(fcmToken, batteryLevel, deviceId) {
+    const title = "Wearable Battery Critically Low";
+    const body = "Your AnxieEase wearable battery is critically low. Please charge your device.";
     try {
-        const { title, body, icon } = getBatteryNotificationContent(type, batteryLevel);
         const message = {
             token: fcmToken,
             data: {
-                type: type,
+                type: "critical_battery",
                 device_id: deviceId,
                 battery_level: batteryLevel.toString(),
                 title: title,
@@ -1299,19 +1428,16 @@ async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
                 timestamp: Date.now().toString(),
                 click_action: "FLUTTER_NOTIFICATION_CLICK",
             },
-            // For background notifications to show properly
             notification: {
                 title: title,
                 body: body,
-                icon: icon,
+                icon: "battery_alert",
             },
             android: {
                 priority: "high",
                 notification: {
                     icon: "ic_notification",
-                    color: type === "critical_battery" || type === "device_offline"
-                        ? "#FF0000"
-                        : "#FF6B00",
+                    color: "#FF0000",
                     priority: "high",
                     defaultSound: true,
                     channelId: "device_alerts_channel",
@@ -1320,10 +1446,7 @@ async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
             apns: {
                 payload: {
                     aps: {
-                        alert: {
-                            title: title,
-                            body: body,
-                        },
+                        alert: { title: title, body: body },
                         sound: "default",
                         badge: 1,
                     },
@@ -1331,39 +1454,59 @@ async function sendBatteryNotification(fcmToken, type, batteryLevel, deviceId) {
             },
         };
         const response = await admin.messaging().send(message);
-        console.log(`✅ Battery notification sent successfully: ${type} for device ${deviceId}`, response);
+        console.log(`✅ Critical battery notification sent for device ${deviceId}`, response);
     }
     catch (error) {
-        console.error(`❌ Error sending battery notification: ${type} for device ${deviceId}:`, error);
+        console.error(`❌ Error sending critical battery notification for device ${deviceId}:`, error);
     }
 }
-// Helper function to get battery notification content
-function getBatteryNotificationContent(type, batteryLevel) {
-    switch (type) {
-        case "low_battery":
-            return {
-                title: "⚠️ Low Battery Warning",
-                body: `Your wearable device battery is at ${batteryLevel}%. Consider charging soon.`,
-                icon: "battery_warning",
-            };
-        case "critical_battery":
-            return {
-                title: "🔋 Critical Battery Alert!",
-                body: `Your wearable device battery is at ${batteryLevel}%. Please charge immediately!`,
-                icon: "battery_alert",
-            };
-        case "device_offline":
-            return {
-                title: "📱 Device Disconnected",
-                body: "Your wearable device has gone offline due to low battery. Charge and reconnect to resume monitoring.",
+/**
+ * Sends the "no recent wearable data" push notification.
+ */
+async function sendOfflineNotification(fcmToken, deviceId) {
+    const title = "Wearable Offline";
+    const body = "No recent wearable data received. Please check if the device is charged, powered on, worn, and connected to WiFi.";
+    try {
+        const message = {
+            token: fcmToken,
+            data: {
+                type: "device_offline",
+                device_id: deviceId,
+                title: title,
+                body: body,
+                timestamp: Date.now().toString(),
+                click_action: "FLUTTER_NOTIFICATION_CLICK",
+            },
+            notification: {
+                title: title,
+                body: body,
                 icon: "device_offline",
-            };
-        default:
-            return {
-                title: "Battery Alert",
-                body: `Device battery: ${batteryLevel}%`,
-                icon: "battery_unknown",
-            };
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    icon: "ic_notification",
+                    color: "#FF6B00",
+                    priority: "high",
+                    defaultSound: true,
+                    channelId: "device_alerts_channel",
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        alert: { title: title, body: body },
+                        sound: "default",
+                        badge: 1,
+                    },
+                },
+            },
+        };
+        const response = await admin.messaging().send(message);
+        console.log(`✅ Offline notification sent for device ${deviceId}`, response);
+    }
+    catch (error) {
+        console.error(`❌ Error sending offline notification for device ${deviceId}:`, error);
     }
 }
 /**

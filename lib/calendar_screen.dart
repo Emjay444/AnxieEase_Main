@@ -5,89 +5,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'dart:async'; // For Timer debounce
 import 'services/supabase_service.dart';
-
-class DailyLog {
-  final List<String> feelings;
-  final double stressLevel;
-  final List<String> symptoms;
-  final DateTime timestamp;
-  final String? journal;
-  String? id; // Added Supabase ID field (for wellness_logs)
-  String? journalId; // Separate journal ID for journals table
-  bool sharedWithPsychologist; // Journal sharing status
-
-  DailyLog({
-    required this.feelings,
-    required this.stressLevel,
-    required this.symptoms,
-    required this.timestamp,
-    this.journal,
-    this.id,
-    this.journalId,
-    this.sharedWithPsychologist = false,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'feelings': feelings,
-        'stressLevel': stressLevel,
-        'symptoms': symptoms,
-        'timestamp': timestamp.toIso8601String(),
-        'journal': journal,
-        'id': id,
-        'journalId': journalId,
-        'sharedWithPsychologist': sharedWithPsychologist,
-      };
-
-  factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
-        feelings: List<String>.from(json['feelings']),
-        stressLevel: json['stressLevel'].toDouble(),
-        symptoms: List<String>.from(json['symptoms']),
-        timestamp: DateTime.parse(json['timestamp']),
-        journal: json['journal'],
-        id: json['id'],
-        journalId: json['journalId'],
-        sharedWithPsychologist: json['sharedWithPsychologist'] ?? false,
-      );
-
-  // Convert to format for Supabase wellness_logs table
-  Map<String, dynamic> toSupabaseJson() => {
-        'date': DateFormat('yyyy-MM-dd').format(timestamp), // SQL DATE format
-        'feelings': feelings,
-        'stress_level': stressLevel,
-        'symptoms': symptoms,
-        'journal': journal,
-        'timestamp': timestamp.toIso8601String(), // SQL TIMESTAMPTZ format
-        if (id != null) 'id': id, // Include ID if it exists for updates
-      };
-
-  // Save this log to Supabase
-  Future<void> syncWithSupabase() async {
-    try {
-      final supabaseService = SupabaseService();
-      final data = toSupabaseJson();
-
-      // Print debug info to help troubleshoot
-      print(
-          'Syncing log with Supabase. Has ID? ${id != null ? 'Yes: $id' : 'No'}');
-      print('Log data: $data');
-
-      if (id != null) {
-        // If we have an ID, this is an update operation
-        print('Performing UPDATE operation for log with ID: $id');
-        await supabaseService.updateWellnessLog(data);
-        print('Successfully updated log in Supabase with ID: $id');
-      } else {
-        // If no ID, this is a create operation
-        print('Performing CREATE operation for new log');
-        await supabaseService.saveWellnessLog(data);
-        print('Successfully created new log in Supabase');
-      }
-    } catch (e) {
-      print('Error syncing log to Supabase: $e');
-      rethrow;
-    }
-  }
-}
+import 'models/daily_log.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -198,6 +116,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           stressLevel: log['stress_level'].toDouble(),
           symptoms: List<String>.from(log['symptoms']),
           timestamp: DateTime.parse(log['timestamp']),
+          date: date, // The server's `date` column - the selected day
           journal: log['journal'],
           id: log['id'],
         );
@@ -249,6 +168,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               stressLevel: 0,
               symptoms: [],
               timestamp: DateTime.parse(journalEntry['created_at']),
+              date: journalDate, // The journal's own `date` column
               journal: journalEntry['content'],
               journalId: journalEntry['id'],
               sharedWithPsychologist:
@@ -492,6 +412,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             stressLevel: stressLevel,
             symptoms: selectedSymptoms,
             timestamp: existingLog.timestamp,
+            date: existingLog.date, // Preserve the originally selected day
             journal: journal,
             id: existingLog.id, // Preserve the existing ID for update
           );
@@ -510,6 +431,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           stressLevel: stressLevel,
           symptoms: selectedSymptoms,
           timestamp: DateTime.now(),
+          // Tie this entry to the day the user selected on the calendar,
+          // not to "now" - selectedDate may be a past day being logged
+          // retroactively.
+          date: selectedDate,
           journal: journal,
         );
         _dailyLogs[normalizedDate]!.add(logToSync!);
@@ -518,18 +443,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     _saveLogsDebounced();
 
-    // Sync with Supabase
-    try {
+    print(
+        'Starting Supabase sync for ${existingLog != null ? 'EXISTING' : 'NEW'} log');
+    if (logToSync != null) {
       print(
-          'Starting Supabase sync for ${existingLog != null ? 'EXISTING' : 'NEW'} log');
-      if (logToSync != null) {
-        print(
-            'Log to sync - Has ID: ${logToSync!.id != null ? 'Yes: ${logToSync!.id}' : 'No'}, Timestamp: ${logToSync!.timestamp}');
-        await logToSync!.syncWithSupabase();
-        print('Supabase sync completed successfully');
-      }
+          'Log to sync - Has ID: ${logToSync!.id != null ? 'Yes: ${logToSync!.id}' : 'No'}, Timestamp: ${logToSync!.timestamp}');
+      // Let failures propagate: the caller's .catchError shows a real error
+      // message instead of a false "saved successfully" toast.
+      await logToSync!.syncWithSupabase();
+      print('Supabase sync completed successfully');
+    }
 
-      // Create notifications for mood logs
+    // Notifications are a best-effort side effect of saving a log - a
+    // failure here must not be reported as a log-save failure, since the
+    // log itself already saved successfully above.
+    try {
       final DateTime notificationTime =
           (logToSync?.timestamp ?? DateTime.now()).toUtc();
 
@@ -619,7 +547,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error syncing with Supabase: $e');
+      debugPrint('Error creating notification for log: $e');
     }
   }
 
@@ -969,7 +897,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           existingLog != null ? 'Update Log' : 'Save Log',
                       showDelete: existingLog != null,
                       onDelete: existingLog != null
-                          ? () => _deleteLog(_selectedDay!, 0)
+                          ? () {
+                              // Resolve the entry's real position in the
+                              // day's log list - never assume index 0, since
+                              // a day can hold multiple logs.
+                              final dayLogs =
+                                  _dailyLogs[_normalizeDate(_selectedDay!)];
+                              final logIndex =
+                                  dayLogs?.indexOf(existingLog) ?? -1;
+                              if (logIndex != -1) {
+                                _deleteLog(_selectedDay!, logIndex);
+                              }
+                            }
                           : null,
                     ),
                   ],
@@ -2101,6 +2040,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ],
                         ),
                       ),
+                      const Spacer(),
+                      // Edit / delete menu for this entry
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert_rounded,
+                            color: Colors.grey[400], size: 20),
+                        padding: EdgeInsets.zero,
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showFeelingsDialog(log);
+                          } else if (value == 'delete') {
+                            _deleteLog(date, index);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: ListTile(
+                              leading: Icon(Icons.edit_outlined),
+                              title: Text('Edit'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: ListTile(
+                              leading:
+                                  Icon(Icons.delete_outline, color: Colors.red),
+                              title: Text('Delete',
+                                  style: TextStyle(color: Colors.red)),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ],
@@ -2281,6 +2254,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2302,6 +2276,53 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           fontWeight: FontWeight.w500,
                           color: Color(0xFF1A1A1A),
                           letterSpacing: -0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Edit / share / delete menu for this journal entry
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert_rounded,
+                        color: Colors.grey[400], size: 20),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _editJournalEntry(log, date);
+                      } else if (value == 'share') {
+                        _toggleJournalShare(log, date);
+                      } else if (value == 'delete') {
+                        _deleteJournalEntry(log, date);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Edit'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'share',
+                        child: ListTile(
+                          leading: Icon(log.sharedWithPsychologist
+                              ? Icons.lock_outline
+                              : Icons.share_outlined),
+                          title: Text(log.sharedWithPsychologist
+                              ? 'Make Private'
+                              : 'Share with Psychologist'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading:
+                              Icon(Icons.delete_outline, color: Colors.red),
+                          title: Text('Delete',
+                              style: TextStyle(color: Colors.red)),
+                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ],
@@ -2557,353 +2578,262 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // Add a method to add or edit journal entries for existing logs
-  void _addJournalToExistingLog(DailyLog log) {
-    // Prevent editing logs for future dates
-    if (_selectedDay != null && _isFutureDate(_selectedDay!)) {
-      _showFutureDateError();
+  // Edit an existing standalone journal entry (journals table row).
+  void _editJournalEntry(DailyLog log, DateTime date) {
+    if (log.journalId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This journal entry is still syncing - try again in a moment'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return;
     }
 
-    TextEditingController journalController =
-        TextEditingController(text: log.journal);
-    int charCount = log.journal?.length ?? 0;
-    int wordCount = log.journal?.trim().isEmpty ?? true
-        ? 0
-        : log.journal!.trim().split(RegExp(r'\s+')).length;
-
-    void updateCounts(String text) {
-      charCount = text.length;
-      wordCount =
-          text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
-    }
+    final TextEditingController journalController =
+        TextEditingController(text: log.journal ?? '');
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                height: MediaQuery.of(context).size.height * 0.85,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              children: [
+                _buildModalHeader('Edit Journal'),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: TextField(
+                      controller: journalController,
+                      maxLines: null,
+                      expands: true,
+                      autofocus: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: InputDecoration(
+                        hintText: 'Write your thoughts here...',
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        contentPadding: const EdgeInsets.all(16),
+                      ),
+                      style: const TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ),
                 ),
-                child: Column(
-                  children: [
-                    _buildModalHeader('Update Your Journal'),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Icon(Icons.edit_rounded,
-                                      size: 18, color: Colors.purple.shade700),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'Update your thoughts',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.purple.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 18),
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: Colors.purple.withOpacity(0.4),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Stack(
-                                  children: [
-                                    TextField(
-                                      controller: journalController,
-                                      maxLines: null,
-                                      expands: true,
-                                      onChanged: (val) {
-                                        setState(() {
-                                          updateCounts(val);
-                                        });
-                                      },
-                                      textAlignVertical: TextAlignVertical.top,
-                                      decoration: InputDecoration(
-                                        hintText: 'Write your thoughts here...',
-                                        hintStyle: TextStyle(
-                                            color: Colors.purple.shade200),
-                                        border: InputBorder.none,
-                                        contentPadding:
-                                            const EdgeInsets.fromLTRB(
-                                                18, 18, 18, 50),
-                                      ),
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.black87,
-                                        height: 1.55,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      left: 14,
-                                      bottom: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.08),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          '$wordCount words',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.blue.shade600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 14,
-                                      bottom: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              Colors.purple.withOpacity(0.08),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          '$charCount chars',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.purple.shade600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final newText = journalController.text.trim();
+                        if (newText.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Journal cannot be empty')),
+                          );
+                          return;
+                        }
+                        Navigator.pop(context);
+                        _saveJournalEdit(log, date, newText);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Save Changes',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, -2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                _updateJournal(log, journalController.text);
-                                Navigator.pop(context);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.purple,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                elevation: 2,
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.save_rounded,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    wordCount > 0
-                                        ? 'Save Journal ($wordCount words)'
-                                        : 'Save Journal',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            );
-          },
+              ],
+            ),
+          ),
         );
       },
     );
   }
 
-  void _updateJournal(DailyLog log, String journalText) {
-    final normalizedDate = _normalizeDate(log.timestamp);
-
-    // Check if the date exists in _dailyLogs
-    if (_dailyLogs[normalizedDate] == null) {
-      print('Warning: No logs found for date $normalizedDate');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error: Unable to find the log to update'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final index = _dailyLogs[normalizedDate]!
-        .indexWhere((l) => l.timestamp == log.timestamp);
-
-    if (index != -1) {
-      print(
-          'Updating journal for log with ID: ${log.id}, timestamp: ${log.timestamp}');
-
-      // Create updated log with preserved ID
-      final updatedLog = DailyLog(
-        feelings: log.feelings,
-        stressLevel: log.stressLevel,
-        symptoms: log.symptoms,
-        timestamp: log.timestamp,
-        journal: journalText.isEmpty ? null : journalText,
-        id: log.id, // Preserve the ID for updating
-      );
-
-      setState(() {
-        _dailyLogs[normalizedDate]![index] = updatedLog;
-      });
-
-      _saveLogsDebounced();
-
-      // Also sync with Supabase
-      _syncJournalUpdate(updatedLog);
-    } else {
-      print(
-          'Warning: Could not find log to update journal at timestamp: ${log.timestamp}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error: Unable to find the specific log to update'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // Separate method for syncing journal updates to handle errors properly
-  Future<void> _syncJournalUpdate(DailyLog updatedLog) async {
+  // Persist an edited journal entry against its journals-table row, then
+  // update the matching local entry by journalId (not by list position).
+  Future<void> _saveJournalEdit(
+      DailyLog log, DateTime date, String newText) async {
     try {
-      print(
-          'Syncing updated journal with Supabase. ID: ${updatedLog.id ?? "None"}, Timestamp: ${updatedLog.timestamp}');
-      await updatedLog.syncWithSupabase();
+      await _supabaseService.updateJournal(
+        journalId: log.journalId!,
+        content: newText,
+      );
 
-      // Also sync journal content via the dedicated journals table
-      try {
-        final dateForJournal = updatedLog.timestamp;
-        final existingJournals =
-            await _supabaseService.getJournalsForDate(dateForJournal);
-
-        if (updatedLog.journal == null || updatedLog.journal!.isEmpty) {
-          // If journal cleared, delete existing journal entry for this date (if any)
-          if (existingJournals.isNotEmpty) {
-            final journalId = existingJournals.first['id'] as String;
-            await _supabaseService.deleteJournal(journalId);
-            // Clear journalId locally as well
-            setState(() {
-              updatedLog.journalId = null;
-            });
-          }
-        } else {
-          // Upsert journal for this date
-          if (existingJournals.isNotEmpty) {
-            final journalId = existingJournals.first['id'] as String;
-            await _supabaseService.updateJournal(
-              journalId: journalId,
-              content: updatedLog.journal,
-            );
-            setState(() {
-              updatedLog.journalId = journalId;
-            });
-          } else {
-            final created = await _supabaseService.saveJournal(
-              content: updatedLog.journal!,
-              date: dateForJournal,
-            );
-            setState(() {
-              updatedLog.journalId = created['id'];
-            });
-          }
-        }
-      } catch (e) {
-        print('Warning: Journal sync skipped/failed: $e');
+      final normalizedDate = _normalizeDate(date);
+      final dayLogs = _dailyLogs[normalizedDate];
+      final idx =
+          dayLogs?.indexWhere((l) => l.journalId == log.journalId) ?? -1;
+      if (dayLogs != null && idx != -1) {
+        setState(() {
+          dayLogs[idx] = DailyLog(
+            feelings: log.feelings,
+            stressLevel: log.stressLevel,
+            symptoms: log.symptoms,
+            timestamp: log.timestamp,
+            date: log.date,
+            journal: newText,
+            id: log.id,
+            journalId: log.journalId,
+            sharedWithPsychologist: log.sharedWithPsychologist,
+          );
+        });
+        _saveLogsDebounced();
       }
 
-      // Show success message based on whether journal was added, updated, or cleared
       if (mounted) {
-        String message;
-        if (updatedLog.journal == null || updatedLog.journal!.isEmpty) {
-          message = 'Journal cleared successfully';
-        } else {
-          message = 'Journal updated successfully';
-        }
-
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
+          const SnackBar(
+            content: Text('Journal updated successfully'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      print('Error syncing journal with Supabase: $e');
-
-      // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating journal: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Delete a standalone journal entry, scoped to its journalId so only the
+  // tapped row is removed - never another entry on the same day.
+  void _deleteJournalEntry(DailyLog log, DateTime date) {
+    if (log.journalId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This journal entry is still syncing - try again in a moment'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Journal'),
+        content:
+            const Text('Are you sure you want to delete this journal entry?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _performDeleteJournal(log, date);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performDeleteJournal(DailyLog log, DateTime date) async {
+    try {
+      await _supabaseService.deleteJournal(log.journalId!);
+
+      final normalizedDate = _normalizeDate(date);
+      setState(() {
+        _dailyLogs[normalizedDate]
+            ?.removeWhere((l) => l.journalId == log.journalId);
+        if (_dailyLogs[normalizedDate]?.isEmpty ?? false) {
+          _dailyLogs.remove(normalizedDate);
+        }
+      });
+      _saveLogsDebounced();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Journal deleted successfully'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting journal: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Explicit share/unshare toggle - never flips automatically.
+  Future<void> _toggleJournalShare(DailyLog log, DateTime date) async {
+    if (log.journalId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This journal entry is still syncing - try again in a moment'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final newValue = !log.sharedWithPsychologist;
+    try {
+      await _supabaseService.toggleJournalSharing(log.journalId!, newValue);
+      setState(() {
+        log.sharedWithPsychologist = newValue;
+      });
+      _saveLogsDebounced();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newValue
+                ? 'Journal shared with psychologist'
+                : 'Journal is now private'),
+            backgroundColor: newValue ? Colors.green : Colors.grey.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating sharing: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -3340,6 +3270,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         stressLevel: 0, // Default stress level
         symptoms: [], // Empty list for symptoms
         timestamp: DateTime.now(),
+        date: _selectedDay!, // Tie this entry to the selected calendar day
         journal: journalText,
         sharedWithPsychologist: sharedWithPsychologist,
       );

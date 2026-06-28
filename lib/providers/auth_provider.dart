@@ -244,7 +244,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       if (userProfile != null) {
         debugPrint('✅ Found existing user profile for: ${user.email}');
-        // Ensure required fields exist (email may not be in user_profiles)
+        // Ensure required fields exist (email may not be in the users row)
         final enriched = Map<String, dynamic>.from(userProfile);
         enriched['email'] ??= user.email ?? '';
         // If first_name is missing but full_name exists, derive first_name

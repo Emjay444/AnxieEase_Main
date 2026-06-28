@@ -53,70 +53,57 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     super.dispose();
   }
 
-  // NEW: Determine severity from detection data (fallback to mild)
+  static const _validSeverities = {'mild', 'moderate', 'severe', 'critical'};
+
+  // Determine severity, preferring the structured `detectionData['severity']`
+  // field (sourced from the backend's severity calculation, the
+  // `[severity]` message prefix, or the FCM/local-notification payload --
+  // see notifications_screen.dart's `_determineSeverity`, which this
+  // mirrors) over title/message keyword matching. Title/message parsing is
+  // kept only as a fallback for legacy notifications that predate the
+  // structured field, so it must never override a structured value that's
+  // actually present.
   String _getSeverity() {
-    // First try to extract from titles (most reliable for test notifications)
+    final structured =
+        widget.detectionData['severity']?.toString().toLowerCase();
+    if (structured != null && _validSeverities.contains(structured)) {
+      return structured;
+    }
+
+    // Legacy fallback: extract from title text.
     final title1 =
         (widget.detectionData['title']?.toString() ?? '').toLowerCase();
     final title2 = widget.title.toLowerCase();
     final combinedTitle = '$title1 $title2';
 
-    // Also check message for severity prefix [severity]
+    if (combinedTitle.contains('critical')) {
+      return 'critical';
+    } else if (combinedTitle.contains('severe') ||
+        combinedTitle.contains('are you okay')) {
+      return 'severe';
+    } else if (combinedTitle.contains('moderate') ||
+        combinedTitle.contains('checking in')) {
+      return 'moderate';
+    } else if (combinedTitle.contains('mild') ||
+        combinedTitle.contains('gentle')) {
+      return 'mild';
+    }
+
+    // Legacy fallback: extract from a `[severity]` message prefix.
     final message =
         (widget.detectionData['message']?.toString() ?? widget.message)
             .toLowerCase();
-
-    String? titleSeverity;
-    // Check titles first
-    if (combinedTitle.contains('critical')) {
-      titleSeverity = 'critical';
-    } else if (combinedTitle.contains('severe') ||
-        combinedTitle.contains('are you okay')) {
-      titleSeverity = 'severe';
-    } else if (combinedTitle.contains('moderate') ||
-        combinedTitle.contains('checking in')) {
-      titleSeverity = 'moderate';
-    } else if (combinedTitle.contains('mild') ||
-        combinedTitle.contains('gentle')) {
-      titleSeverity = 'mild';
+    if (message.contains('[critical]')) {
+      return 'critical';
+    } else if (message.contains('[severe]')) {
+      return 'severe';
+    } else if (message.contains('[moderate]')) {
+      return 'moderate';
+    } else if (message.contains('[mild]')) {
+      return 'mild';
     }
 
-    // If not found in title, check message for [severity] prefix
-    if (titleSeverity == null) {
-      if (message.contains('[critical]')) {
-        titleSeverity = 'critical';
-      } else if (message.contains('[severe]')) {
-        titleSeverity = 'severe';
-      } else if (message.contains('[moderate]')) {
-        titleSeverity = 'moderate';
-      } else if (message.contains('[mild]')) {
-        titleSeverity = 'mild';
-      }
-    }
-
-    // Then try the database field as backup (though it won't work without the column)
-    String? dbSeverity =
-        widget.detectionData['severity']?.toString().toLowerCase();
-    if (dbSeverity == 'null' || dbSeverity?.isEmpty == true) {
-      dbSeverity = null;
-    }
-
-    // Prefer title detection if found, otherwise use database
-    final finalSeverity = titleSeverity ?? dbSeverity ?? 'mild';
-
-    // Debug print to see what we're working with
-    debugPrint(
-        '🔍 Severity detection: DB=$dbSeverity | Title="$combinedTitle" | Message="$message" | Final=$finalSeverity');
-
-    switch (finalSeverity) {
-      case 'critical':
-      case 'severe':
-      case 'moderate':
-      case 'mild':
-        return finalSeverity;
-      default:
-        return 'mild';
-    }
+    return 'mild';
   }
 
   // NEW: Map severity to accent/background color (modal scheme)

@@ -1,7 +1,6 @@
 class PsychologistModel {
   final String id;
   final String name;
-  final String specialization;
   final String contactEmail;
   final String contactPhone;
   final String biography;
@@ -10,7 +9,6 @@ class PsychologistModel {
   PsychologistModel({
     required this.id,
     required this.name,
-    required this.specialization,
     required this.contactEmail,
     required this.contactPhone,
     required this.biography,
@@ -21,7 +19,6 @@ class PsychologistModel {
     return PsychologistModel(
       id: json['id'] ?? 'unknown-id',
       name: json['name'] ?? 'Unknown Psychologist',
-      specialization: json['specialization'] ?? 'Psychologist',
     // Prefer explicit contact_email; fall back to generic email or last resort placeholder
     contactEmail: (json['contact_email'] ?? json['email'] ?? '').isNotEmpty
       ? (json['contact_email'] ?? json['email'])
@@ -36,7 +33,6 @@ class PsychologistModel {
     return {
       'id': id,
       'name': name,
-      'specialization': specialization,
       'contact_email': contactEmail,
       'contact_phone': contactPhone,
       'biography': biography,

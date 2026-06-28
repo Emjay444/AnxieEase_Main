@@ -106,11 +106,30 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
               'severity': severity,
               'action':
                   isWellnessReminder ? 'open_wellness' : 'open_notifications',
-              'related_screen':
-                  isWellnessReminder ? 'breathing_screen' : 'notifications',
+              'related_screen': message.data['related_screen']?.toString() ??
+                  (isWellnessReminder ? 'breathing_screen' : 'notifications'),
               'source': 'fcm_bg_data_only',
               'category': message.data['category'] ?? 'general',
               'messageType': message.data['messageType'] ?? '',
+              // Forward the backend's confirmation/routing intent so the tap
+              // handler (onActionNotificationMethod in main.dart) sees the
+              // same context the foreground FCM listener does. Without this,
+              // requiresConfirmation defaulted to false for every
+              // backgrounded/killed anxiety alert, skipping straight to
+              // breathing/grounding instead of the check-in dialog.
+              if (message.data['requiresConfirmation'] != null)
+                'requiresConfirmation':
+                    message.data['requiresConfirmation'].toString(),
+              if (message.data['alertType'] != null)
+                'alertType': message.data['alertType'].toString(),
+              if (message.data['autoConfirm'] != null)
+                'autoConfirm': message.data['autoConfirm'].toString(),
+              if (message.data['notificationId'] != null)
+                'notificationId': message.data['notificationId'].toString(),
+              if (message.data['related_id'] != null)
+                'related_id': message.data['related_id'].toString(),
+              if (message.data['deviceId'] != null)
+                'deviceId': message.data['deviceId'].toString(),
               if (message.data['heartRate'] != null)
                 'heartRate': message.data['heartRate'].toString(),
               if (message.data['baseline'] != null)

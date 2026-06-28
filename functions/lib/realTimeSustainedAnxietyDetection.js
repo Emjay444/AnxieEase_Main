@@ -480,6 +480,12 @@ async function sendUserAnxietyAlert(alertData) {
             return null;
         }
         const notificationContent = getUserNotificationContent(alertData);
+        // Stable per-event UUID, used as the single dedupe key across every
+        // place this alert gets persisted (server-side persistAlertToSupabase
+        // below, and the client's own insert paths once it receives/taps the
+        // FCM) -- see related_id usage in persistAlertToSupabase and
+        // SupabaseService.notificationExistsWithRelatedId.
+        const notificationId = crypto.randomUUID();
         const message = {
             token: fcmToken,
             // DATA-ONLY PAYLOAD - No 'notification' key for 100% reliability
@@ -495,6 +501,7 @@ async function sendUserAnxietyAlert(alertData) {
                 title: notificationContent.title,
                 message: notificationContent.body,
                 timestamp: Date.now().toString(),
+                notificationId: notificationId,
                 reason: alertData.reason || "Sustained elevated heart rate detected",
                 deviceId: alertData.deviceId || "",
                 color: notificationContent.color,
@@ -542,7 +549,7 @@ async function sendUserAnxietyAlert(alertData) {
         // Additionally, persist to Supabase (single source for app UI) if configured
         try {
             if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && fetchImpl) {
-                await persistAlertToSupabase(alertData);
+                await persistAlertToSupabase(Object.assign(Object.assign({}, alertData), { notificationId }));
             }
             else {
                 console.log("ℹ️ Supabase env not configured; skipping server-side Supabase insert");
@@ -571,6 +578,10 @@ async function persistAlertToSupabase(alertData) {
         message: content.body,
         type: "alert",
         related_screen: "notifications",
+        // Stable UUID shared with the FCM data payload -- lets the client check
+        // SupabaseService.notificationExistsWithRelatedId() before inserting its
+        // own copy of this same event, instead of always double-inserting.
+        related_id: alertData.notificationId || null,
         created_at: new Date().toISOString(),
     };
     const res = await fetchImpl(url, {

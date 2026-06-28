@@ -31,43 +31,6 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
     }
   }
 
-  Future<void> _assignPsychologist(String psychologistId) async {
-    try {
-      // Show a modal progress indicator without rebuilding the entire list
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFF3AA772)),
-        ),
-      );
-      await _supabaseService.assignPsychologist(psychologistId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Psychologist assigned successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // Return to previous screen and signal that a change occurred
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      Logger.error('Error assigning psychologist', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error assigning psychologist: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) Navigator.of(context, rootNavigator: true).maybePop();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,8 +131,9 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
+                      // Static UI label only - not a database field.
                       Text(
-                        psychologist.specialization,
+                        'Psychologist',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -233,22 +197,6 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
               ),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _assignPsychologist(psychologist.id),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3AA772),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Select This Psychologist'),
-              ),
             ),
           ],
         ),

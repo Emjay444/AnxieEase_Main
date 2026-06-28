@@ -5,60 +5,7 @@ import 'dart:convert';
 import 'utils/logger.dart';
 import 'services/supabase_service.dart';
 import 'package:intl/intl.dart';
-
-class DailyLog {
-  final List<String> feelings; // Moods
-  final double stressLevel;
-  final List<String> symptoms;
-  final DateTime timestamp;
-  final String? journal;
-  final String? id; // Supabase record ID
-
-  DailyLog({
-    required this.feelings,
-    required this.stressLevel,
-    required this.symptoms,
-    required this.timestamp,
-    this.journal,
-    this.id,
-  });
-
-  // Create from Hive JSON
-  factory DailyLog.fromJson(Map<dynamic, dynamic> json) {
-    return DailyLog(
-      feelings: List<String>.from(json['feelings'] ?? []),
-      stressLevel: (json['stressLevel'] ?? 5.0).toDouble(),
-      symptoms: List<String>.from(json['symptoms'] ?? []),
-      timestamp: DateTime.parse(json['timestamp']),
-      journal: json['journal'],
-      id: json['id'],
-    );
-  }
-
-  // Convert to JSON for Hive
-  Map<String, dynamic> toJson() {
-    return {
-      'feelings': feelings,
-      'stressLevel': stressLevel,
-      'symptoms': symptoms,
-      'timestamp': timestamp.toIso8601String(),
-      'journal': journal,
-      'id': id,
-    };
-  }
-
-  // Convert to JSON for Supabase
-  Map<String, dynamic> toSupabaseJson() {
-    return {
-      'date': DateFormat('yyyy-MM-dd').format(timestamp),
-      'feelings': feelings,
-      'stress_level': stressLevel,
-      'symptoms': symptoms,
-      'timestamp': timestamp.toIso8601String(),
-      'journal': journal ?? '',
-    };
-  }
-}
+import 'models/daily_log.dart';
 
 class MetricsScreen extends StatefulWidget {
   const MetricsScreen({super.key});
@@ -241,6 +188,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
               stressLevel: log['stress_level'].toDouble(),
               symptoms: List<String>.from(log['symptoms']),
               timestamp: DateTime.parse(log['timestamp']),
+              date: date, // The server's `date` column - the selected day
               journal: log['journal'],
               id: log['id'],
             );
@@ -528,9 +476,12 @@ class _MetricsScreenState extends State<MetricsScreen> {
     Map<String, int> symptomCounts = {};
     Map<String, int> moodCounts = {};
 
-    // Filter logs by selected month for symptoms and moods counting
+    // Filter logs by selected month for symptoms and moods counting.
+    // Bucket by the selected calendar day (`date`), not `timestamp` (the
+    // actual creation time) - a log backdated to yesterday must count
+    // toward yesterday even if it was created today.
     List<DailyLog> filteredLogsForCounts = uniqueLogs.where((log) {
-      final logDate = _normalizeDate(log.timestamp);
+      final logDate = _normalizeDate(log.date);
       // Monthly - filter by selected month
       final selectedMonthDate = selectedMonth.isNotEmpty
           ? DateFormat('MMMM yyyy').parse(selectedMonth)
@@ -574,9 +525,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
     // Create a map to organize unique logs by date for charts
     Map<DateTime, List<DailyLog>> uniqueLogsByDate = {};
 
-    // Distribute unique logs to their respective dates
+    // Distribute unique logs to their respective dates - use the selected
+    // calendar day (`date`), not `timestamp`, so weekly/monthly placement
+    // matches what Calendar shows for that day.
     for (var log in uniqueLogs) {
-      final date = _normalizeDate(log.timestamp);
+      final date = _normalizeDate(log.date);
       if (!uniqueLogsByDate.containsKey(date)) {
         uniqueLogsByDate[date] = [];
       }

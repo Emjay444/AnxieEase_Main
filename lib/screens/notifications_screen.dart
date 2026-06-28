@@ -10,6 +10,8 @@ import '../providers/notification_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../search.dart';
 import '../widgets/anxiety_confirmation_dialog.dart';
+import '../widgets/critical_alert_help_modal.dart';
+import '../calendar_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -350,8 +352,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (!mounted) return;
 
     // Check if this is an anxiety detection notification requiring user confirmation
-    final title = notification['title'] ?? '';
-    final message = notification['message'] ?? '';
+    final title = (notification['title'] ?? '').toString();
+    final message = (notification['message'] ?? '').toString();
+    final type = (notification['type'] ?? '').toString();
 
     // Skip confirmation for positive mood notifications
     final isPositiveMood = title.toLowerCase().contains('positive mood') ||
@@ -364,22 +367,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             (title.toLowerCase().contains('dismissed') &&
                 title.toLowerCase().contains('anxiety'));
 
-    // Check for confirmation requirements - either from FCM data or title patterns
+    // Prefer the structured signal: an 'alert' notification carrying a
+    // recognized [severity] message prefix (written by
+    // SupabaseService.createNotificationWithTimestamp) is unambiguously an
+    // anxiety alert that needs the confirmation/check-in flow. Title/message
+    // keyword matching below only matters as a fallback for legacy
+    // notifications stored before that prefix existed.
+    final isStructuredAnxietyAlert =
+        type == 'alert' && _extractSeverityFromMessage(message) != null;
+
+    // Check for confirmation requirements - either from structured fields or
+    // (for legacy notifications) title/message patterns.
     final shouldShowConfirmation = !isPositiveMood &&
         !isDismissed &&
-        (
-            // Check for caring message patterns
+        (isStructuredAnxietyAlert ||
+            // Legacy fallback: caring message patterns
             title.toLowerCase().contains('gentle check-in') ||
-                title.toLowerCase().contains('are you okay') ||
-                title.toLowerCase().contains('just checking in') ||
-                message
-                    .toLowerCase()
-                    .contains('are you experiencing any anxiety') ||
-                message.toLowerCase().contains('how are you feeling') ||
-                // Legacy patterns
-                title.contains('Anxiety Detection - Confirmation Needed') ||
-                title.contains('Anxiety Alert') ||
-                title.contains('anxiety detected'));
+            title.toLowerCase().contains('are you okay') ||
+            title.toLowerCase().contains('just checking in') ||
+            message
+                .toLowerCase()
+                .contains('are you experiencing any anxiety') ||
+            message.toLowerCase().contains('how are you feeling') ||
+            title.contains('Anxiety Detection - Confirmation Needed') ||
+            title.contains('Anxiety Alert') ||
+            title.contains('anxiety detected'));
 
     if (isDismissed) {
       // Show already dismissed dialog for dismissed notifications
@@ -399,9 +411,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // Helper method to determine severity from title and detection data
+  static const _validSeverities = {'mild', 'moderate', 'severe', 'critical'};
+
+  /// Severity recovered from the `[severity]` prefix
+  /// SupabaseService.createNotificationWithTimestamp writes into the
+  /// message at insert time. Returns null for legacy notifications stored
+  /// before that prefix existed (or for non-severity notification types),
+  /// so callers know to fall back to title/message keyword matching only
+  /// for those older rows.
+  String? _extractSeverityFromMessage(String message) {
+    final match = RegExp(r'^\[(\w+)\]').firstMatch(message.trim());
+    final candidate = match?.group(1)?.toLowerCase();
+    return (candidate != null && _validSeverities.contains(candidate))
+        ? candidate
+        : null;
+  }
+
+  // Helper method to determine severity, preferring the structured
+  // detectionData['severity'] field (sourced from the [severity] message
+  // prefix or FCM/local-notification payload) over title keyword matching.
+  // Title matching is a fallback for legacy notifications with neither.
   String _determineSeverity(String title, Map<String, dynamic> detectionData) {
-    // First try to extract from titles (more reliable for test notifications)
+    final structured = detectionData['severity']?.toString().toLowerCase();
+    if (structured != null && _validSeverities.contains(structured)) {
+      return structured;
+    }
+
+    // Legacy fallback: extract from title text (older notifications only).
     final combinedTitle =
         '${detectionData['title']?.toString() ?? ''} $title'.toLowerCase();
 
@@ -415,12 +451,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } else if (combinedTitle.contains('mild') ||
         combinedTitle.contains('gentle')) {
       return 'mild';
-    }
-
-    // Then try the database field as backup
-    final dbSeverity = detectionData['severity']?.toString().toLowerCase();
-    if (dbSeverity != null && dbSeverity != 'null' && dbSeverity.isNotEmpty) {
-      return dbSeverity;
     }
 
     return 'mild'; // default
@@ -446,7 +476,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       confidenceLevel = double.parse(match.group(1)!) / 100.0;
     }
 
-    // Create detection data from notification - use passed data if available
+    // Create detection data from notification - use passed data if available.
+    // Prefer a structured severity (passed via navigation args/detection_data,
+    // or the [severity] message prefix written at insert time) over
+    // defaulting straight to 'mild' -- the old default meant every
+    // in-app-list-loaded notification (which never carries detection_data)
+    // looked like a mild alert regardless of its real severity.
     final detectionData =
         notification['detection_data'] as Map<String, dynamic>? ??
             {
@@ -455,19 +490,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               'title': title,
               'message': message,
               'type': notification['type'] ?? 'anxiety_detection',
-              'severity': notification['severity'] ?? 'mild',
+              'severity': notification['severity'] ??
+                  _extractSeverityFromMessage(message) ??
+                  'mild',
               'alert_type': notification['alert_type'] ?? 'check_in',
             };
 
-    // Check if this is a critical alert - show detailed view directly
+    // Critical alerts skip the Yes/No confirmation dialog and open the same
+    // critical help modal used by the push/local-notification entry points
+    // (main.dart), so behavior is identical no matter how the user got
+    // here. Tapping alone does not create an anxiety_records row -- the
+    // modal only marks the notification as answered (CONFIRMED_CRITICAL)
+    // since critical severity is a definitive backend calculation, not
+    // something the user is asked to confirm.
     final severity = _determineSeverity(title, detectionData);
     if (severity == 'critical') {
-      _showNotificationDetails(
-        title,
-        message,
-        _getDisplayTime(notification['created_at']),
-        notification['type'] ?? 'alert',
-        notification,
+      await showCriticalAlertHelpModal(
+        context: context,
+        notificationTitle: title,
+        notificationMessage: message,
+        notificationId: notification['id']?.toString(),
       );
       return;
     }
@@ -2107,6 +2149,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final String type = (notification['type'] ?? '').toString();
     final String typeLower = type.toLowerCase();
     final bool isAnswered = _isNotificationAnswered(notification);
+    final String relatedScreen =
+        (notification['related_screen'] ?? '').toString();
 
     // Detect positive mood from content
     final tLower = title.toLowerCase();
@@ -2299,24 +2343,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       },
       child: InkWell(
-        // For breathing reminders and stress notifications, navigate to breathing screen
-        // For positive mood and other reminders/wellness, disable tapping
-        onTap: (!isPositiveMood && // ✅ Exclude positive mood from navigation
-                (typeLower == 'breathing_reminder' ||
-                    tLower.contains('breathing') ||
-                    tLower.contains('breathe') ||
-                    isStressMoodNotification))
+        // Prefer the explicit related_screen field over fragile title/message
+        // keyword matching when it's present - it reflects what the
+        // notification was actually about (e.g. mood-log reminders set
+        // 'calendar' or 'breathing_screen' at creation time).
+        onTap: relatedScreen == 'calendar'
             ? () async {
-                // Mark as read if unread
                 if (!isRead) {
                   await _markNotificationAsRead(notification);
                 }
-                // Navigate to breathing screen
                 if (mounted) {
-                  Navigator.pushNamed(context, '/breathing');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CalendarScreen()),
+                  );
                 }
               }
-            : (isReminder ? null : () => _handleNotificationTap(notification)),
+            // Structured related_screen, mirroring the breathing_screen
+            // branch below, so grounding reminders deep-link the same way.
+            : relatedScreen == 'grounding_screen'
+                ? () async {
+                    if (!isRead) {
+                      await _markNotificationAsRead(notification);
+                    }
+                    if (mounted) {
+                      Navigator.pushNamed(context, '/grounding');
+                    }
+                  }
+                : (!isPositiveMood && // ✅ Exclude positive mood from navigation
+                        (relatedScreen == 'breathing_screen' ||
+                            typeLower == 'breathing_reminder' ||
+                            tLower.contains('breathing') ||
+                            tLower.contains('breathe') ||
+                            isStressMoodNotification))
+                    ? () async {
+                        // Mark as read if unread
+                        if (!isRead) {
+                          await _markNotificationAsRead(notification);
+                        }
+                        // Navigate to breathing screen
+                        if (mounted) {
+                          Navigator.pushNamed(context, '/breathing');
+                        }
+                      }
+                    : (isReminder
+                        ? null
+                        : () => _handleNotificationTap(notification)),
         // Allow long-press convenience to mark reminder as read without opening anything
         onLongPress: isReminder && !isRead
             ? () => _markNotificationAsRead(notification)

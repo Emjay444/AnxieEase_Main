@@ -128,7 +128,6 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
               psychologist = PsychologistModel(
                 id: psychologist.id,
                 name: psychologist.name,
-                specialization: psychologist.specialization,
                 contactEmail: psychologist.contactEmail,
                 contactPhone: psychologist.contactPhone,
                 biography: psychologist.biography,
@@ -744,10 +743,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    if (_psychologist?.specialization != null &&
-                        _psychologist!.specialization.isNotEmpty)
+                    // Static UI label only - not a database field.
+                    if (_psychologist != null)
                       Text(
-                        _psychologist!.specialization,
+                        'Psychologist',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: 13,

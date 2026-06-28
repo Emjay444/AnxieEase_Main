@@ -2195,8 +2195,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             'title': safeNotification['title']?.toString() ?? '',
             'message': safeNotification['message']?.toString() ?? '',
             'type': safeNotification['type']?.toString() ?? 'alert',
-            'severity': _extractSeverityFromTitle(
-                safeNotification['title']?.toString() ?? ''),
+            'severity': _resolveNotificationSeverity(safeNotification),
             'createdAt': safeNotification['created_at']?.toString() ??
                 DateTime.now().toIso8601String(),
             'notificationId': safeNotification['id']?.toString(),
@@ -2208,7 +2207,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Helper function to extract severity from notification title
+  static const _validSeverities = {'mild', 'moderate', 'severe', 'critical'};
+
+  // Resolve severity for a notification row, preferring the structured
+  // `severity` column (or the `[severity]` message prefix written by
+  // SupabaseService.createNotificationWithTimestamp) over title keyword
+  // matching -- mirroring notifications_screen.dart's `_determineSeverity`.
+  // Title matching is kept only as a fallback for legacy notifications
+  // that predate the structured field.
+  String _resolveNotificationSeverity(Map<String, dynamic> notification) {
+    final structured = notification['severity']?.toString().toLowerCase();
+    if (structured != null && _validSeverities.contains(structured)) {
+      return structured;
+    }
+
+    final message = (notification['message']?.toString() ?? '').trim();
+    final prefixMatch = RegExp(r'^\[(\w+)\]').firstMatch(message);
+    final prefixSeverity = prefixMatch?.group(1)?.toLowerCase();
+    if (prefixSeverity != null && _validSeverities.contains(prefixSeverity)) {
+      return prefixSeverity;
+    }
+
+    return _extractSeverityFromTitle(notification['title']?.toString() ?? '');
+  }
+
+  // Legacy fallback: extract severity from notification title keywords.
   String _extractSeverityFromTitle(String title) {
     final titleLower = title.toLowerCase();
     if (titleLower.contains('critical') || title.contains('🚨'))

@@ -1283,6 +1283,36 @@ class SupabaseService {
     // Otherwise, fetch logs for the current user (for patients)
     final targetUserId = userId ?? user.id;
 
+    // Defense-in-depth: don't rely on RLS alone to scope this. If a caller
+    // asks for someone else's wellness logs, verify the caller is an active
+    // psychologist assigned to that exact patient first - mirrors the check
+    // already used by getPatientSharedJournals for the journals table.
+    if (targetUserId != user.id) {
+      final psychologist = await client
+          .from('psychologists')
+          .select()
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (psychologist == null) {
+        throw Exception(
+            'Only active psychologists can access another user\'s wellness logs');
+      }
+
+      final patient = await client
+          .from('users')
+          .select()
+          .eq('id', targetUserId)
+          .eq('assigned_psychologist_id', psychologist['id'])
+          .maybeSingle();
+
+      if (patient == null) {
+        throw Exception(
+            'Patient not assigned to you or patient does not exist');
+      }
+    }
+
     final response = await client
         .from('wellness_logs')
         .select()
@@ -1326,45 +1356,6 @@ class SupabaseService {
       print('Error clearing wellness logs from Supabase: $e');
       throw Exception('Failed to clear wellness logs from database');
     }
-  }
-
-  // Get all patients assigned to a psychologist
-  Future<List<Map<String, dynamic>>> getAssignedPatients() async {
-    final user = client.auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
-
-    // Check if the current user is a psychologist
-    final userProfile = await getUserProfile();
-    if (userProfile == null || userProfile['role'] != 'psychologist') {
-      throw Exception(
-          'Unauthorized. Only psychologists can access patient data.');
-    }
-
-    // In a real implementation, fetch assigned patients from the database
-    // For demonstration, return hardcoded patient data
-    return [
-      {
-        'id': 'patient-001',
-        'full_name': 'John Doe',
-        'email': 'john.doe@example.com',
-      },
-      {
-        'id': 'patient-002',
-        'full_name': 'Jane Smith',
-        'email': 'jane.smith@example.com',
-      },
-    ];
-
-    // Original implementation (commented out)
-    /*
-    final response = await client
-        .from('users')
-        .select()
-        .eq('assigned_psychologist_id', user.id)
-        .eq('role', 'patient');
-
-    return List<Map<String, dynamic>>.from(response);
-    */
   }
 
   // Get mood log statistics for a patient
@@ -1855,7 +1846,7 @@ class SupabaseService {
     final nowIso = createdAt ?? DateTime.now().toIso8601String();
     bool _isValidUuid(String s) {
       final regex = RegExp(
-          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\$');
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
       return regex.hasMatch(s);
     }
 
@@ -1944,7 +1935,7 @@ class SupabaseService {
 
     bool _isValidUuid(String s) {
       final regex = RegExp(
-          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\$');
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
       return regex.hasMatch(s);
     }
 
@@ -1972,10 +1963,24 @@ class SupabaseService {
       }
     }
 
+    // Severity has no dedicated column, so preserve it the same way
+    // createNotification() already does: a leading "[severity]" prefix on
+    // the message. This is what lets _determineSeverity()/AnxietyConfirmation
+    // dialog recover the real severity later instead of re-parsing title
+    // emoji/keywords -- previously this parameter was accepted but never
+    // used, silently dropping severity for every FCM-stored anxiety alert.
+    String finalMessage = message;
+    final normalizedSeverity = severity?.toLowerCase();
+    const validSeverities = {'mild', 'moderate', 'severe', 'critical'};
+    if (normalizedSeverity != null &&
+        validSeverities.contains(normalizedSeverity)) {
+      finalMessage = '[$normalizedSeverity] $message';
+    }
+
     Map<String, dynamic> row = {
       'user_id': user.id,
       'title': title,
-      'message': message,
+      'message': finalMessage,
       'type': normalizedType,
       'created_at': createdAt.toUtc().toIso8601String(), // Ensure UTC format
       'read': false,
@@ -2002,6 +2007,35 @@ class SupabaseService {
     }
   }
 
+  /// Returns true if the current user already has a notification row with
+  /// this `related_id`. Used to dedupe a server-side insert (e.g.
+  /// persistAlertToSupabase in the anxiety-alert Cloud Function) against the
+  /// client re-inserting the same event after it receives/taps the FCM --
+  /// both sides now write the same UUID notificationId as related_id.
+  Future<bool> notificationExistsWithRelatedId(String relatedId) async {
+    final user = client.auth.currentUser;
+    if (user == null) return false;
+
+    final uuidRegex = RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+    if (!uuidRegex.hasMatch(relatedId)) return false;
+
+    try {
+      final existing = await client
+          .from('notifications')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('related_id', relatedId)
+          .limit(1)
+          .maybeSingle();
+      return existing != null;
+    } catch (e) {
+      debugPrint('⚠️ notificationExistsWithRelatedId check failed: $e');
+      // Fail open: a transient query error shouldn't block a legitimate insert.
+      return false;
+    }
+  }
+
   // Additional psychologist methods
   Future<List<Map<String, dynamic>>> getAllPsychologists() async {
     final user = client.auth.currentUser;
@@ -2021,29 +2055,20 @@ class SupabaseService {
     }
   }
 
-  Future<void> assignPsychologist(String psychologistId) async {
-    final user = client.auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+  // Note: there is no patient-facing self-assignment method here.
+  // Psychologist assignment is an admin-only action performed outside the
+  // mobile app; the mobile client must never write assigned_psychologist_id.
 
-    try {
-      // Update the user's assigned psychologist
-      await client.from('users').update(
-          {'assigned_psychologist_id': psychologistId}).eq('id', user.id);
-
-      Logger.info(
-          'Successfully assigned psychologist $psychologistId to user ${user.id}');
-    } catch (e) {
-      Logger.error('Error assigning psychologist', e);
-      throw Exception('Failed to assign psychologist: ${e.toString()}');
-    }
-  }
-
-  // Helper method to ensure all required psychologist fields are present
+  // Helper method to ensure all required psychologist fields are present.
+  // psychologists.name is the canonical display name - only fall back to
+  // the split first/middle/last columns if name is missing.
   Map<String, dynamic> _ensurePsychologistFields(
       Map<String, dynamic> psychologist) {
-    // Build full name from first_name, middle_name, last_name
-    String fullName = '';
-    if (psychologist['first_name'] != null &&
+    String fullName;
+    if (psychologist['name'] != null &&
+        psychologist['name'].toString().trim().isNotEmpty) {
+      fullName = psychologist['name'].toString();
+    } else if (psychologist['first_name'] != null &&
         psychologist['first_name'].toString().isNotEmpty) {
       fullName = psychologist['first_name'].toString();
       if (psychologist['middle_name'] != null &&
@@ -2054,9 +2079,6 @@ class SupabaseService {
           psychologist['last_name'].toString().isNotEmpty) {
         fullName += ' ${psychologist['last_name']}';
       }
-    } else if (psychologist['name'] != null) {
-      // Fallback to 'name' field if it exists (for backward compatibility)
-      fullName = psychologist['name'].toString();
     } else {
       fullName = 'Unknown Psychologist';
     }
@@ -2064,9 +2086,6 @@ class SupabaseService {
     return {
       'id': psychologist['id'] ?? 'unknown-id',
       'name': fullName,
-      // No specialization column exists in the psychologists table; use a
-      // clearly static label rather than pretending this is database-backed.
-      'specialization': 'Psychologist',
       // Try multiple possible keys before using placeholder
       'contact_email': psychologist['contact_email'] ??
           psychologist['email'] ??

@@ -5,6 +5,12 @@ class AppointmentService {
 
   /// Check and update expired appointments when app starts or user views appointments
   Future<void> checkAndExpireAppointments() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      print('ℹ️ checkAndExpireAppointments: no authenticated user, skipping');
+      return;
+    }
+
     try {
       final now = DateTime.now();
       final cutoffTime = now.subtract(const Duration(hours: 24));
@@ -12,10 +18,13 @@ class AppointmentService {
       print(
           '🔍 Checking for appointments created before: ${cutoffTime.toIso8601String()}');
 
-      // Query pending appointments older than 24 hours
+      // Query pending appointments older than 24 hours, scoped to the
+      // current user only - a patient session must never read or mutate
+      // another user's appointments, regardless of what RLS allows.
       final response = await _supabase
           .from('appointments')
           .select()
+          .eq('user_id', user.id)
           .eq('status', 'pending')
           .lt('created_at', cutoffTime.toIso8601String());
 
@@ -34,7 +43,7 @@ class AppointmentService {
       // Process each overdue appointment
       for (final appointment in pendingAppointments) {
         try {
-          await _expireAppointment(appointment);
+          await _expireAppointment(appointment, user.id);
           expiredCount++;
           print('✅ Successfully expired appointment ${appointment['id']}');
         } catch (error) {
@@ -50,18 +59,26 @@ class AppointmentService {
     }
   }
 
-  /// Expire a single appointment
-  Future<void> _expireAppointment(Map<String, dynamic> appointment) async {
+  /// Expire a single appointment. The update is scoped to both the
+  /// appointment id and the owning user id as a defense-in-depth check -
+  /// this must not rely solely on RLS to avoid touching another user's row.
+  Future<void> _expireAppointment(
+      Map<String, dynamic> appointment, String userId) async {
     final now = DateTime.now();
 
     // Update appointment status to expired
-    await _supabase.from('appointments').update({
-      'status': 'expired',
-      'response_message': 'Appointment request expired after 24-hour deadline. '
-          'Created on ${DateTime.parse(appointment['created_at']).toLocal().toString().split(' ')[0]}, '
-          'expired on ${now.toLocal().toString().split(' ')[0]}.',
-      'updated_at': now.toIso8601String(),
-    }).eq('id', appointment['id']);
+    await _supabase
+        .from('appointments')
+        .update({
+          'status': 'expired',
+          'response_message':
+              'Appointment request expired after 24-hour deadline. '
+              'Created on ${DateTime.parse(appointment['created_at']).toLocal().toString().split(' ')[0]}, '
+              'expired on ${now.toLocal().toString().split(' ')[0]}.',
+          'updated_at': now.toIso8601String(),
+        })
+        .eq('id', appointment['id'])
+        .eq('user_id', userId);
 
     // Create notification for user
     await _createExpirationNotification(appointment, now);

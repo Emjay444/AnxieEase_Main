@@ -85,14 +85,14 @@ class _BreathingScreenState extends State<BreathingScreen>
     "You're learning to be kind to yourself",
     "This too shall pass, breathe through it",
     "You're not alone in this journey",
-    "Your heart is healing with each breath",
-    "Trust the process of your healing",
+    "Take a slow breath and focus on the present moment",
+    "Be patient with yourself as you practice",
     "You're becoming more resilient",
     "Your inner wisdom guides you",
     "You choose peace over panic",
     "This moment is a gift to yourself",
     "You're practicing self-compassion",
-    "Your breath is medicine for your soul",
+    "This exercise may help you feel calmer",
     "You're creating space for calm",
     "Each exhale releases what doesn't serve you",
     "You're exactly where you need to be",
@@ -133,13 +133,13 @@ class _BreathingScreenState extends State<BreathingScreen>
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        print('System back button/gesture detected');
+        debugPrint('System back button/gesture detected');
         if (selectedExercise != null) {
-          print('Exercise selected, showing confirmation dialog');
+          debugPrint('Exercise selected, showing confirmation dialog');
           await _showExitConfirmationDialog();
           return false; // Prevent default back behavior
         } else {
-          print('No exercise selected, allowing back navigation');
+          debugPrint('No exercise selected, allowing back navigation');
           return true; // Allow default back behavior
         }
       },
@@ -155,13 +155,13 @@ class _BreathingScreenState extends State<BreathingScreen>
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
             onPressed: () {
-              print(
+              debugPrint(
                   'Back button pressed. selectedExercise: ${selectedExercise?.name}, _showDurationSelection: $_showDurationSelection');
               if (selectedExercise != null) {
-                print('Showing exit confirmation dialog');
+                debugPrint('Showing exit confirmation dialog');
                 _showExitConfirmationDialog();
               } else {
-                print('No exercise selected, navigating back to homepage');
+                debugPrint('No exercise selected, navigating back to homepage');
                 Navigator.pop(context);
               }
             },
@@ -181,7 +181,7 @@ class _BreathingScreenState extends State<BreathingScreen>
           child: Builder(
             builder: (context) {
               // Debug output
-              print(
+              debugPrint(
                   'Build: selectedExercise=${selectedExercise?.name}, _showDurationSelection=$_showDurationSelection, _isPlaying=$_isPlaying, _isPaused=$_isPaused');
 
               if (selectedExercise == null) {
@@ -360,7 +360,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         // Start button
         ElevatedButton(
           onPressed: () {
-            print('Start Session button pressed');
+            debugPrint('Start Session button pressed');
             if (_selectedMinutes == 0 && _selectedSeconds == 0) {
               // Show error if no time selected
               ScaffoldMessenger.of(context).showSnackBar(
@@ -371,7 +371,7 @@ class _BreathingScreenState extends State<BreathingScreen>
               );
               return;
             }
-            print('Showing headphones reminder modal');
+            debugPrint('Showing headphones reminder modal');
             _showTemporaryHeadphoneReminder();
           },
           style: ElevatedButton.styleFrom(
@@ -424,15 +424,15 @@ class _BreathingScreenState extends State<BreathingScreen>
         ),
         child: InkWell(
           onTap: () {
-            print('Modal tapped! isModalDismissed: $isModalDismissed');
+            debugPrint('Modal tapped! isModalDismissed: $isModalDismissed');
             if (!isModalDismissed) {
               isModalDismissed = true;
-              print('Headphones modal tapped, calling _startSession');
+              debugPrint('Headphones modal tapped, calling _startSession');
               // Dismiss modal and start session when tapped
               Navigator.of(context, rootNavigator: true).pop();
               _startSession();
             } else {
-              print('Modal already dismissed, ignoring tap');
+              debugPrint('Modal already dismissed, ignoring tap');
             }
           },
           borderRadius: BorderRadius.circular(20),
@@ -481,10 +481,10 @@ class _BreathingScreenState extends State<BreathingScreen>
       ),
     ).then((_) {
       // When dialog is dismissed (by any means), mark as dismissed
-      print('Headphones modal .then() callback triggered');
+      debugPrint('Headphones modal .then() callback triggered');
       if (!isModalDismissed) {
         isModalDismissed = true;
-        print('Modal auto-dismissed, calling _startSession');
+        debugPrint('Modal auto-dismissed, calling _startSession');
         _startSession();
       }
     });
@@ -495,12 +495,12 @@ class _BreathingScreenState extends State<BreathingScreen>
           !isModalDismissed &&
           Navigator.of(context, rootNavigator: true).canPop()) {
         isModalDismissed = true;
-        print('Auto-dismissing modal after 3 seconds');
+        debugPrint('Auto-dismissing modal after 3 seconds');
         Navigator.of(context, rootNavigator: true).pop();
         // Ensure _startSession is called after auto-dismiss
         Future.delayed(const Duration(milliseconds: 100), () {
           if (!_isDisposed) {
-            print('Calling _startSession after auto-dismiss');
+            debugPrint('Calling _startSession after auto-dismiss');
             _startSession();
           }
         });
@@ -509,27 +509,27 @@ class _BreathingScreenState extends State<BreathingScreen>
   }
 
   void _startSession() {
-    print('_startSession called');
+    debugPrint('_startSession called');
     setState(() {
       _showDurationSelection = false;
     });
-    print('_showDurationSelection set to false');
+    debugPrint('_showDurationSelection set to false');
     _setupAudio();
     // Start the exercise automatically after transitioning to exercise screen
     Future.delayed(const Duration(milliseconds: 100), () {
-      print('Starting exercise after delay');
+      debugPrint('Starting exercise after delay');
       _startExercise();
     });
   }
 
   Future<void> _showExitConfirmationDialog() async {
-    print('_showExitConfirmationDialog called');
+    debugPrint('_showExitConfirmationDialog called');
     // Show confirmation modal if we have a selected exercise and we're in the exercise screen
     if (selectedExercise != null && !_showDurationSelection) {
-      print('In exercise screen, checking if session is active');
+      debugPrint('In exercise screen, checking if session is active');
       // If exercise is currently active, show confirmation
       if (_isPlaying || _isPaused) {
-        print('Session is active, showing active session confirmation');
+        debugPrint('Session is active, showing active session confirmation');
         return showDialog<void>(
           context: context,
           barrierDismissible: false, // User must choose an option
@@ -607,7 +607,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         );
       } else {
         // Exercise screen is showing but not active, show simpler confirmation
-        print('Session not active, showing simple confirmation');
+        debugPrint('Session not active, showing simple confirmation');
         return showDialog<void>(
           context: context,
           barrierDismissible: false,
@@ -1123,13 +1123,13 @@ class _BreathingScreenState extends State<BreathingScreen>
   Future<void> _setupAudio() async {
     try {
       if (selectedExercise?.soundUrl != null) {
-        print('Setting up audio for ${selectedExercise!.name}');
+        debugPrint('Setting up audio for ${selectedExercise!.name}');
         await _audioPlayer?.setAsset(selectedExercise!.soundUrl!);
         await _audioPlayer?.setLoopMode(LoopMode.one);
-        print('Audio setup completed');
+        debugPrint('Audio setup completed');
       }
     } catch (e) {
-      print('Audio setup error: $e');
+      debugPrint('Audio setup error: $e');
     }
   }
 
@@ -1157,6 +1157,10 @@ class _BreathingScreenState extends State<BreathingScreen>
     // Set up session timer
     _sessionTimer?.cancel();
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isDisposed || !mounted) {
+        timer.cancel();
+        return;
+      }
       if (_isPaused) return; // Don't decrement time if paused
 
       setState(() {
@@ -1175,6 +1179,10 @@ class _BreathingScreenState extends State<BreathingScreen>
     _currentMessageIndex = 0;
     _updateMotivationalMessage();
     _messageTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
+      if (_isDisposed || !mounted) {
+        timer.cancel();
+        return;
+      }
       if (_isPaused) return; // Don't update messages if paused
       _updateMotivationalMessage();
     });
@@ -1257,7 +1265,7 @@ class _BreathingScreenState extends State<BreathingScreen>
     _motivationalMessage.value = '';
 
     // Debug print to verify state
-    print(
+    debugPrint(
         'Reset completed: selectedExercise=${selectedExercise}, _showDurationSelection=${_showDurationSelection}');
   }
 
