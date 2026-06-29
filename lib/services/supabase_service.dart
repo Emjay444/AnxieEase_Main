@@ -851,12 +851,37 @@ class SupabaseService {
   }
 
   // Profile methods
+  // Fields a patient is allowed to self-update via the Profile screen.
+  // Sensitive columns (role, assigned_psychologist_id, password_hash,
+  // is_email_verified, email, id) must never reach this update call -
+  // RLS/triggers may also block them server-side, but this whitelist is
+  // an explicit app-level guard so a future caller can't bypass it by
+  // passing an unfiltered map.
+  static const Set<String> _allowedProfileFields = {
+    'first_name',
+    'middle_name',
+    'last_name',
+    'birth_date',
+    'contact_number',
+    'emergency_contact',
+    'gender',
+    'avatar_url',
+  };
+
   Future<void> updateUserProfile(Map<String, dynamic> data) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
+    final disallowedKeys =
+        data.keys.where((key) => !_allowedProfileFields.contains(key));
+    if (disallowedKeys.isNotEmpty) {
+      throw Exception(
+          'updateUserProfile received disallowed field(s): ${disallowedKeys.join(', ')}. '
+          'Only these fields may be self-updated: ${_allowedProfileFields.join(', ')}.');
+    }
+
     try {
-      // First, verify which columns exist in the table
+      // Data is already restricted to the whitelist above.
       final safeData = Map<String, dynamic>.from(data);
       final updatedData = {
         ...safeData,
@@ -1385,7 +1410,10 @@ class SupabaseService {
     List<double> stressLevels = [];
 
     for (var log in logs) {
-      final logDate = DateTime.parse(log['timestamp']);
+      // Use the selected/logged calendar day (`date`), not `timestamp` (the
+      // creation time), so a log backdated to an earlier day is bucketed
+      // by the day it was logged for - matching Calendar/Metrics elsewhere.
+      final logDate = DateTime.parse(log['date']);
 
       // Count logs in last 7 and 30 days
       if (logDate.isAfter(sevenDaysAgo)) {

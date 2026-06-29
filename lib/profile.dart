@@ -29,6 +29,7 @@ class _ProfilePageState extends State<ProfilePage> {
       TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _isEditing = false;
+  bool _isSaving = false;
   File? _profileImage;
   DateTime? _selectedBirthDate;
   String? _selectedSex;
@@ -750,52 +751,67 @@ class _ProfilePageState extends State<ProfilePage> {
             });
           }
 
-          // Upload to Supabase storage
+          // Verify the local copy succeeded before attempting the cloud
+          // upload - a failed local save is always an error regardless of
+          // what happens next.
+          if (!await savedFile.exists()) {
+            throw Exception('Failed to save profile image');
+          }
+          debugPrint('Profile image saved successfully to: $imagePath');
+
+          // Upload to Supabase storage. Success is reported to the user
+          // only if this actually returns a URL - a local-only save must
+          // never be presented as "updated successfully", since the
+          // avatar_url column (the source of truth other devices/screens
+          // read from) would still be stale.
           String? newAvatarUrl;
+          bool uploadFailed = false;
           try {
             newAvatarUrl =
                 await context.read<AuthProvider>().uploadAvatar(savedFile);
-
-            if (newAvatarUrl != null) {
-              debugPrint(
-                  'Avatar uploaded successfully to Supabase: $newAvatarUrl');
-
-              // FORCE IMMEDIATE UI UPDATE with the new URL
-              if (mounted) {
-                // Targeted profile image cache clearing for new image
-                await _clearProfileImageCache();
-
-                // Trigger rebuild with new data
-                setState(() {
-                  // Force rebuild to pick up new avatar URL from AuthProvider
-                });
-
-                // Wait a moment then clear cache again for network image
-                Future.delayed(const Duration(milliseconds: 100), () async {
-                  if (mounted) {
-                    await _clearProfileImageCache();
-                  }
-                });
-              }
-            }
+            uploadFailed = newAvatarUrl == null;
           } catch (supabaseError) {
             debugPrint('Error uploading to Supabase: $supabaseError');
-            // Continue with local storage even if Supabase upload fails
+            uploadFailed = true;
           }
 
-          // Verify the file was copied correctly
-          if (await savedFile.exists()) {
-            debugPrint('Profile image saved successfully to: $imagePath');
+          if (newAvatarUrl != null) {
+            debugPrint(
+                'Avatar uploaded successfully to Supabase: $newAvatarUrl');
 
-            // Show success message
+            // FORCE IMMEDIATE UI UPDATE with the new URL
+            if (mounted) {
+              // Targeted profile image cache clearing for new image
+              await _clearProfileImageCache();
+
+              // Trigger rebuild with new data
+              setState(() {
+                // Force rebuild to pick up new avatar URL from AuthProvider
+              });
+
+              // Wait a moment then clear cache again for network image
+              Future.delayed(const Duration(milliseconds: 100), () async {
+                if (mounted) {
+                  await _clearProfileImageCache();
+                }
+              });
+            }
+
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                     content: Text('Profile picture updated successfully')),
               );
             }
-          } else {
-            throw Exception('Failed to save profile image');
+          } else if (uploadFailed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'Profile picture could not be uploaded. Please check your connection and try again.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
           }
         } else {
           throw Exception('User is not authenticated');
@@ -1226,45 +1242,69 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            try {
-                              await context.read<AuthProvider>().updateProfile(
-                                    firstName: _firstNameController.text.trim(),
-                                    middleName:
-                                        _middleNameController.text.trim(),
-                                    lastName: _lastNameController.text.trim(),
-                                    birthDate: _selectedBirthDate,
-                                    contactNumber:
-                                        _contactNumberController.text.trim(),
-                                    emergencyContact:
-                                        _emergencyContactController.text.trim(),
-                                    sex: _selectedSex,
-                                  );
-                              if (mounted) {
-                                setState(() => _isEditing = false);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content:
-                                        Text('Profile updated successfully'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: ${e.toString()}'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.save_rounded),
-                        label: const Text('Save Changes'),
+                        onPressed: _isSaving
+                            ? null
+                            : () async {
+                                if (!_formKey.currentState!.validate()) return;
+                                if (_isSaving) return; // re-entrancy guard
+
+                                setState(() => _isSaving = true);
+                                try {
+                                  await context
+                                      .read<AuthProvider>()
+                                      .updateProfile(
+                                        firstName:
+                                            _firstNameController.text.trim(),
+                                        middleName: _middleNameController.text
+                                            .trim(),
+                                        lastName:
+                                            _lastNameController.text.trim(),
+                                        birthDate: _selectedBirthDate,
+                                        contactNumber: _contactNumberController
+                                            .text
+                                            .trim(),
+                                        emergencyContact:
+                                            _emergencyContactController.text
+                                                .trim(),
+                                        sex: _selectedSex,
+                                      );
+                                  if (mounted) {
+                                    setState(() => _isEditing = false);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'Profile updated successfully'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: ${e.toString()}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isSaving = false);
+                                  }
+                                }
+                              },
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_rounded),
+                        label: Text(
+                            _isSaving ? 'Saving...' : 'Save Changes'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           backgroundColor: const Color(0xFF3AA772),

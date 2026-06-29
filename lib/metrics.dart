@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'utils/logger.dart';
 import 'services/supabase_service.dart';
+import 'services/wellness_log_events.dart';
 import 'package:intl/intl.dart';
 import 'models/daily_log.dart';
 
@@ -34,6 +37,11 @@ class _MetricsScreenState extends State<MetricsScreen> {
   Map<String, List<FlSpot>>? _cachedSymptomsData;
   List<MapEntry<String, int>>? _cachedTopSymptoms;
   List<MapEntry<String, int>>? _cachedTopMoods;
+
+  // Tracks the signed-in user so a logout/login switch can clear stale
+  // in-memory data instead of leaving the previous user's chart up.
+  String? _lastUserId;
+  StreamSubscription<AuthState>? _authSubscription;
 
   // Get user-specific key for SharedPreferences
   String get _userSpecificLogsKey {
@@ -89,8 +97,56 @@ class _MetricsScreenState extends State<MetricsScreen> {
   void initState() {
     super.initState();
     _generateAvailableMonths();
-    _checkConnectionStatus();
+    _lastUserId = _supabaseService.client.auth.currentUser?.id;
     _loadLogs();
+
+    // Refresh as soon as Calendar reports a wellness log add/edit/delete,
+    // instead of waiting for the next manual pull-to-refresh.
+    WellnessLogEvents.changed.addListener(_onWellnessLogsChanged);
+
+    // If the signed-in user changes (logout/login switch) while this
+    // screen stays mounted, drop the previous user's data immediately
+    // rather than leaving it visible until a manual refresh.
+    _authSubscription =
+        _supabaseService.client.auth.onAuthStateChange.listen((data) {
+      final newUserId = data.session?.user.id;
+      if (newUserId != _lastUserId) {
+        _lastUserId = newUserId;
+        _handleUserSwitched();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WellnessLogEvents.changed.removeListener(_onWellnessLogsChanged);
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _onWellnessLogsChanged() {
+    if (!mounted) return;
+    _refreshData();
+  }
+
+  Future<void> _handleUserSwitched() async {
+    if (!mounted) return;
+    setState(() {
+      _dailyLogs.clear();
+      _hasData = false;
+      _lastProcessedKey = null;
+      _cachedMoodData = null;
+      _cachedStressData = null;
+      _cachedSymptomsData = null;
+      _cachedTopSymptoms = null;
+      _cachedTopMoods = null;
+      moodData = {'Weekly': [], 'Monthly': []};
+      stressData = {'Weekly': [], 'Monthly': []};
+      symptomsData = {'Weekly': [], 'Monthly': []};
+      topSymptoms = [];
+      topMoods = [];
+    });
+    await _loadLogs();
   }
 
   void _generateAvailableMonths() {
@@ -125,10 +181,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
     // Set default to current month and year
     selectedMonth = DateFormat('MMMM yyyy').format(now);
     selectedYear = now.year;
-  }
-
-  Future<void> _checkConnectionStatus() async {
-    // no-op for UI; kept for potential future use
   }
 
   Future<void> _loadLogs() async {
@@ -198,7 +250,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             bool isDuplicate = false;
             for (final existingLog in _dailyLogs[normalizedDate]!) {
               // Compare feelings, symptoms, and stress level to detect same log with different timestamps
-              if (_areLogsSimilar(existingLog, dailyLog)) {
+              if (existingLog.isSimilarTo(dailyLog)) {
                 isDuplicate = true;
                 Logger.info(
                     'Detected duplicate log based on content similarity');
@@ -270,127 +322,6 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return DateTime.utc(date.year, date.month, date.day);
   }
 
-  // Helper method to determine if two logs are likely the same entry
-  // even if they have different timestamps
-  bool _areLogsSimilar(DailyLog log1, DailyLog log2) {
-    // Check if stress levels are the same
-    if (log1.stressLevel != log2.stressLevel) {
-      return false;
-    }
-
-    // Check if symptoms are the same
-    if (log1.symptoms.length != log2.symptoms.length) {
-      return false;
-    }
-
-    for (final symptom in log1.symptoms) {
-      if (!log2.symptoms.contains(symptom)) {
-        return false;
-      }
-    }
-
-    // Check if feelings/moods are the same
-    if (log1.feelings.length != log2.feelings.length) {
-      return false;
-    }
-
-    for (final feeling in log1.feelings) {
-      if (!log2.feelings.contains(feeling)) {
-        return false;
-      }
-    }
-
-    // If we got here, the logs are very similar in content
-    return true;
-  }
-
-  // ignore: unused_element
-  void _initializeSampleData() {
-    // Sample data for mood (scale 0-10, where higher is more positive mood)
-    moodData = {
-      'Weekly': [
-        const FlSpot(0, 7.0),
-        const FlSpot(1, 6.0),
-        const FlSpot(2, 8.0),
-        const FlSpot(3, 7.5),
-        const FlSpot(4, 6.5),
-        const FlSpot(5, 8.0),
-        const FlSpot(6, 7.0),
-      ],
-      'Monthly': [
-        const FlSpot(0, 7.0),
-        const FlSpot(5, 6.5),
-        const FlSpot(10, 7.0),
-        const FlSpot(15, 8.0),
-        const FlSpot(20, 7.5),
-        const FlSpot(25, 6.0),
-        const FlSpot(30, 7.0),
-      ],
-    };
-
-    // Sample data for stress levels (scale 0-10)
-    stressData = {
-      'Weekly': [
-        const FlSpot(0, 3.0),
-        const FlSpot(1, 4.0),
-        const FlSpot(2, 2.0),
-        const FlSpot(3, 3.5),
-        const FlSpot(4, 5.0),
-        const FlSpot(5, 2.5),
-        const FlSpot(6, 3.0),
-      ],
-      'Monthly': [
-        const FlSpot(0, 3.0),
-        const FlSpot(5, 4.0),
-        const FlSpot(10, 3.5),
-        const FlSpot(15, 2.0),
-        const FlSpot(20, 3.0),
-        const FlSpot(25, 4.5),
-        const FlSpot(30, 3.0),
-      ],
-    };
-
-    // Sample data for symptom count
-    symptomsData = {
-      'Weekly': [
-        const FlSpot(0, 1.0),
-        const FlSpot(1, 2.0),
-        const FlSpot(2, 0.0),
-        const FlSpot(3, 1.0),
-        const FlSpot(4, 3.0),
-        const FlSpot(5, 1.0),
-        const FlSpot(6, 0.0),
-      ],
-      'Monthly': [
-        const FlSpot(0, 1.0),
-        const FlSpot(5, 2.0),
-        const FlSpot(10, 1.0),
-        const FlSpot(15, 0.0),
-        const FlSpot(20, 1.0),
-        const FlSpot(25, 2.0),
-        const FlSpot(30, 1.0),
-      ],
-    };
-
-    // Sample top symptoms
-    topSymptoms = [
-      const MapEntry('Headache', 5),
-      const MapEntry('Rapid heartbeat', 4),
-      const MapEntry('Fatigue', 3),
-      const MapEntry('Dizziness', 2),
-      const MapEntry('Muscle tension', 1),
-    ];
-
-    // Sample top moods
-    topMoods = [
-      const MapEntry('Anxious', 6),
-      const MapEntry('Happy', 5),
-      const MapEntry('Calm', 4),
-      const MapEntry('Fearful', 3),
-      const MapEntry('Excited', 2),
-    ];
-  }
-
   void _processLogsData() {
     if (_dailyLogs.isEmpty) {
       // Don't show sample data, just initialize with empty data
@@ -453,12 +384,14 @@ class _MetricsScreenState extends State<MetricsScreen> {
       allLogs.addAll(logs);
     });
 
-    // Deduplicate logs by comparing content instead of just timestamps
+    // Deduplicate logs by comparing content instead of just timestamps.
+    // isSimilarTo also requires the same calendar day, so two distinct days
+    // with identical mood/stress/symptom content are never merged into one.
     final List<DailyLog> uniqueLogs = [];
     for (final log in allLogs) {
       bool isDuplicate = false;
       for (final uniqueLog in uniqueLogs) {
-        if (_areLogsSimilar(log, uniqueLog)) {
+        if (log.isSimilarTo(uniqueLog)) {
           isDuplicate = true;
           break;
         }

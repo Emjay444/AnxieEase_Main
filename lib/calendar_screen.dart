@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
-import 'dart:async'; // For Timer debounce
+import 'dart:async'; // For Timer debounce and auth-change subscription
 import 'services/supabase_service.dart';
+import 'services/wellness_log_events.dart';
 import 'models/daily_log.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -22,6 +24,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   Timer? _saveLogsTimer; // debounce timer
   static const Duration _saveLogsDebounce = Duration(milliseconds: 500);
+
+  // Tracks the signed-in user so a logout/login switch can clear stale
+  // in-memory logs instead of leaving the previous user's entries visible.
+  String? _lastUserId;
+  StreamSubscription<AuthState>? _authSubscription;
 
   // Performance optimization: Cache processed events to avoid recalculation
   final Map<String, List<String>> _eventsCache = {};
@@ -52,8 +59,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     _loadLogs();
     _selectedDay = DateTime.now();
+    _lastUserId = _supabaseService.client.auth.currentUser?.id;
     // Check if user is logged in and sync logs
     _syncLogsWithSupabase();
+
+    // If the signed-in user changes (logout/login switch) while this
+    // screen stays mounted, drop the previous user's data immediately.
+    _authSubscription =
+        _supabaseService.client.auth.onAuthStateChange.listen((data) {
+      final newUserId = data.session?.user.id;
+      if (newUserId != _lastUserId) {
+        _lastUserId = newUserId;
+        _handleUserSwitched();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _saveLogsTimer?.cancel();
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleUserSwitched() async {
+    if (!mounted) return;
+    setState(() {
+      _dailyLogs.clear();
+      _eventsCache.clear();
+      _eventsCacheDate = null;
+    });
+    await _loadLogs();
+    await _syncLogsWithSupabase();
   }
 
   Future<void> _loadLogs() async {
@@ -125,7 +162,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         bool isDuplicate = false;
         for (final existingLog in _dailyLogs[normalizedDate]!) {
           // Compare content to detect duplicates
-          if (_areLogsSimilar(existingLog, dailyLog)) {
+          if (existingLog.isSimilarTo(dailyLog)) {
             isDuplicate = true;
             print('Detected duplicate log based on content similarity');
             break;
@@ -211,39 +248,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     } catch (e) {
       print('Error syncing logs with Supabase: $e');
     }
-  }
-
-  // Helper method to determine if two logs are likely the same entry
-  bool _areLogsSimilar(DailyLog log1, DailyLog log2) {
-    // Check if stress levels are the same
-    if (log1.stressLevel != log2.stressLevel) {
-      return false;
-    }
-
-    // Check if symptoms are the same
-    if (log1.symptoms.length != log2.symptoms.length) {
-      return false;
-    }
-
-    for (final symptom in log1.symptoms) {
-      if (!log2.symptoms.contains(symptom)) {
-        return false;
-      }
-    }
-
-    // Check if feelings/moods are the same
-    if (log1.feelings.length != log2.feelings.length) {
-      return false;
-    }
-
-    for (final feeling in log1.feelings) {
-      if (!log2.feelings.contains(feeling)) {
-        return false;
-      }
-    }
-
-    // If we got here, the logs are very similar in content
-    return true;
   }
 
   Future<void> _saveLogs() async {
@@ -365,6 +369,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 }
               }
 
+              WellnessLogEvents.notifyChanged();
+
               Navigator.pop(context);
 
               // Show success message
@@ -442,6 +448,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
 
     _saveLogsDebounced();
+
+    // Local state already changed above - tell Metrics (or any other
+    // listening screen) to refresh now rather than waiting for a manual
+    // pull-to-refresh, regardless of whether the Supabase sync below
+    // succeeds.
+    WellnessLogEvents.notifyChanged();
 
     print(
         'Starting Supabase sync for ${existingLog != null ? 'EXISTING' : 'NEW'} log');

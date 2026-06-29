@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:math' show min;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -48,8 +49,10 @@ class SearchScreenState extends State<SearchScreen>
   Map<String, dynamic>? _selectedPlace;
   String _errorMessage = '';
   String? _lastPlacesApiError;
-  bool _usingFallbackClinics = false;
   TravelMode _selectedTravelMode = TravelMode.driving;
+  // Tracks whether the in-app permission rationale dialog has already been
+  // shown this screen session, so retries don't show it again.
+  bool _rationaleShown = false;
 
   // Animation controller for camera movements
   AnimationController? _animationController;
@@ -401,6 +404,25 @@ class SearchScreenState extends State<SearchScreen>
     return degrees * math.pi / 180;
   }
 
+  // Safely extracts lat/lng from a Google Places `geometry.location` object.
+  // Returns null if geometry is missing or the coordinates are non-numeric
+  // or out of valid range, so callers can skip the place instead of
+  // crashing on a malformed Places API result.
+  LatLng? _extractPlaceLatLng(Map<String, dynamic> place) {
+    final geometry = place['geometry'];
+    if (geometry is! Map) return null;
+    final location = geometry['location'];
+    if (location is! Map) return null;
+    final lat = location['lat'];
+    final lng = location['lng'];
+    if (lat is! num || lng is! num) return null;
+    final latD = lat.toDouble();
+    final lngD = lng.toDouble();
+    if (latD.isNaN || lngD.isNaN) return null;
+    if (latD < -90 || latD > 90 || lngD < -180 || lngD > 180) return null;
+    return LatLng(latD, lngD);
+  }
+
   Future<void> _getCurrentLocation() async {
     try {
       Logger.info('Getting current location...');
@@ -430,6 +452,21 @@ class SearchScreenState extends State<SearchScreen>
       Logger.info('Initial permission status: $permission');
 
       if (permission == LocationPermission.denied) {
+        // Explain why we need location before the OS prompt fires, but only
+        // the first time per screen session - not on every retry.
+        if (!_rationaleShown) {
+          _rationaleShown = true;
+          final proceed = await _showLocationRationaleDialog();
+          if (!proceed) {
+            setState(() {
+              _errorMessage =
+                  'Location permission is needed to find nearby clinics.';
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+
         permission = await Geolocator.requestPermission();
         Logger.info('After request permission status: $permission');
 
@@ -602,6 +639,39 @@ class SearchScreenState extends State<SearchScreen>
         );
       },
     );
+  }
+
+  // Explains why we need location before the OS permission prompt fires.
+  // Returns true if the user wants to proceed to the OS prompt, false if
+  // they declined (handled the same as a denial, no crash either way).
+  Future<bool> _showLocationRationaleDialog() async {
+    if (!mounted) return true;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Location Access'),
+          content: const Text(
+              'AnxieEase needs your location to find nearby clinics and '
+              'support locations. Your location is only used on this '
+              'screen and is not saved.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Not Now'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
   }
 
   // Dialog to guide users to enable location services
@@ -838,10 +908,23 @@ class SearchScreenState extends State<SearchScreen>
   }) {
     if (!mounted || _currentPosition == null) return;
 
+    // Drop any result with missing/invalid geometry up front - every other
+    // place in this file (sorting, distance display, marker tap, directions)
+    // reads from _nearbyPlaces/_markers, so filtering once here means none
+    // of those call sites can ever see a malformed place.
+    final validResults = results.where((place) {
+      final latLng = _extractPlaceLatLng(place);
+      if (latLng == null) {
+        Logger.warning(
+            'Skipping clinic result with missing/invalid geometry: ${place['name']}');
+        return false;
+      }
+      return true;
+    }).toList();
+
     setState(() {
       _markers.clear();
-      _nearbyPlaces = results;
-      _usingFallbackClinics = false;
+      _nearbyPlaces = validResults;
       _lastPlacesApiError = null;
 
       _markers.add(Marker(
@@ -852,17 +935,16 @@ class SearchScreenState extends State<SearchScreen>
         zIndex: 2,
       ));
 
-      for (var place in results) {
-        final lat = place['geometry']['location']['lat'];
-        final lng = place['geometry']['location']['lng'];
+      for (var place in validResults) {
+        final latLng = _extractPlaceLatLng(place)!;
         final name = place['name'] ?? 'Unknown Facility';
         final vicinity = place['vicinity'] ?? 'Address unavailable';
 
-        Logger.debug('Adding marker for: $name at $lat,$lng');
+        Logger.debug('Adding marker for: $name at ${latLng.latitude},${latLng.longitude}');
 
         _markers.add(Marker(
           markerId: MarkerId(place['place_id']),
-          position: LatLng(lat, lng),
+          position: latLng,
           infoWindow: InfoWindow(title: name, snippet: vicinity),
           icon: _mentalHealthMarkerIcon,
           onTap: () {
@@ -885,7 +967,6 @@ class SearchScreenState extends State<SearchScreen>
 
     setState(() {
       _isLoading = false;
-      _usingFallbackClinics = false;
       _nearbyPlaces = [];
       _errorMessage = 'Could not load nearby clinics right now. $reason';
     });
@@ -897,7 +978,9 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
-  // Show error dialog
+  // Show error dialog. Normal users only ever see "OK"/"Retry" - raw API
+  // error text and the "Debug Info" escape hatch are developer tools and
+  // must not surface to anxious end users in a release build.
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
@@ -919,13 +1002,14 @@ class SearchScreenState extends State<SearchScreen>
               },
               child: const Text('Retry'),
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _showDebugInfo();
-              },
-              child: const Text('Debug Info'),
-            ),
+            if (kDebugMode)
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showDebugInfo();
+                },
+                child: const Text('Debug Info'),
+              ),
           ],
         );
       },
@@ -1127,19 +1211,14 @@ class SearchScreenState extends State<SearchScreen>
           orElse: () => <String, dynamic>{},
         );
 
-        if (place.isNotEmpty) {
+        final placeLatLng = _extractPlaceLatLng(place);
+        if (place.isNotEmpty && placeLatLng != null) {
           setState(() {
             _selectedPlace = place;
           });
 
           // Move camera to the selected place
-          _moveCamera(
-            LatLng(
-              place['geometry']['location']['lat'],
-              place['geometry']['location']['lng'],
-            ),
-            15.0,
-          );
+          _moveCamera(placeLatLng, 15.0);
 
           // Get directions automatically
           _getDirections(place);
@@ -1206,6 +1285,16 @@ class SearchScreenState extends State<SearchScreen>
       return;
     }
 
+    final destinationLatLng = _extractPlaceLatLng(_selectedPlace!);
+    if (destinationLatLng == null) {
+      Logger.warning('Cannot get directions: invalid destination coordinates');
+      if (mounted) {
+        _showApiResponseDialog(
+            {'error': 'This clinic has invalid location data'});
+      }
+      return;
+    }
+
     // Show loading state
     setState(() {
       _isLoading = true;
@@ -1237,7 +1326,7 @@ class SearchScreenState extends State<SearchScreen>
             'origin':
                 '${_currentPosition!.latitude},${_currentPosition!.longitude}',
             'destination':
-                '${_selectedPlace!['geometry']['location']['lat']},${_selectedPlace!['geometry']['location']['lng']}',
+                '${destinationLatLng.latitude},${destinationLatLng.longitude}',
             'mode': _getTravelModeString(),
           },
           options: Options(
@@ -1817,26 +1906,28 @@ class SearchScreenState extends State<SearchScreen>
       }
     }
 
+    // Defensive: ignore any place whose geometry can't be parsed, even
+    // though _applyClinicResults already filters these out at the source.
+    places = places.where((p) => _extractPlaceLatLng(p) != null).toList();
+
     // Sort places by distance if available
     if (_currentPosition != null) {
       places.sort((a, b) {
-        final aLat = a['geometry']['location']['lat'];
-        final aLng = a['geometry']['location']['lng'];
-        final bLat = b['geometry']['location']['lat'];
-        final bLng = b['geometry']['location']['lng'];
+        final aLatLng = _extractPlaceLatLng(a)!;
+        final bLatLng = _extractPlaceLatLng(b)!;
 
         final distA = Geolocator.distanceBetween(
           _currentPosition!.latitude,
           _currentPosition!.longitude,
-          aLat,
-          aLng,
+          aLatLng.latitude,
+          aLatLng.longitude,
         );
 
         final distB = Geolocator.distanceBetween(
           _currentPosition!.latitude,
           _currentPosition!.longitude,
-          bLat,
-          bLng,
+          bLatLng.latitude,
+          bLatLng.longitude,
         );
 
         return distA.compareTo(distB);
@@ -1960,31 +2051,6 @@ class SearchScreenState extends State<SearchScreen>
                           ],
                         ),
                       ),
-                      if (_usingFallbackClinics) ...[
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                size: 14,
-                                color: Colors.orange[700],
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'Showing approximate locations while live clinic search is unavailable.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -2077,14 +2143,13 @@ class SearchScreenState extends State<SearchScreen>
 
                           // Calculate distance
                           String distance = '';
-                          if (_currentPosition != null) {
-                            final lat = place['geometry']['location']['lat'];
-                            final lng = place['geometry']['location']['lng'];
+                          final placeLatLng = _extractPlaceLatLng(place);
+                          if (_currentPosition != null && placeLatLng != null) {
                             final distanceInMeters = Geolocator.distanceBetween(
                               _currentPosition!.latitude,
                               _currentPosition!.longitude,
-                              lat,
-                              lng,
+                              placeLatLng.latitude,
+                              placeLatLng.longitude,
                             );
                             if (distanceInMeters < 1000) {
                               distance =
@@ -3595,14 +3660,10 @@ class SearchScreenState extends State<SearchScreen>
     if (_selectedPlace == null) return;
 
     try {
+      final latLng = _extractPlaceLatLng(_selectedPlace!);
+      if (latLng == null) return;
       // Skip complex animation and just move the camera directly
-      _moveCamera(
-        LatLng(
-          _selectedPlace!['geometry']['location']['lat'],
-          _selectedPlace!['geometry']['location']['lng'],
-        ),
-        15.0,
-      );
+      _moveCamera(latLng, 15.0);
     } catch (e) {
       Logger.error('Error in simplified clinic movement', e);
     }
@@ -4017,12 +4078,12 @@ class SearchScreenState extends State<SearchScreen>
 
     try {
       // Get destination coordinates
-      final destLat = _selectedPlace!['geometry']['location']['lat'];
-      final destLng = _selectedPlace!['geometry']['location']['lng'];
+      final destLatLng = _extractPlaceLatLng(_selectedPlace!);
+      if (destLatLng == null) return;
 
       // Calculate distance to destination
       final distance = _calculateDistance(currentPosition.latitude,
-          currentPosition.longitude, destLat, destLng);
+          currentPosition.longitude, destLatLng.latitude, destLatLng.longitude);
 
       // If within 30 meters of destination, consider it reached
       if (distance <= 30) {

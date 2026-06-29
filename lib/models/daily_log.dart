@@ -76,6 +76,31 @@ class DailyLog {
         if (id != null) 'id': id, // Include ID if it exists for updates
       };
 
+  // True if [other] represents the same logged entry as this one - same
+  // calendar day AND same mood/stress/symptom content. The date check
+  // matters: two logs with identical content on two different days are
+  // distinct entries and must never be treated as duplicates of each other.
+  bool isSimilarTo(DailyLog other) {
+    final sameDay = date.year == other.date.year &&
+        date.month == other.date.month &&
+        date.day == other.date.day;
+    if (!sameDay) return false;
+
+    if (stressLevel != other.stressLevel) return false;
+
+    if (symptoms.length != other.symptoms.length) return false;
+    for (final symptom in symptoms) {
+      if (!other.symptoms.contains(symptom)) return false;
+    }
+
+    if (feelings.length != other.feelings.length) return false;
+    for (final feeling in feelings) {
+      if (!other.feelings.contains(feeling)) return false;
+    }
+
+    return true;
+  }
+
   // Save this log to Supabase.
   Future<void> syncWithSupabase() async {
     try {

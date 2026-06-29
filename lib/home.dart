@@ -3432,7 +3432,8 @@ class _HomeContentState extends State<HomeContent> {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ProfilePage(),
+                              builder: (context) =>
+                                  const ProfilePage(isEditable: true),
                             ),
                           );
 
@@ -3665,7 +3666,8 @@ class _HomeContentState extends State<HomeContent> {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const ProfilePage(),
+                            builder: (context) =>
+                                const ProfilePage(isEditable: true),
                           ),
                         );
 
