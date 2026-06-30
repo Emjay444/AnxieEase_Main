@@ -5,7 +5,6 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:cached_network_image/cached_network_image.dart';
 
 import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
@@ -3127,19 +3126,29 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   // Show profile picture preview dialog
-  void _showProfilePicturePreview() {
+  Future<void> _showProfilePicturePreview() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.currentUser;
 
     if (user == null) return;
 
-    // Get the current avatar image
+    // Get the current avatar image.
     ImageProvider? avatarImage;
     String? avatarUrl = user.avatarUrl;
 
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       avatarImage = NetworkImage(avatarUrl);
+    } else {
+      // No avatar_url on record (matches what the small homescreen avatar
+      // and Profile page already do) - fall back to the locally cached
+      // profile photo file so this dialog stays in sync with them.
+      final localImage = await _loadProfileImage(user.id);
+      if (localImage != null) {
+        avatarImage = FileImage(localImage);
+      }
     }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -3716,45 +3725,14 @@ class _HomeContentState extends State<HomeContent> {
                           // If we have an avatar URL, try to use network image with error handling
                           if (avatarUrl != null && avatarUrl.isNotEmpty) {
                             return CircleAvatar(
+                              key: ValueKey('home_avatar_$avatarUrl'),
                               radius: screenWidth * 0.06,
                               backgroundColor: const Color(0xFF3AA772),
-                              child: ClipOval(
-                                child: CachedNetworkImage(
-                                  imageUrl: avatarUrl,
-                                  key: ValueKey('home_avatar_${avatarUrl}'),
-                                  width: screenWidth * 0.12,
-                                  height: screenWidth * 0.12,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    debugPrint(
-                                        'Error loading network avatar: $error');
-                                    // Fallback to first letter if network image fails
-                                    String firstLetter = 'G';
-                                    if (user != null &&
-                                        user.firstName != null &&
-                                        user.firstName!.isNotEmpty) {
-                                      firstLetter =
-                                          user.firstName![0].toUpperCase();
-                                    }
-                                    return Center(
-                                      child: Text(
-                                        firstLetter,
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
+                              backgroundImage: NetworkImage(avatarUrl),
+                              onBackgroundImageError: (error, stackTrace) {
+                                debugPrint(
+                                    'Error loading network avatar: $error');
+                              },
                             );
                           }
 
