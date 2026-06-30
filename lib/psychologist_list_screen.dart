@@ -92,6 +92,7 @@ class _PsychologistListScreenState extends State<PsychologistListScreen> {
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: data.length,
+              cacheExtent: 500,
               itemBuilder: (context, index) {
                 return _buildPsychologistCard(data[index]);
               },

@@ -688,6 +688,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final _navigatorKey = rootNavigatorKey;
   final _supabaseService = SupabaseService();
 
+  // Coordinates the startup sync strategies so only one actually does work.
+  bool _hasSyncedPendingNotifications = false;
+  Timer? _tokenRefreshTimer;
+  final List<Timer> _startupTimers = [];
+
   @override
   void initState() {
     super.initState();
@@ -708,6 +713,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     // Remove this widget as an observer
     WidgetsBinding.instance.removeObserver(this);
+    _tokenRefreshTimer?.cancel();
+    for (final timer in _startupTimers) {
+      timer.cancel();
+    }
+    _startupTimers.clear();
     super.dispose();
   }
 
@@ -735,12 +745,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           await _debugLocalNotifications(); // Debug what's in local storage
           _syncPendingNotifications();
         });
+        // Resume periodic token refresh now that the app is foregrounded.
+        if (_tokenRefreshTimer == null) {
+          _setupPeriodicTokenRefresh();
+        }
         break;
       case AppLifecycleState.paused:
         debugPrint('⏸️ App paused - ensuring FCM token is stored');
         // CRITICAL FIX: Store FCM token when app goes to background
         // This ensures the token persists even if the app is killed
         _ensureTokenPersistence();
+        // Stop periodic token refresh while backgrounded to save battery;
+        // it resumes on the next foreground transition.
+        _tokenRefreshTimer?.cancel();
+        _tokenRefreshTimer = null;
         break;
       case AppLifecycleState.inactive:
         debugPrint('😴 App inactive');
@@ -775,32 +793,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
-  /// Set up multiple strategies to ensure pending notifications are synced reliably
-  /// OPTIMIZED: Reduced from 6 strategies to 3 for better performance
+  /// Set up sync strategies to ensure pending notifications are synced
+  /// reliably, without redundant overlapping work.
+  /// Only the first strategy to fire actually performs the sync; the rest
+  /// are fallbacks in case auth/token init is slow.
   Future<void> _setupMultipleSyncStrategies() async {
-    debugPrint('🔄 Setting up streamlined sync strategies...');
+    debugPrint('🔄 Setting up coordinated sync strategies...');
+
+    Future<void> syncOnce(String label) async {
+      if (_hasSyncedPendingNotifications) return;
+      _hasSyncedPendingNotifications = true;
+      debugPrint('✅ $label → syncing pending notifications');
+      await _syncPendingNotifications();
+      await _validateAndRefreshAssignmentToken();
+    }
 
     // Strategy 1: AuthProvider listener (primary - immediate when auth ready)
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
-      // Track if we've already synced to avoid duplicates
-      bool hasAlreadySynced = false;
-
-      authProvider.addListener(() async {
-        debugPrint(
-            '🔐 Auth state changed: init=${authProvider.isInitialized}, auth=${authProvider.isAuthenticated}, alreadySynced=$hasAlreadySynced');
-
-        if (authProvider.isInitialized &&
-            authProvider.isAuthenticated &&
-            !hasAlreadySynced) {
-          hasAlreadySynced = true;
-          debugPrint(
-              '✅ Strategy 1: Auth ready after launch → syncing pending notifications');
-          await _syncPendingNotifications();
-
-          // CRITICAL FIX: Validate and refresh FCM token after auth is ready
-          await _validateAndRefreshAssignmentToken();
+      authProvider.addListener(() {
+        if (authProvider.isInitialized && authProvider.isAuthenticated) {
+          syncOnce('Strategy 1: Auth ready after launch');
         }
       });
     } catch (e) {
@@ -808,30 +821,32 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     // Strategy 2: Quick fallback (3 seconds) - in case auth takes time
-    Future.delayed(const Duration(seconds: 3), () async {
-      debugPrint('🔄 Strategy 2: Quick fallback sync after 3 seconds...');
-      await _syncPendingNotifications();
-      await _validateAndRefreshAssignmentToken();
-    });
+    _startupTimers.add(
+      Timer(const Duration(seconds: 3), () {
+        syncOnce('Strategy 2: Quick fallback sync after 3 seconds');
+      }),
+    );
 
     // Strategy 3: Final safety net (10 seconds) - catch any edge cases
-    Future.delayed(const Duration(seconds: 10), () async {
-      debugPrint('🔄 Strategy 3: Final safety net sync after 10 seconds...');
-      await _syncPendingNotifications();
-    });
+    _startupTimers.add(
+      Timer(const Duration(seconds: 10), () {
+        syncOnce('Strategy 3: Final safety net sync after 10 seconds');
+      }),
+    );
 
-    // CRITICAL FIX: Set up periodic FCM token refresh to prevent token loss
-    // OPTIMIZED: Reduced frequency for better performance
+    // Set up periodic FCM token refresh to prevent token loss.
     _setupPeriodicTokenRefresh();
   }
 
-  // NEW: Set up periodic FCM token refresh
-  // OPTIMIZED: Reduced frequency from every 30s to every 2 minutes during startup
+  // Set up periodic FCM token refresh.
+  // Refreshes every 30 minutes - frequent enough to avoid stale tokens
+  // without draining battery from a continuous foreground timer.
   void _setupPeriodicTokenRefresh() {
     debugPrint('🔄 Setting up periodic FCM token refresh...');
 
-    // Refresh token every 5 minutes to ensure it's always available
-    Timer.periodic(const Duration(minutes: 5), (timer) async {
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = Timer.periodic(const Duration(minutes: 30),
+        (timer) async {
       try {
         debugPrint('🔄 Periodic FCM token refresh...');
         await _validateAndRefreshAssignmentToken();
@@ -839,19 +854,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         debugPrint('❌ Error in periodic token refresh: $e');
       }
     });
-
-    // Also refresh token every 2 minutes for the first 10 minutes (during critical startup period)
-    // OPTIMIZED: Reduced from every 30s to every 2 minutes
-    for (int i = 1; i <= 5; i++) {
-      Future.delayed(Duration(minutes: 2 * i), () async {
-        try {
-          debugPrint('🔄 Early periodic token refresh ${i}/5...');
-          await _validateAndRefreshAssignmentToken();
-        } catch (e) {
-          debugPrint('❌ Error in early token refresh: $e');
-        }
-      });
-    }
   }
 
   void _handleAppLink(Uri uri) {

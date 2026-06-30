@@ -77,6 +77,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   AnimationController? _breathingController;
   AnimationController? _groundingController;
 
+  // Cached notifications future + the SupabaseService used to fetch it.
+  // Cached (instead of calling getNotifications() inline in build()) so an
+  // unrelated rebuild of HomeContent doesn't refetch and flash the loading
+  // spinner; it's only refreshed when NotificationProvider.refreshCounter
+  // actually changes.
+  final SupabaseService _supabaseService = SupabaseService();
+  Future<List<Map<String, dynamic>>>? _notificationsFuture;
+  int? _lastNotificationRefreshCounter;
+
   void _initControllers() {
     _breathingController ??= AnimationController(
       vsync: this,
@@ -966,6 +975,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             title: Text(
                               symptom,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: symptoms[symptom]!
                                     ? const Color(0xFF2C3E50)
@@ -1206,6 +1217,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             title: Text(
                               activity['title'] as String,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: activity['completed']
                                     ? const Color(0xFF2C3E50)
@@ -1215,6 +1228,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             subtitle: Text(
                               activity['duration'] as String,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: activity['completed']
                                     ? const Color(0xFF9013FE)
@@ -1272,13 +1287,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // New Notifications Section
   Widget _buildNotificationsSection() {
-    final supabaseService = SupabaseService();
-
     return Consumer<NotificationProvider>(
       builder: (context, notificationProvider, child) {
+        // Only kick off a new fetch when the refresh counter actually
+        // changes; otherwise reuse the cached future so unrelated rebuilds
+        // of this section don't refetch and flash the loading spinner.
+        if (_notificationsFuture == null ||
+            _lastNotificationRefreshCounter !=
+                notificationProvider.refreshCounter) {
+          _lastNotificationRefreshCounter = notificationProvider.refreshCounter;
+          _notificationsFuture = _supabaseService.getNotifications();
+        }
+
         return FutureBuilder<List<Map<String, dynamic>>>(
-          key: ValueKey(notificationProvider.refreshCounter),
-          future: supabaseService.getNotifications(),
+          future: _notificationsFuture,
           builder: (context, snapshot) {
             Widget buildHeader() {
               return Row(

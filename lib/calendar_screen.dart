@@ -112,9 +112,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  bool _isSyncing = false;
+
   Future<void> _syncLogsWithSupabase() async {
     // Check if user is authenticated
     if (!_supabaseService.isAuthenticated) return;
+
+    // Guard against overlapping syncs: rapid auth-state changes (e.g. a
+    // fast logout/login) can otherwise trigger several syncs at once,
+    // racing each other against the same in-memory _dailyLogs map.
+    if (_isSyncing) return;
+    _isSyncing = true;
 
     // First sync existing logs from SharedPreferences to Supabase
     try {
@@ -124,10 +132,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
         allLogs.addAll(logs);
       });
 
-      // Sync each log to Supabase
-      for (var log in allLogs) {
-        await log.syncWithSupabase();
-      }
+      // Sync logs to Supabase concurrently instead of one-at-a-time so a
+      // large backlog doesn't serialize into dozens of sequential round
+      // trips; failures are isolated per-log so one bad entry doesn't
+      // block the rest.
+      await Future.wait(
+        allLogs.map((log) => log.syncWithSupabase().catchError((e) {
+              print('Failed to sync a log to Supabase: $e');
+            })),
+      );
 
       print('Successfully synced ${allLogs.length} logs with Supabase');
 
@@ -247,6 +260,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     } catch (e) {
       print('Error syncing logs with Supabase: $e');
+    } finally {
+      _isSyncing = false;
     }
   }
 
