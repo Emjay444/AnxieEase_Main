@@ -23,6 +23,30 @@ import 'watch.dart';
 
 // Task class removed
 
+// Strips the internal "[ANSWERED] Response: ... Severity: ..." bookkeeping
+// tag (appended by SupabaseService.markNotificationAsAnswered to persist
+// answered state in the message column) so patients only ever see the
+// original alert text, never the raw tag.
+String _stripAnsweredTag(String? message) {
+  final text = message ?? '';
+  final tagIndex = text.indexOf('[ANSWERED]');
+  return tagIndex == -1 ? text : text.substring(0, tagIndex).trim();
+}
+
+// Many notification titles are stored with a leading severity emoji glyph
+// (e.g. "🟢 Mild Alert - ..."), written server-side for use in push
+// notification trays. In-app, that tiny glyph renders inconsistently across
+// devices/fonts -- cards already show severity via a colored leading dot/
+// icon, so it's stripped here for display only; the stored title text
+// itself is never modified.
+final RegExp _leadingEmoji = RegExp(
+  r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]\s*',
+  unicode: true,
+);
+
+String _stripLeadingEmoji(String? text) =>
+    (text ?? '').replaceFirst(_leadingEmoji, '');
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -1308,15 +1332,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   _buildSectionHeader('Recent Notifications'),
                   TextButton(
                     onPressed: () async {
-                      final bool? notificationsModified =
-                          await Navigator.push<bool>(
+                      // Always refresh on return rather than relying on the
+                      // screen popping with `true` -- its default AppBar
+                      // back button (no custom `leading`) pops with no
+                      // result at all, so that signal never actually fires
+                      // for the normal "tap back" flow, leaving this
+                      // homescreen card stuck showing stale answered/read
+                      // state indefinitely.
+                      await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const NotificationsScreen(),
                         ),
                       );
 
-                      if (mounted && notificationsModified == true) {
+                      if (mounted) {
                         notificationProvider.triggerNotificationRefresh();
                       }
                     },
@@ -1633,7 +1663,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                       return _buildNotificationCard(
                         title: notification['title'],
-                        message: notification['message'],
+                        message: _stripAnsweredTag(notification['message']),
                         time: timeAgo,
                         type: type,
                         icon: icon,
@@ -1961,9 +1991,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(top: 5, right: 6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isAnswered ? Colors.grey[400] : getTypeColor(),
+                      ),
+                    ),
                     Expanded(
                       child: Text(
-                        title,
+                        _stripLeadingEmoji(title),
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
@@ -2226,6 +2265,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+
+    // The user may have answered the alert on the notifications screen,
+    // which writes straight to Supabase and never touches this screen's
+    // cached _notificationsFuture (see its declaration comment) -- without
+    // this, the "Recent Notifications" card on the homescreen keeps showing
+    // the stale unanswered state until something unrelated happens to
+    // trigger a refresh later.
+    if (mounted) {
+      Provider.of<NotificationProvider>(context, listen: false)
+          .triggerNotificationRefresh();
+    }
   }
 
   static const _validSeverities = {'mild', 'moderate', 'severe', 'critical'};
@@ -3250,47 +3300,36 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                 ],
 
-                const SizedBox(height: 25),
-
-                // Action buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // View Profile button
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.of(context).pop();
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ProfilePage(),
-                          ),
-                        );
-
-                        // Refresh image cache when returning
-                        setState(() {
-                          PaintingBinding.instance.imageCache.clear();
-                          PaintingBinding.instance.imageCache.clearLiveImages();
-                        });
-                      },
-                      icon: const Icon(Icons.person),
-                      label: const Text('View Profile'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3AA772),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                      ),
+                if (user.contactNumber != null &&
+                        user.contactNumber!.isNotEmpty ||
+                    user.sex != null && user.sex!.isNotEmpty ||
+                    user.age != null) ...[
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  if (user.contactNumber != null &&
+                      user.contactNumber!.isNotEmpty)
+                    _buildProfileDetailRow(
+                        Icons.phone_outlined, user.contactNumber!),
+                  if (user.sex != null && user.sex!.isNotEmpty || user.age != null) ...[
+                    const SizedBox(height: 8),
+                    _buildProfileDetailRow(
+                      Icons.person_outline,
+                      [
+                        if (user.sex != null && user.sex!.isNotEmpty)
+                          user.sex!,
+                        if (user.age != null) '${user.age} years old',
+                      ].join(' • '),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 8),
+                  _buildProfileDetailRow(
+                    Icons.calendar_today_outlined,
+                    'Member since ${_formatMemberSince(user.createdAt)}',
+                  ),
+                ],
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
                 // Close button
                 TextButton(
@@ -3309,6 +3348,42 @@ class _HomeContentState extends State<HomeContent> {
         );
       },
     );
+  }
+
+  Widget _buildProfileDetailRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[500]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey[700],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatMemberSince(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.year}';
   }
 
   // Show full size image from home screen

@@ -968,7 +968,7 @@ class SupabaseService {
     try {
       // Ensure record has a timestamp
       if (!record.containsKey('timestamp')) {
-        record['timestamp'] = DateTime.now().toIso8601String();
+        record['timestamp'] = DateTime.now().toUtc().toIso8601String();
       }
 
       final normalizedSeverity =
@@ -1833,14 +1833,28 @@ class SupabaseService {
     // Store the answer in the message field with a special format
     // We'll append the answer info to the existing message
     try {
-      // First get the current notification
+      // `id` may be either the row's own primary key (when called from the
+      // in-app notifications list, which already has the real row) or the
+      // server-generated event UUID stored in `related_id` (when called from
+      // a push-notification tap - see notificationId in
+      // functions/.../realTimeSustainedAnxietyDetection.js, which is never
+      // the same value as the Supabase row's `id`). Match either so both
+      // entry points actually find the row instead of silently no-op'ing.
       final notification = await client
           .from('notifications')
-          .select('message')
-          .eq('id', id)
+          .select('id, message')
+          .or('id.eq.$id,related_id.eq.$id')
           .eq('user_id', user.id)
-          .single();
+          .limit(1)
+          .maybeSingle();
 
+      if (notification == null) {
+        debugPrint(
+            '❌ markNotificationAsAnswered: no notification found for id/related_id $id');
+        return;
+      }
+
+      final rowId = notification['id'];
       String currentMessage = notification['message'] ?? '';
 
       // Add answered status to the message if not already present
@@ -1861,11 +1875,11 @@ class SupabaseService {
               'message': updatedMessage,
               'read': true, // Also mark as read when answered
             })
-            .eq('id', id)
+            .eq('id', rowId)
             .eq('user_id', user.id);
 
         debugPrint(
-            '✅ Marked notification $id as answered with response: $response');
+            '✅ Marked notification $rowId as answered with response: $response');
       }
     } catch (e) {
       debugPrint('❌ Error marking notification as answered: $e');
@@ -2480,7 +2494,7 @@ class SupabaseService {
 
       await saveAnxietyRecord({
         'severity_level': severity,
-        'timestamp': responseTime ?? DateTime.now().toIso8601String(),
+        'timestamp': responseTime ?? DateTime.now().toUtc().toIso8601String(),
         'is_manual': false,
         'source': triggerSource,
         'details': details,

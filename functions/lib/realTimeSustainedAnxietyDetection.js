@@ -238,6 +238,9 @@ async function getUserSessionHistory(userId, sessionId, lookbackSeconds) {
                     spo2: data.spo2,
                     bodyTemp: data.bodyTemp,
                     worn: data.worn || 1,
+                    accelX: data.accelX,
+                    accelY: data.accelY,
+                    accelZ: data.accelZ,
                 });
             }
         });
@@ -300,14 +303,24 @@ function analyzeUserSustainedAnxiety(userHistoryData, baselineHR, currentData, u
     let currentElevatedPoints = [];
     let bestElevatedPoints = [];
     for (const point of allData) {
-        // Extract accelerometer data if available
-        const accelX = point.accelX || 0;
-        const accelY = point.accelY || 0;
-        const accelZ = point.accelZ || 0;
-        // Calculate movement intensity
-        const movementIntensity = calculateMovementIntensity(accelX, accelY, accelZ);
+        // Accelerometer data is only meaningful when the device actually sent
+        // it. Treating "no data" as accelX=accelY=accelZ=0 used to be
+        // indistinguishable from free-fall once gravity is subtracted out --
+        // calculateMovementIntensity(0,0,0) computes to ~98 ("high movement"),
+        // which silently discarded every reading from devices/sessions that
+        // don't report accel data, defeating both the exercise filter (which
+        // could never correctly tell movement from stillness) and sustained
+        // anxiety detection itself. Without real accel data there's no
+        // movement signal to judge exercise by, so don't flag it as exercise.
+        const hasAccelData = point.accelX !== undefined ||
+            point.accelY !== undefined ||
+            point.accelZ !== undefined;
+        const movementIntensity = hasAccelData
+            ? calculateMovementIntensity(point.accelX || 0, point.accelY || 0, point.accelZ || 0)
+            : 0;
         // Check if this looks like exercise (to prevent false positives)
-        const isExercise = isExercisePattern(movementIntensity, point.heartRate, baselineHR);
+        const isExercise = hasAccelData &&
+            isExercisePattern(movementIntensity, point.heartRate, baselineHR);
         if (point.heartRate >= anxietyThreshold &&
             point.worn !== 0 &&
             !isExercise) {

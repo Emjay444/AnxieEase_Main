@@ -167,7 +167,7 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
         userConfirmed: _selectedResponse == 'yes',
         reportedSeverity: _selectedSeverity,
         confidenceLevel: widget.confidenceLevel,
-        responseTime: DateTime.now().toIso8601String(),
+        responseTime: DateTime.now().toUtc().toIso8601String(),
       );
 
       // Update rate limiting based on user confirmation

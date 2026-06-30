@@ -821,7 +821,7 @@ class NotificationService extends ChangeNotifier {
 
       final anxietyRecord = {
         'severity_level': severity,
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
         'is_manual': isManual,
         'source': 'app',
         'details': isManual

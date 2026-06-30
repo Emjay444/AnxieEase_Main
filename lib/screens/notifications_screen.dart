@@ -116,10 +116,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           final String alertType = (args['alertType'] ?? '').toString();
           final Map<String, dynamic> detectionData =
               Map<String, dynamic>.from(args['detectionData'] ?? {});
+          // The real Supabase row id (or related_id), passed from callers
+          // like home.dart's _navigateToNotificationDetails. Without this,
+          // answering the dialog built from this synthetic notification
+          // would call markNotificationAsAnswered with a fake id that
+          // matches no row, so the answer would never persist.
+          final String? realNotificationId = args['notificationId']?.toString();
 
           // Build a synthetic notification map for dialogs
           final synthetic = <String, dynamic>{
-            'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
+            'id': realNotificationId ??
+                'temp_${DateTime.now().millisecondsSinceEpoch}',
             'title': title,
             'message': message,
             'type': type,
@@ -403,7 +410,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       // Show normal notification details modal
       _showNotificationDetails(
         notification['title'],
-        notification['message'],
+        _cleanMessage(notification),
         _getDisplayTime(notification['created_at']),
         notification['type'] ?? 'info',
         notification,
@@ -511,6 +518,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         notificationMessage: message,
         notificationId: notification['id']?.toString(),
       );
+      // The modal already persisted the [ANSWERED] state to Supabase;
+      // refresh the locally cached list so the UI reflects it immediately
+      // instead of waiting for the next pull-to-refresh/screen re-entry.
+      if (mounted) {
+        _loadNotifications();
+      }
       return;
     }
 
@@ -1486,6 +1499,50 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _isNotificationAnswered(Map<String, dynamic> notification) {
     final message = notification['message'] ?? '';
     return message.contains('[ANSWERED]');
+  }
+
+  // Many notification titles are stored with a leading severity emoji glyph
+  // (e.g. "🟢 Mild Alert - ..."), written server-side for use in push
+  // notification trays. In-app, that tiny glyph renders inconsistently
+  // across devices/fonts -- the card already shows severity via the
+  // `accent`-colored leading icon and dot (see _buildNotificationItem), so
+  // it's stripped here for display only; the stored title/message text
+  // itself is never modified.
+  static final RegExp _leadingEmoji = RegExp(
+    r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]\s*',
+    unicode: true,
+  );
+
+  String _stripLeadingEmoji(String text) => text.replaceFirst(_leadingEmoji, '');
+
+  // Strip the internal "[ANSWERED] Response: ... Severity: ..." tag (used
+  // to persist answered state in the message column - see
+  // SupabaseService.markNotificationAsAnswered) so patients never see that
+  // raw bookkeeping text; they see the original alert message plus a
+  // friendly "You answered" summary built from _getAnswerDetails instead.
+  String _cleanMessage(Map<String, dynamic> notification) {
+    final message = notification['message'] ?? '';
+    final tagIndex = message.indexOf('[ANSWERED]');
+    if (tagIndex == -1) return message;
+    return message.substring(0, tagIndex).trim();
+  }
+
+  // Human-readable summary of how the patient answered, for display
+  // alongside the ANSWERED badge (e.g. "You confirmed: Anxiety episode").
+  String? _getAnswerSummary(Map<String, dynamic> notification) {
+    final details = _getAnswerDetails(notification);
+    final response = details['response'];
+    if (response == null) return null;
+    switch (response.toUpperCase()) {
+      case 'YES':
+        return 'You confirmed: Yes, I felt anxious';
+      case 'NO':
+        return 'You confirmed: No, false alarm';
+      case 'CONFIRMED_CRITICAL':
+        return 'You confirmed this critical alert';
+      default:
+        return 'You answered this alert';
+    }
   }
 
   // Extract answer details from notification message
@@ -2475,9 +2532,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsets.only(top: 5, right: 6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: (isAnswered || isDismissed)
+                                ? Colors.grey[400]
+                                : accent,
+                          ),
+                        ),
                         Expanded(
                           child: Text(
-                            notification['title'],
+                            _stripLeadingEmoji(
+                                notification['title']?.toString() ?? ''),
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight:
@@ -2494,16 +2563,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.grey[300],
+                              color: Colors.green[50],
+                              border: Border.all(color: Colors.green[300]!),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              'ANSWERED',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[600],
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle,
+                                    size: 11, color: Colors.green[700]),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'ANSWERED',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                         else if (isDismissed)
@@ -2533,7 +2611,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      notification['message'],
+                      _cleanMessage(notification),
                       style: TextStyle(
                         fontSize: 13.5,
                         color: (isAnswered || isDismissed)
@@ -2542,6 +2620,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         height: 1.4,
                       ),
                     ),
+                    if (isAnswered && _getAnswerSummary(notification) != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(Icons.check_circle,
+                              size: 13, color: Colors.green[600]),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _getAnswerSummary(notification)!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -2861,36 +2959,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildFilterChips() {
     return Column(
       children: [
-        // Type filters
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        // Type filter, as a compact full-width segmented control instead of
+        // a labeled chip row -- removes the redundant "Type: " label and
+        // takes up noticeably less vertical space at the top of the screen.
+        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text(
-                'Type: ',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(width: 8),
-              ...['all', 'alert', 'reminder'].map((f) {
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: ['all', 'alert', 'reminder'].map((f) {
                 final selected = (_selectedFilter ?? 'all') == f;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(
-                      f == 'all' ? 'All' : f[0].toUpperCase() + f.substring(1),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: selected ? Colors.white : Colors.grey[700],
-                      ),
-                    ),
-                    selected: selected,
-                    onSelected: (_) {
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
                       setState(() {
                         _selectedFilter = f == 'all' ? null : f;
                         _currentPage = 1; // Reset to first page
@@ -2898,22 +2983,45 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       _loadNotifications();
                       HapticFeedback.selectionClick();
                     },
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Center(
+                        child: Text(
+                          f == 'all'
+                              ? 'All'
+                              : f[0].toUpperCase() + f.substring(1),
+                          style: TextStyle(
+                            fontWeight:
+                                selected ? FontWeight.bold : FontWeight.w500,
+                            fontSize: 13,
+                            color: selected
+                                ? Colors.teal[700]
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
                     ),
-                    backgroundColor: Colors.grey[200],
-                    selectedColor: Colors.teal[600],
-                    elevation: selected ? 2 : 0,
-                    pressElevation: 0,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
                   ),
                 );
               }).toList(),
-            ],
+            ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         // Answer filters (ONLY show when Alert type is specifically selected)
         if (_selectedFilter == 'alert')
           SingleChildScrollView(
@@ -2999,63 +3107,48 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           ),
 
-        // Sorting dropdown (below status filters)
-        const SizedBox(height: 12),
+        // Sort control: a slim, right-aligned popup trigger instead of a
+        // bordered/shadowed dropdown box, to match the lighter-weight feel
+        // of the segmented Type control above.
+        const SizedBox(height: 10),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Text(
-                'Sort by: ',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[600],
+              PopupMenuButton<String>(
+                initialValue: _sortBy,
+                onSelected: (String newValue) {
+                  setState(() {
+                    _sortBy = newValue;
+                    _currentPage = 1; // Reset to first page
+                  });
+                  _loadNotifications();
+                  HapticFeedback.selectionClick();
+                },
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[300]!),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'newest', child: Text('Newest First')),
+                  PopupMenuItem(value: 'oldest', child: Text('Oldest First')),
+                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sort, size: 15, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(
+                      _sortBy == 'oldest' ? 'Oldest First' : 'Newest First',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                    Icon(Icons.arrow_drop_down,
+                        size: 18, color: Colors.grey[600]),
                   ],
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _sortBy,
-                    icon: Icon(Icons.arrow_drop_down,
-                        color: Colors.grey[600], size: 18),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[800],
-                      fontWeight: FontWeight.w500,
-                    ),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _sortBy = newValue;
-                          _currentPage = 1; // Reset to first page
-                        });
-                        _loadNotifications();
-                        HapticFeedback.selectionClick();
-                      }
-                    },
-                    items: const [
-                      DropdownMenuItem(
-                          value: 'newest', child: Text('Newest First')),
-                      DropdownMenuItem(
-                          value: 'oldest', child: Text('Oldest First')),
-                    ],
-                  ),
                 ),
               ),
             ],
