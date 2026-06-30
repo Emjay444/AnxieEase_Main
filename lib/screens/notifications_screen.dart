@@ -1501,20 +1501,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return message.contains('[ANSWERED]');
   }
 
-  // Many notification titles are stored with a leading severity emoji glyph
-  // (e.g. "🟢 Mild Alert - ..."), written server-side for use in push
-  // notification trays. In-app, that tiny glyph renders inconsistently
-  // across devices/fonts -- the card already shows severity via the
-  // `accent`-colored leading icon and dot (see _buildNotificationItem), so
-  // it's stripped here for display only; the stored title/message text
-  // itself is never modified.
-  static final RegExp _leadingEmoji = RegExp(
-    r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]\s*',
-    unicode: true,
-  );
-
-  String _stripLeadingEmoji(String text) => text.replaceFirst(_leadingEmoji, '');
-
   // Strip the internal "[ANSWERED] Response: ... Severity: ..." tag (used
   // to persist answered state in the message column - see
   // SupabaseService.markNotificationAsAnswered) so patients never see that
@@ -2532,21 +2518,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          margin: const EdgeInsets.only(top: 5, right: 6),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: (isAnswered || isDismissed)
-                                ? Colors.grey[400]
-                                : accent,
-                          ),
-                        ),
                         Expanded(
                           child: Text(
-                            _stripLeadingEmoji(
-                                notification['title']?.toString() ?? ''),
+                            notification['title']?.toString() ?? '',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight:

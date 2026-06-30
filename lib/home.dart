@@ -33,20 +33,6 @@ String _stripAnsweredTag(String? message) {
   return tagIndex == -1 ? text : text.substring(0, tagIndex).trim();
 }
 
-// Many notification titles are stored with a leading severity emoji glyph
-// (e.g. "🟢 Mild Alert - ..."), written server-side for use in push
-// notification trays. In-app, that tiny glyph renders inconsistently across
-// devices/fonts -- cards already show severity via a colored leading dot/
-// icon, so it's stripped here for display only; the stored title text
-// itself is never modified.
-final RegExp _leadingEmoji = RegExp(
-  r'^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]\s*',
-  unicode: true,
-);
-
-String _stripLeadingEmoji(String? text) =>
-    (text ?? '').replaceFirst(_leadingEmoji, '');
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -1991,18 +1977,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      margin: const EdgeInsets.only(top: 5, right: 6),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isAnswered ? Colors.grey[400] : getTypeColor(),
-                      ),
-                    ),
                     Expanded(
                       child: Text(
-                        _stripLeadingEmoji(title),
+                        title,
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
