@@ -1,8 +1,31 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
+
+// Shared secret gating the manual test-notification endpoints below.
+// Same env var / header convention as clearAnxietyRateLimits in
+// realTimeSustainedAnxietyDetection.ts (kept as a separate, duplicated
+// helper rather than a cross-file import, consistent with how small
+// helpers are kept per-file elsewhere in this codebase).
+const ADMIN_TOOLS_SECRET =
+  process.env.ADMIN_TOOLS_SECRET || functions.config().admintools?.secret;
+
+function isValidAdminToolsSecret(provided: unknown): boolean {
+  if (
+    !ADMIN_TOOLS_SECRET ||
+    typeof provided !== "string" ||
+    provided.length === 0
+  ) {
+    return false;
+  }
+  const expected = Buffer.from(ADMIN_TOOLS_SECRET);
+  const actual = Buffer.from(provided);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
 
 // Optional: Supabase server-side persistence for test notifications
 // Configure via environment variables (Firebase Functions config or runtime env)
@@ -538,10 +561,22 @@ export const testMildNotification = functions.https.onRequest(
   async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
 
     if (req.method === "OPTIONS") {
       res.status(204).send("");
+      return;
+    }
+
+    // SECURITY: sends a real FCM push to every device subscribed to the
+    // anxiety_alerts topic. Gated behind the same admin-tools shared secret
+    // as clearAnxietyRateLimits so it can't be used to blast fake anxiety
+    // alerts to real patients.
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+      console.warn(
+        "⚠️ Rejected test notification call: missing or invalid x-admin-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
@@ -616,10 +651,22 @@ export const testModerateNotification = functions.https.onRequest(
   async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
 
     if (req.method === "OPTIONS") {
       res.status(204).send("");
+      return;
+    }
+
+    // SECURITY: sends a real FCM push to every device subscribed to the
+    // anxiety_alerts topic. Gated behind the same admin-tools shared secret
+    // as clearAnxietyRateLimits so it can't be used to blast fake anxiety
+    // alerts to real patients.
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+      console.warn(
+        "⚠️ Rejected test notification call: missing or invalid x-admin-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
@@ -694,10 +741,22 @@ export const testSevereNotification = functions.https.onRequest(
   async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
 
     if (req.method === "OPTIONS") {
       res.status(204).send("");
+      return;
+    }
+
+    // SECURITY: sends a real FCM push to every device subscribed to the
+    // anxiety_alerts topic. Gated behind the same admin-tools shared secret
+    // as clearAnxietyRateLimits so it can't be used to blast fake anxiety
+    // alerts to real patients.
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+      console.warn(
+        "⚠️ Rejected test notification call: missing or invalid x-admin-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
@@ -772,10 +831,22 @@ export const testCriticalNotification = functions.https.onRequest(
   async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
 
     if (req.method === "OPTIONS") {
       res.status(204).send("");
+      return;
+    }
+
+    // SECURITY: sends a real FCM push to every device subscribed to the
+    // anxiety_alerts topic. Gated behind the same admin-tools shared secret
+    // as clearAnxietyRateLimits so it can't be used to blast fake anxiety
+    // alerts to real patients.
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+      console.warn(
+        "⚠️ Rejected test notification call: missing or invalid x-admin-secret header"
+      );
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
 

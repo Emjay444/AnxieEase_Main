@@ -5,15 +5,34 @@
  * This Cloud Function automatically cleans up old data to prevent storage bloat.
  * Deploy this to run on a schedule (e.g., daily, weekly).
  */
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCleanupStats = exports.manualCleanup = exports.autoCleanup = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 // Initialize Firebase Admin
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.database();
+// Shared secret gating the manual/debug HTTP endpoints below (manualCleanup
+// can delete real operational data on demand; getCleanupStats reveals
+// internal config). Same env var / header convention as
+// clearAnxietyRateLimits in realTimeSustainedAnxietyDetection.ts.
+const ADMIN_TOOLS_SECRET = process.env.ADMIN_TOOLS_SECRET || ((_a = functions.config().admintools) === null || _a === void 0 ? void 0 : _a.secret);
+function isValidAdminToolsSecret(provided) {
+    if (!ADMIN_TOOLS_SECRET ||
+        typeof provided !== "string" ||
+        provided.length === 0) {
+        return false;
+    }
+    const expected = Buffer.from(ADMIN_TOOLS_SECRET);
+    const actual = Buffer.from(provided);
+    if (expected.length !== actual.length)
+        return false;
+    return crypto.timingSafeEqual(expected, actual);
+}
 // Configuration - BALANCED for high-frequency wearable data (every 10 seconds, single user)
 const CLEANUP_CONFIG = {
     // Data retention periods (in days)
@@ -50,6 +69,11 @@ exports.autoCleanup = functions.pubsub
  * Call via: https://your-project.cloudfunctions.net/manualCleanup
  */
 exports.manualCleanup = functions.https.onRequest(async (req, res) => {
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+        functions.logger.warn("⚠️ Rejected manualCleanup call: missing or invalid x-admin-secret header");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
     functions.logger.info("🧹 Manual cleanup triggered...");
     try {
         const results = await performCleanup();
@@ -356,6 +380,11 @@ async function logCleanupResults(results) {
  * Get cleanup statistics
  */
 exports.getCleanupStats = functions.https.onRequest(async (req, res) => {
+    if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+        functions.logger.warn("⚠️ Rejected getCleanupStats call: missing or invalid x-admin-secret header");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+    }
     try {
         const logsRef = db.ref("/system/cleanup_logs");
         const recentLogs = await logsRef

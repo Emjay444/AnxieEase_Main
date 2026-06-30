@@ -130,9 +130,19 @@ class NotificationService extends ChangeNotifier {
     }
   }
 
-  /// Check if a notification of this type was recently sent
-  /// Returns true if it's a duplicate (should not send)
-  Future<bool> _isDuplicateNotification(String type, String content) async {
+  /// Check if a notification of this type was recently sent.
+  /// Returns true if it's a duplicate (should not send).
+  ///
+  /// [content] should be a STABLE key (e.g. deviceId+severity+source), never
+  /// a string containing a value that fluctuates per-reading (like a live
+  /// heart-rate number) -- a fluctuating value defeats this check entirely,
+  /// since every call then looks like "new content" and never matches.
+  /// [window] overrides the default 30-minute dedup window; pass a shorter
+  /// value for callers (like severity alerts) that have their own, faster
+  /// legitimate re-alert cadence and shouldn't be blocked for a full
+  /// half hour by this cross-restart safety net.
+  Future<bool> _isDuplicateNotification(String type, String content,
+      {Duration? window}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = '${lastNotificationPrefix}${type}';
@@ -142,13 +152,14 @@ class NotificationService extends ChangeNotifier {
       final lastContent = prefs.getString(contentKey) ?? '';
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      const duplicateWindow =
-          duplicateWindowMinutes * 60 * 1000; // Convert to milliseconds
+      final duplicateWindow =
+          (window ?? const Duration(minutes: duplicateWindowMinutes))
+              .inMilliseconds;
 
       // Check if same content was sent within the time window
       if (now - lastTime < duplicateWindow && lastContent == content.trim()) {
         debugPrint(
-            '🚫 Duplicate notification blocked: $type (${duplicateWindowMinutes}min window)');
+            '🚫 Duplicate notification blocked: $type (${(duplicateWindow / 1000).round()}s window)');
         return true; // It's a duplicate
       }
 
@@ -609,22 +620,25 @@ class NotificationService extends ChangeNotifier {
             return;
         }
 
-        // De-dupe locally with per-severity cooldowns
-        // mild: 60s, moderate: 30s, severe: 0s (always alert)
+        // De-dupe locally with per-severity cooldowns.
+        // SAFETY: severe must NEVER be 0 here -- this gate is the only
+        // thing standing between a steady stream of `anxietyDetected`
+        // updates (if firmware ever writes that field) and one local
+        // notification + one Supabase row per update. mild: 60s,
+        // moderate: 45s, severe: 30s (severe is shorter than mild so a
+        // worsening episode can still re-alert sooner, but never zero).
         final nowMs = DateTime.now().millisecondsSinceEpoch;
-        int cooldownMs = 0;
+        int cooldownMs = 20000;
         switch (severity) {
           case 'mild':
             cooldownMs = 60000;
             break;
           case 'moderate':
-            cooldownMs = 30000;
+            cooldownMs = 45000;
             break;
           case 'severe':
-            cooldownMs = 0;
+            cooldownMs = 30000;
             break;
-          default:
-            cooldownMs = 20000;
         }
 
         if (!(_lastLocalSeverity == severity &&
@@ -633,8 +647,8 @@ class NotificationService extends ChangeNotifier {
           _lastLocalSeverityTimeMs = nowMs;
 
           // Process notifications asynchronously without blocking the listener
-          _processNotificationAsync(
-              title, body, channelKey, notificationType, severity);
+          _processNotificationAsync(title, body, channelKey, notificationType,
+              severity, cooldownMs);
         } else {
           debugPrint(
               '🛑 Skipping duplicate $severity within ${cooldownMs ~/ 1000}s (client-side)');
@@ -644,21 +658,34 @@ class NotificationService extends ChangeNotifier {
   }
 
   // Process notifications asynchronously to avoid blocking the Firebase listener
+  //
+  // SAFETY: does NOT create an anxiety_records row. Unlike a backend FCM
+  // alert (which the user can tap to open a Yes/No confirmation), this
+  // listener has no Cloud Function backing it and no verified source for
+  // its `anxietyDetected` field today -- so mild/moderate/severe detected
+  // here always go through the same confirmation flow as everything else
+  // (see the payload built in _showSeverityNotification) instead of writing
+  // a record automatically. Only an explicit user "Yes" on that dialog
+  // creates a record.
   Future<void> _processNotificationAsync(String title, String body,
-      String channelKey, String notificationType, String severity) async {
+      String channelKey, String notificationType, String severity,
+      int cooldownMs) async {
     try {
-      // Show local notification
-      await _showSeverityNotification(title, body, channelKey, severity);
+      // Show local notification (payload carries requiresConfirmation so a
+      // tap routes through the same confirmation/help-modal logic as a
+      // backend-originated alert -- see main.dart's onActionNotificationMethod)
+      await _showSeverityNotification(title, body, channelKey, severity,
+          dedupeWindow: Duration(milliseconds: cooldownMs));
 
-      // Store in Supabase for notifications screen
+      // Store in Supabase for notifications screen. Intentionally NOT
+      // followed by an automatic _saveAnxietyLevelRecord() call -- a record
+      // is only created if the user explicitly confirms via the dialog.
+
       await _saveNotificationToSupabase(
           title, body, notificationType, severity);
 
-      // Save anxiety level record
-      await _saveAnxietyLevelRecord(severity, false);
-
       debugPrint(
-          '✅ Processed $severity notification: stored locally and in Supabase');
+          '✅ Processed $severity notification: stored locally and in Supabase (awaiting user confirmation before any anxiety_records write)');
     } catch (e) {
       debugPrint('❌ Error processing $severity notification: $e');
     }
@@ -666,11 +693,22 @@ class NotificationService extends ChangeNotifier {
 
   // Show a severity-based notification with deduplication
   // Show a severity-based notification with custom sound and vibration
+  //
+  // [dedupeWindow] is a cross-restart safety net only -- the PRIMARY
+  // cooldown is the in-memory per-severity gate in initializeListener()
+  // (mild 60s / moderate 45s / severe 30s, never 0). This check exists to
+  // catch the narrow case of an app restart landing mid-cooldown, so it
+  // uses a STABLE key (device+severity+source), never the title/body text,
+  // since the body includes a live heart-rate value that changes on every
+  // reading and would otherwise defeat this check entirely.
   Future<void> _showSeverityNotification(
-      String title, String body, String channelKey, String severity) async {
-    // Check for duplicates before sending (30-minute window protection)
+      String title, String body, String channelKey, String severity,
+      {Duration? dedupeWindow}) async {
+    final stableDedupeKey =
+        '${_currentDeviceId ?? "unknown_device"}_${severity}_local_listener';
     final isDuplicate = await _isDuplicateNotification(
-        'anxiety_alert_$severity', '$title: $body');
+        'anxiety_alert_$severity', stableDedupeKey,
+        window: dedupeWindow);
     if (isDuplicate) {
       debugPrint('🚫 Duplicate $severity notification blocked');
       return;
@@ -708,6 +746,15 @@ class NotificationService extends ChangeNotifier {
         payload: {
           'type': 'anxiety_alert',
           'severity': severity,
+          // Mirrors the backend's FCM payload fields (see
+          // sendUserAnxietyAlert in functions/src/realTimeSustainedAnxietyDetection.ts)
+          // so a tap on this local notification is routed identically by
+          // main.dart's onActionNotificationMethod: mild/moderate/severe
+          // always require confirmation, critical auto-confirms.
+          'requiresConfirmation': isCritical ? 'false' : 'true',
+          'autoConfirm': isCritical.toString(),
+          'alertType': isCritical ? 'definitive_anxiety' : 'check_in_$severity',
+          'source': 'mobile_rtdb_listener',
           'timestamp': DateTime.now().toIso8601String(),
         },
       ),

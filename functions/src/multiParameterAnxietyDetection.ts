@@ -1,3 +1,23 @@
+/**
+ * ⚠️ NOT A PRODUCTION PATH -- DO NOT EXPORT FROM index.ts ⚠️
+ *
+ * This file is dead/orphaned: it is not imported or re-exported anywhere,
+ * so `detectAnxietyMultiParameter` is not deployed. Kept for reference only.
+ *
+ * It is dangerous if ever wired back in: it triggers on the SAME
+ * `/devices/{deviceId}/current` path as the live
+ * `realTimeSustainedAnxietyDetection` (functions/src/realTimeSustainedAnxietyDetection.ts),
+ * has NO rate limiting or cooldown of any kind (no transaction, no call
+ * into enhancedRateLimiting.ts), and its "sustained" check is a hardcoded
+ * placeholder (`sustainedFor30Seconds = true`) rather than a real duration
+ * check. Re-exporting this alongside the live detector would create a
+ * second, unthrottled anxiety-alert path for every device update.
+ *
+ * If this is ever revived, it must at minimum: share the same rate-limit
+ * keys as the live detector, implement a real sustained-duration check,
+ * and read baseline from Supabase (not the unused `baselines/{userId}/{deviceId}`
+ * Firebase path it currently reads, which nothing else in this app writes).
+ */
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 

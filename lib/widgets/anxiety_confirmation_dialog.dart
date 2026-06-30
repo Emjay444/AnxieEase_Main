@@ -209,11 +209,15 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
 
   // Removed _showHelpOptions() - now handled by parent notifications_screen.dart
 
+  // Honest, non-promising copy: this dialog cannot currently guarantee a
+  // reduced alert frequency (see _updateRateLimitingForConfirmation), so
+  // it must never claim one. It only confirms what actually happened:
+  // the response was logged and no anxiety_records row was created.
   void _showThankYouMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content:
-            Text('Thank you for the feedback! We\'ll continue monitoring.'),
+        content: Text(
+            'Thanks for confirming. This was recorded as a false alarm -- no anxiety record was created.'),
         backgroundColor: Colors.green,
         duration: Duration(seconds: 3),
       ),
@@ -538,7 +542,21 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     );
   }
 
-  /// Update rate limiting based on user confirmation
+  /// Best-effort attempt to extend the backend's confirmation-aware
+  /// cooldown (functions/src/enhancedRateLimiting.ts's
+  /// handleUserConfirmationResponse). This call currently CANNOT succeed
+  /// from this app: that Cloud Function requires a Firebase Auth context
+  /// (`context.auth`), but this app authenticates exclusively via Supabase
+  /// Auth and has no Firebase Auth integration at all -- every invocation
+  /// throws "unauthenticated" and is swallowed below.
+  ///
+  /// Deliberately silent and side-effect-free on the UI: no SnackBar here
+  /// is gated on this call's result, so this dialog can never show the
+  /// user a cooldown/reduced-alert promise that didn't actually happen.
+  /// User-facing feedback for "no"/"yes" lives in _showThankYouMessage()
+  /// and _submitResponse() instead, and is honest regardless of whether
+  /// this call succeeds. If a Supabase-auth-compatible confirmation
+  /// endpoint is added later, this is the place to call it.
   Future<void> _updateRateLimitingForConfirmation(
     String response,
     String severity,
@@ -556,49 +574,11 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
       });
 
       debugPrint('✅ Rate limiting updated: ${result.data}');
-
-      // Show user feedback about cooldown period
-      if (mounted) {
-        final nextCooldown = result.data['nextCooldown'] as int?;
-        if (nextCooldown != null) {
-          String message;
-          Color backgroundColor;
-
-          switch (response) {
-            case 'yes':
-              message =
-                  'We\'ll continue monitoring closely. Help is available anytime.';
-              backgroundColor = Colors.green;
-              break;
-            case 'no':
-              final hours = (nextCooldown / (1000 * 60 * 60)).round();
-              message =
-                  'Thanks! We\'ll reduce $severity alerts for the next $hours hour${hours != 1 ? 's' : ''}.';
-              backgroundColor = Colors.blue;
-              break;
-            case 'not_now':
-              final minutes = (nextCooldown / (1000 * 60)).round();
-              message =
-                  'Understood. We\'ll give you $minutes minutes before the next $severity alert.';
-              backgroundColor = Colors.orange;
-              break;
-            default:
-              message = 'Response recorded. Thank you for the feedback.';
-              backgroundColor = Colors.grey;
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: backgroundColor,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
     } catch (e) {
-      debugPrint('❌ Error updating rate limiting: $e');
-      // Don't show error to user - this is a background operation
+      debugPrint(
+          'ℹ️ Backend cooldown update unavailable (expected -- see method doc): $e');
+      // Don't show error to user - this is a background, best-effort
+      // operation with no user-visible promise attached to its outcome.
     }
   }
 }

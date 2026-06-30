@@ -7,6 +7,7 @@
 
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
@@ -14,6 +15,27 @@ if (!admin.apps.length) {
 }
 
 const db = admin.database();
+
+// Shared secret gating the manual/debug HTTP endpoints below (manualCleanup
+// can delete real operational data on demand; getCleanupStats reveals
+// internal config). Same env var / header convention as
+// clearAnxietyRateLimits in realTimeSustainedAnxietyDetection.ts.
+const ADMIN_TOOLS_SECRET =
+  process.env.ADMIN_TOOLS_SECRET || functions.config().admintools?.secret;
+
+function isValidAdminToolsSecret(provided: unknown): boolean {
+  if (
+    !ADMIN_TOOLS_SECRET ||
+    typeof provided !== "string" ||
+    provided.length === 0
+  ) {
+    return false;
+  }
+  const expected = Buffer.from(ADMIN_TOOLS_SECRET);
+  const actual = Buffer.from(provided);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
 
 // Configuration - BALANCED for high-frequency wearable data (every 10 seconds, single user)
 const CLEANUP_CONFIG = {
@@ -62,6 +84,14 @@ export const autoCleanup = functions.pubsub
  * Call via: https://your-project.cloudfunctions.net/manualCleanup
  */
 export const manualCleanup = functions.https.onRequest(async (req, res) => {
+  if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+    functions.logger.warn(
+      "⚠️ Rejected manualCleanup call: missing or invalid x-admin-secret header"
+    );
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   functions.logger.info("🧹 Manual cleanup triggered...");
   try {
     const results = await performCleanup();
@@ -460,6 +490,14 @@ async function logCleanupResults(results: any): Promise<void> {
  * Get cleanup statistics
  */
 export const getCleanupStats = functions.https.onRequest(async (req, res) => {
+  if (!isValidAdminToolsSecret(req.get("x-admin-secret"))) {
+    functions.logger.warn(
+      "⚠️ Rejected getCleanupStats call: missing or invalid x-admin-secret header"
+    );
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   try {
     const logsRef = db.ref("/system/cleanup_logs");
     const recentLogs = await logsRef

@@ -938,6 +938,28 @@ class SupabaseService {
     }
   }
 
+  // anxiety_records.severity_level CHECK constraint only allows these four
+  // values (supabase/recommended_schema.sql). 'critical' is a valid severity
+  // elsewhere in the app (FCM payloads, UI) but is intentionally not part of
+  // this DB enum, so it must always be normalized before it can reach here.
+  static const Set<String> _validSeverityLevels = {
+    'mild',
+    'moderate',
+    'severe',
+    'unknown',
+  };
+
+  /// Defensive last-line normalization so no caller -- current or future --
+  /// can attempt to insert an invalid severity_level and hit the DB CHECK
+  /// constraint. `recordAnxietyResponse` already maps critical->severe
+  /// before calling this, but this guard exists so that mapping isn't the
+  /// only thing standing between a raw 'critical' value and a failed insert.
+  static String _normalizeSeverityLevel(dynamic rawSeverity) {
+    final normalized = (rawSeverity ?? 'unknown').toString().toLowerCase();
+    if (normalized == 'critical') return 'severe';
+    return _validSeverityLevels.contains(normalized) ? normalized : 'unknown';
+  }
+
   // Anxiety records methods
   Future<void> saveAnxietyRecord(Map<String, dynamic> record) async {
     final user = client.auth.currentUser;
@@ -949,10 +971,13 @@ class SupabaseService {
         record['timestamp'] = DateTime.now().toIso8601String();
       }
 
+      final normalizedSeverity =
+          _normalizeSeverityLevel(record['severity_level']);
+
       // Map to exact anxiety_records table schema
       final recordToSave = <String, dynamic>{
         'user_id': user.id,
-        'severity_level': record['severity_level'] ?? 'unknown',
+        'severity_level': normalizedSeverity,
         'timestamp':
             record['timestamp'], // Keep user-provided timestamp or now()
         'is_manual': record['is_manual'] ?? false,
@@ -974,7 +999,7 @@ class SupabaseService {
           .single();
 
       debugPrint(
-          'Successfully saved anxiety record for user: ${user.id}, severity: ${record['severity_level']}');
+          'Successfully saved anxiety record for user: ${user.id}, severity: $normalizedSeverity');
       debugPrint(
           '🆔 anxiety_records inserted id: ${inserted['id']} at ${inserted['created_at']}');
 

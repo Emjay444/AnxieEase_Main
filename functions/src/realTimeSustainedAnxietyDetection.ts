@@ -48,10 +48,23 @@ const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (increa
 // Sustained anxiety detection configuration
 const MIN_SUSTAINED_DURATION_SECONDS = 120; // Require 120+ seconds of continuous elevation (2 minutes) - prevents false alerts from sudden HR spikes
 
+// How far back to fetch user session history when looking for a sustained
+// elevated run. MUST be greater than MIN_SUSTAINED_DURATION_SECONDS, or a
+// genuine 120s+ run can never be observed (the analysis window itself would
+// be shorter than the thing it's trying to detect). The +60s buffer
+// tolerates normal gaps between readings without losing the start of a
+// sustained run.
+const HISTORY_LOOKBACK_SECONDS = MIN_SUSTAINED_DURATION_SECONDS + 60; // 180s
+
 // Shared staleness cutoff -- matches the mobile app's "Offline" threshold
 // (lib/services/device_service.dart's DeviceService.staleThreshold). A
 // reading older than this must never drive anxiety detection or alerts.
 const STALE_READING_CUTOFF_MS = 5 * 60 * 1000; // 5 minutes
+
+// Small allowance for clock drift between the device and server. A reading
+// that claims to be from further in the future than this is treated as an
+// invalid/unsafe timestamp rather than trusted at face value.
+const CLOCK_SKEW_TOLERANCE_MS = 60 * 1000; // 1 minute
 
 /**
  * Age of a device reading in milliseconds, or null if the timestamp is
@@ -105,15 +118,24 @@ export const realTimeSustainedAnxietyDetection = functions.database
     }
 
     // STALENESS GUARD: never run sustained-anxiety analysis, send an FCM
-    // alert, or persist a notification from a reading that's already old.
-    // Protects against delayed/buffered writes and leftover data from a
-    // device that has gone offline.
+    // alert, or persist a notification from a reading that's already old,
+    // missing, or unparseable. A null age (missing/malformed timestamp) is
+    // treated as UNSAFE rather than "not stale" -- a reading we can't date
+    // must never be trusted enough to drive an alert. A timestamp claiming
+    // to be from further in the future than CLOCK_SKEW_TOLERANCE_MS is
+    // equally untrustworthy and is rejected the same way.
     const readingAgeMs = getReadingAgeMs(afterData.timestamp);
-    if (readingAgeMs !== null && readingAgeMs > STALE_READING_CUTOFF_MS) {
+    const isUnsafeTimestamp =
+      readingAgeMs === null ||
+      readingAgeMs > STALE_READING_CUTOFF_MS ||
+      readingAgeMs < -CLOCK_SKEW_TOLERANCE_MS;
+    if (isUnsafeTimestamp) {
       console.log(
-        `🔇 Ignoring stale reading for device ${deviceId} (${Math.round(
-          readingAgeMs / 1000
-        )}s old) -- skipping anxiety detection`
+        readingAgeMs === null
+          ? `🔇 Ignoring reading with missing/unparseable timestamp for device ${deviceId} -- skipping anxiety detection`
+          : `🔇 Ignoring unsafe-timestamp reading for device ${deviceId} (${Math.round(
+              readingAgeMs / 1000
+            )}s offset from now) -- skipping anxiety detection`
       );
       return null;
     }
@@ -155,10 +177,12 @@ export const realTimeSustainedAnxietyDetection = functions.database
       console.log(`📊 User baseline: ${userBaseline.baselineHR} BPM`);
 
       // STEP 3: Get user's recent session history (not device history!)
+      // Must cover at least MIN_SUSTAINED_DURATION_SECONDS or a real
+      // sustained run can never be observed -- see HISTORY_LOOKBACK_SECONDS.
       const userHistoryData = await getUserSessionHistory(
         userId,
         sessionId,
-        40
+        HISTORY_LOOKBACK_SECONDS
       );
 
       if (userHistoryData.length < 3) {
@@ -267,12 +291,17 @@ export const realTimeSustainedAnxietyDetection = functions.database
   });
 
 /**
- * Get user's session history data (from user sessions, not raw device data)
+ * Get user's session history data (from user sessions, not raw device data).
+ *
+ * @param lookbackSeconds Width of the time window to fetch, in SECONDS (not
+ * a row count). Callers analyzing sustained duration must pass a value
+ * greater than the sustained-duration requirement they're checking against,
+ * or a real sustained run can never appear within the fetched window.
  */
 async function getUserSessionHistory(
   userId: string,
   sessionId: string,
-  seconds: number
+  lookbackSeconds: number
 ): Promise<
   Array<{
     timestamp: number;
@@ -285,7 +314,7 @@ async function getUserSessionHistory(
   const userSessionRef = db.ref(
     `/users/${userId}/sessions/${sessionId}/history`
   );
-  const cutoffTime = Date.now() - seconds * 1000;
+  const cutoffTime = Date.now() - lookbackSeconds * 1000;
 
   try {
     const snapshot = await userSessionRef
@@ -295,7 +324,7 @@ async function getUserSessionHistory(
 
     if (!snapshot.exists()) {
       console.log(
-        `📊 No user session history found for ${userId}/${sessionId} in last ${seconds}s`
+        `📊 No user session history found for ${userId}/${sessionId} in last ${lookbackSeconds}s`
       );
       return [];
     }
@@ -532,7 +561,7 @@ function analyzeUserSustainedAnxiety(
   }
 
   console.log(
-    `✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < 10s required)`
+    `✅ User ${userId}: Heart rate elevated but not sustained (${longestSustainedDuration}s < ${MIN_SUSTAINED_DURATION_SECONDS}s required)`
   );
 
   return {
@@ -542,7 +571,7 @@ function analyzeUserSustainedAnxiety(
       longestSustainedDuration > 0
         ? `User ${userId}: Elevated for ${Math.floor(
             longestSustainedDuration
-          )}s (need 10s)`
+          )}s (need ${MIN_SUSTAINED_DURATION_SECONDS}s)`
         : `User ${userId}: HR within normal range`,
   };
 }

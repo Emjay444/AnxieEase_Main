@@ -215,12 +215,20 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
       } else {
         // Fallback for alerts with no explicit confirmation flag (older
         // queued notifications, or any future sender that doesn't set
-        // requiresConfirmation) -- route by severity as before.
+        // requiresConfirmation). Pass the RAW (possibly-absent) flags --
+        // not the locally-collapsed booleans above, which can't tell
+        // "explicitly false" apart from "field missing" -- so
+        // _navigateForAnxietySeverity can apply its own safe default
+        // (require confirmation) when the field is genuinely absent.
         await _navigateForAnxietySeverity(
           severity,
           title: receivedAction.title ?? 'Anxiety Alert',
           message: receivedAction.body ?? 'Please check your status.',
           notificationId: payload['notificationId'],
+          requiresConfirmation:
+              _parseOptionalFlag(payload['requiresConfirmation']),
+          autoConfirm: _parseOptionalFlag(payload['autoConfirm']),
+          alertType: payload['alertType']?.toString(),
         );
       }
     }
@@ -244,19 +252,81 @@ Future<void> onActionNotificationMethod(ReceivedAction receivedAction) async {
   }
 }
 
+/// Parses an FCM/local-notification data value that should be a boolean,
+/// distinguishing "explicitly false" from "field absent". Absence must
+/// resolve to `null` (not `false`) so callers can apply a safe default
+/// instead of silently treating a missing flag as "no confirmation needed".
+bool? _parseOptionalFlag(dynamic raw) {
+  if (raw == null) return null;
+  final normalized = raw.toString().toLowerCase();
+  if (normalized == 'true') return true;
+  if (normalized == 'false') return false;
+  return null;
+}
+
 /// Navigate to the appropriate screen/modal for a resolved anxiety
 /// severity. Shared by the FCM foreground-tap, cold-start, and background
 /// notification-action handlers so all entry points apply the exact same
-/// mild/moderate/severe/critical routing instead of three independently
+/// mild/moderate/severe/critical routing instead of independently
 /// maintained switch statements that could silently drift apart.
+///
+/// SAFETY: consults [requiresConfirmation]/[autoConfirm] the same way
+/// onActionNotificationMethod already does, so a tap reaching this function
+/// (FCM tray tap via onMessageOpenedApp, or cold start) can never skip
+/// straight to breathing/grounding for moderate/severe the way the old
+/// severity-only switch did. If the flag is absent (legacy/unknown sender),
+/// the safe default is to require confirmation -- never to skip it.
 Future<void> _navigateForAnxietySeverity(
   String severity, {
   required String title,
   required String message,
   String? notificationId,
+  bool? requiresConfirmation,
+  bool? autoConfirm,
+  String? alertType,
 }) async {
   final navigator = rootNavigatorKey.currentState;
+  final normalizedSeverity = severity.toLowerCase();
+  final isCritical = normalizedSeverity == 'critical';
 
+  // Critical (or anything explicitly marked auto-confirm) always goes
+  // straight to the shared critical help modal -- a definitive backend
+  // severity calculation, never something the user is asked to confirm.
+  if (isCritical || autoConfirm == true) {
+    debugPrint('🔴 Critical/auto-confirmed alert → Critical help modal');
+    await _showCriticalAlertHelpModal(
+      notificationTitle: title,
+      notificationMessage: message,
+      notificationId: notificationId,
+    );
+    return;
+  }
+
+  // Safe default: if the sender didn't say otherwise, treat mild/moderate/
+  // severe as requiring confirmation -- matches the backend's actual
+  // behavior for every real anxiety alert it sends.
+  final needsConfirmation = requiresConfirmation ?? true;
+  if (needsConfirmation) {
+    debugPrint('🟡 $normalizedSeverity alert → Confirmation dialog');
+    navigator?.pushNamed(
+      '/notifications',
+      arguments: {
+        'showConfirmationDialog': true,
+        'title': title,
+        'message': message,
+        'severity': normalizedSeverity,
+        'alertType': alertType ?? 'check_in_$normalizedSeverity',
+        'notificationId': notificationId,
+        'relatedId': notificationId,
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+    return;
+  }
+
+  // requiresConfirmation was explicitly false and this isn't critical/
+  // auto-confirm -- fall back to the old direct-screen routing for any
+  // sender that legitimately doesn't need a check-in.
   void toNotifications() {
     navigator?.pushNamed(
       '/notifications',
@@ -265,36 +335,24 @@ Future<void> _navigateForAnxietySeverity(
         'title': title,
         'message': message,
         'type': 'alert',
-        'severity': severity,
+        'severity': normalizedSeverity,
         'createdAt': DateTime.now().toIso8601String(),
       },
     );
   }
 
-  switch (severity.toLowerCase()) {
+  switch (normalizedSeverity) {
     case 'mild':
-      debugPrint('🟢 Mild alert → Notifications screen');
+      debugPrint('🟢 Mild alert (no confirmation required) → Notifications');
       toNotifications();
       break;
     case 'moderate':
-      debugPrint('🟡 Moderate alert → Breathing exercises');
+      debugPrint('🟡 Moderate alert (no confirmation required) → Breathing');
       navigator?.pushNamed('/breathing');
       break;
     case 'severe':
-      debugPrint('🟠 Severe alert → Grounding technique');
+      debugPrint('🟠 Severe alert (no confirmation required) → Grounding');
       navigator?.pushNamed('/grounding');
-      break;
-    case 'critical':
-      // Critical alerts always go straight to the shared critical help
-      // modal (no Yes/No confirmation) regardless of entry point -- this
-      // is a definitive backend severity calculation, not something to
-      // ask "are you anxious?" about.
-      debugPrint('🔴 Critical alert → Critical help modal (auto-confirmed)');
-      await _showCriticalAlertHelpModal(
-        notificationTitle: title,
-        notificationMessage: message,
-        notificationId: notificationId,
-      );
       break;
     default:
       debugPrint('⚠️ Unknown severity "$severity" → Notifications screen');
@@ -1526,6 +1584,10 @@ Future<void> _configureFCM() async {
           message:
               message.notification?.body ?? 'Please check your status.',
           notificationId: message.data['notificationId'],
+          requiresConfirmation:
+              _parseOptionalFlag(message.data['requiresConfirmation']),
+          autoConfirm: _parseOptionalFlag(message.data['autoConfirm']),
+          alertType: message.data['alertType']?.toString(),
         );
       } else {
         debugPrint(
@@ -1622,6 +1684,10 @@ Future<void> _configureFCM() async {
             message: initialMsg.notification?.body ??
                 'Please check your status.',
             notificationId: initialMsg.data['notificationId'],
+            requiresConfirmation:
+                _parseOptionalFlag(initialMsg.data['requiresConfirmation']),
+            autoConfirm: _parseOptionalFlag(initialMsg.data['autoConfirm']),
+            alertType: initialMsg.data['alertType']?.toString(),
           );
         }
       });

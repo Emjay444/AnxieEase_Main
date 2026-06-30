@@ -1,6 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.monitorDatabaseGrowth = exports.optimizedSessionCleanup = exports.removeDeviceHistoryRedundancy = exports.optimizedDeviceDataSync = void 0;
+/**
+ * ⚠️ NOT A PRODUCTION PATH -- DO NOT EXPORT FROM index.ts ⚠️
+ *
+ * This file is dead/orphaned: it is not imported or re-exported anywhere,
+ * so none of its functions are deployed. Kept for reference only.
+ *
+ * It is dangerous if ever wired back in: `optimizedDeviceDataSync` triggers
+ * on the SAME `/devices/AnxieEase001/current` write event as the live
+ * `smartDeviceDataSync` (functions/src/smartDeviceDataSync.ts). If both were
+ * ever exported, every reading would be written into user session history
+ * TWICE under two different key formats, corrupting the sustained-anxiety
+ * analysis window. `optimizedSessionCleanup` also defines a competing
+ * 7-day session retention policy vs. the live `cleanupOldSessions`'s 30 days
+ * (functions/src/deviceDataCopyService.ts) -- running both would delete
+ * session history sooner than the rest of the system assumes.
+ */
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin if not already initialized

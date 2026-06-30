@@ -1,3 +1,20 @@
+/**
+ * ⚠️ NOT A PRODUCTION PATH -- DO NOT EXPORT FROM index.ts ⚠️
+ *
+ * This file is dead/orphaned: it is not imported or re-exported anywhere,
+ * so `detectPersonalizedAnxiety` is not deployed. Kept for reference only.
+ *
+ * It is dangerous if ever wired back in: it uses ABSOLUTE BPM thresholds
+ * (baseline +15/+25/+35/+45 BPM) instead of the live detector's PERCENTAGE
+ * thresholds (20/30/50/80% above baseline) in
+ * functions/src/realTimeSustainedAnxietyDetection.ts -- the same physiological
+ * event would be labeled a different severity by each, and it shares the
+ * per-severity soft cooldown keys (enhancedRateLimiting.ts) with the live
+ * detector but NOT its hard global 5-minute rate-limit transaction, so it
+ * could send a duplicate alert the live detector's own lock would otherwise
+ * have blocked. It also reads baseline from an unused Firebase-only path
+ * (`baselines/{userId}/{deviceId}`) that nothing else in this app writes.
+ */
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import {
