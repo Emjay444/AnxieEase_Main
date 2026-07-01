@@ -1170,7 +1170,8 @@ class SupabaseService {
   }
 
   // Wellness logs methods (for moods, symptoms, stress levels)
-  Future<void> saveWellnessLog(Map<String, dynamic> log) async {
+  Future<void> saveWellnessLog(Map<String, dynamic> log,
+      {bool skipDuplicateCheck = false}) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
@@ -1186,7 +1187,7 @@ class SupabaseService {
       }
 
       // Even if no ID is provided, check if a log with the same timestamp already exists
-      if (log['timestamp'] != null) {
+      if (!skipDuplicateCheck && log['timestamp'] != null) {
         print('Checking for existing log with timestamp ${log['timestamp']}');
         final existingLogs = await client
             .from('wellness_logs')
@@ -1325,7 +1326,8 @@ class SupabaseService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getWellnessLogs({String? userId}) async {
+  Future<List<Map<String, dynamic>>> getWellnessLogs(
+      {String? userId, int? limit}) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
@@ -1363,11 +1365,14 @@ class SupabaseService {
       }
     }
 
-    final response = await client
+    var wellnessQuery = client
         .from('wellness_logs')
         .select()
         .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
+
+    final response =
+        limit != null ? await wellnessQuery.limit(limit) : await wellnessQuery;
 
     print(
         'Successfully retrieved ${response.length} wellness logs for user: $targetUserId');

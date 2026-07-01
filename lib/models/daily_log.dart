@@ -102,7 +102,15 @@ class DailyLog {
   }
 
   // Save this log to Supabase.
-  Future<void> syncWithSupabase() async {
+  //
+  // [skipDuplicateCheck] skips the pre-insert "does a log with this
+  // timestamp already exist" lookup for brand-new logs. Safe to set for an
+  // interactive save where `timestamp` was just generated with
+  // `DateTime.now()` and is guaranteed unique - it removes a redundant
+  // network round-trip that would otherwise block the save. Leave it false
+  // for bulk/background resyncs of locally-created logs, where a previous
+  // partial sync could have already pushed the same log to the server.
+  Future<void> syncWithSupabase({bool skipDuplicateCheck = false}) async {
     try {
       final supabaseService = SupabaseService();
       final data = toSupabaseJson();
@@ -112,7 +120,8 @@ class DailyLog {
         await supabaseService.updateWellnessLog(data);
       } else {
         // If no ID, this is a create operation
-        await supabaseService.saveWellnessLog(data);
+        await supabaseService.saveWellnessLog(data,
+            skipDuplicateCheck: skipDuplicateCheck);
       }
     } catch (e) {
       print('Error syncing log to Supabase: $e');

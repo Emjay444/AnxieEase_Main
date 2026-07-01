@@ -24,6 +24,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   Timer? _saveLogsTimer; // debounce timer
   static const Duration _saveLogsDebounce = Duration(milliseconds: 500);
+  // Cap on how many logs/journals the sync re-fetches from Supabase per
+  // call - older already-synced entries stay available locally, this just
+  // avoids re-downloading a user's entire history on every tab open.
+  static const int _syncFetchLimit = 1000;
 
   // Tracks the signed-in user so a logout/login switch can clear stale
   // in-memory logs instead of leaving the previous user's entries visible.
@@ -144,9 +148,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       print('Successfully synced ${allLogs.length} logs with Supabase');
 
-      // Fetch logs from Supabase to ensure we have the latest data
+      // Fetch logs from Supabase to ensure we have the latest data. Capped
+      // to the most recent entries (already-synced older logs stay in the
+      // local cache from previous syncs via _saveLogs) so this doesn't pull
+      // a user's entire history over the network on every tab open.
       final List<Map<String, dynamic>> supabaseLogs =
-          await _supabaseService.getWellnessLogs();
+          await _supabaseService.getWellnessLogs(limit: _syncFetchLimit);
 
       print('Loaded ${supabaseLogs.length} logs from Supabase');
 
@@ -194,7 +201,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       // ALSO fetch journals from the separate journals table
       try {
         final List<Map<String, dynamic>> journalEntries =
-            await _supabaseService.getAllJournals();
+            await _supabaseService.getAllJournals(limit: _syncFetchLimit);
 
         print('Loaded ${journalEntries.length} journals from journals table');
 
@@ -477,13 +484,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
           'Log to sync - Has ID: ${logToSync!.id != null ? 'Yes: ${logToSync!.id}' : 'No'}, Timestamp: ${logToSync!.timestamp}');
       // Let failures propagate: the caller's .catchError shows a real error
       // message instead of a false "saved successfully" toast.
-      await logToSync!.syncWithSupabase();
+      //
+      // A brand-new log always gets a fresh DateTime.now() timestamp above,
+      // so it can never collide with an existing row - skip the redundant
+      // pre-insert duplicate-timestamp lookup in that case.
+      await logToSync!.syncWithSupabase(skipDuplicateCheck: existingLog == null);
       print('Supabase sync completed successfully');
     }
 
-    // Notifications are a best-effort side effect of saving a log - a
-    // failure here must not be reported as a log-save failure, since the
-    // log itself already saved successfully above.
+    // Notifications are a best-effort side effect of saving a log - fire
+    // it off without awaiting so the loading spinner in the caller
+    // dismisses as soon as the log itself is saved, instead of blocking on
+    // a second sequential network round-trip.
+    unawaited(_createLogNotification(
+      logToSync: logToSync,
+      stressLevel: stressLevel,
+      selectedMoods: selectedMoods,
+      selectedSymptoms: selectedSymptoms,
+    ));
+  }
+
+  Future<void> _createLogNotification({
+    required DailyLog? logToSync,
+    required double stressLevel,
+    required List<String> selectedMoods,
+    required List<String> selectedSymptoms,
+  }) async {
+    // A failure here must not be reported as a log-save failure, since the
+    // log itself already saved successfully in _saveDailyLog.
     try {
       final DateTime notificationTime =
           (logToSync?.timestamp ?? DateTime.now()).toUtc();
@@ -2880,6 +2908,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     TextEditingController journalController = TextEditingController();
     int wordCount = 0;
+    bool isSaving = false;
 
     void updateCounts(String text) {
       wordCount =
@@ -3133,21 +3162,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: () async {
-                                if (journalController.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text('Please write something first'),
-                                      backgroundColor: Colors.orange,
-                                    ),
-                                  );
-                                  return;
-                                }
-                                await _saveJournalEntry(
-                                    journalController.text, false);
-                                Navigator.pop(context);
-                              },
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      if (journalController.text
+                                          .trim()
+                                          .isEmpty) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                'Please write something first'),
+                                            backgroundColor: Colors.orange,
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      setState(() => isSaving = true);
+                                      await _saveJournalEntry(
+                                          journalController.text, false);
+                                      Navigator.pop(context);
+                                    },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey.shade700,
                                 padding:
@@ -3157,25 +3192,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 ),
                                 elevation: 0,
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.lock_outline_rounded,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    'Save for Myself',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
+                              child: isSaving
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          Icons.lock_outline_rounded,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          'Save for Myself',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -3183,21 +3228,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: () async {
-                                if (journalController.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text('Please write something first'),
-                                      backgroundColor: Colors.orange,
-                                    ),
-                                  );
-                                  return;
-                                }
-                                await _saveJournalEntry(
-                                    journalController.text, true);
-                                Navigator.pop(context);
-                              },
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      if (journalController.text
+                                          .trim()
+                                          .isEmpty) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                'Please write something first'),
+                                            backgroundColor: Colors.orange,
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      setState(() => isSaving = true);
+                                      await _saveJournalEntry(
+                                          journalController.text, true);
+                                      Navigator.pop(context);
+                                    },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green.shade600,
                                 padding:
@@ -3207,9 +3258,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 ),
                                 elevation: 2,
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
+                              child: isSaving
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
                                   const Icon(
                                     Icons.share_outlined,
                                     color: Colors.white,
