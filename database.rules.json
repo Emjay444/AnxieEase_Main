@@ -3,8 +3,8 @@
     "devices": {
       "AnxieEase001": {
         "assignment": {
-          ".read": "auth != null",
-          ".write": "auth != null && (auth.token.admin == true || root.child('devices/AnxieEase001/assignment').val() == null)"
+          ".read": true,
+          ".write": true
         },
         "current": {
           ".read": "auth != null",

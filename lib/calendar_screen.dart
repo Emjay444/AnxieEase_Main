@@ -2907,11 +2907,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     TextEditingController journalController = TextEditingController();
-    int wordCount = 0;
+    ValueNotifier<int> wordCountNotifier = ValueNotifier<int>(0);
     bool isSaving = false;
 
     void updateCounts(String text) {
-      wordCount =
+      wordCountNotifier.value =
           text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
     }
 
@@ -3031,7 +3031,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                         journalController.text =
                                             prompt + '\n\n';
                                         updateCounts(journalController.text);
-                                        setState(() {});
                                       }
                                     },
                                     child: Container(
@@ -3087,11 +3086,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 controller: journalController,
                                 maxLines: null,
                                 expands: true,
-                                onChanged: (val) {
-                                  setState(() {
-                                    updateCounts(val);
-                                  });
-                                },
+                                onChanged: updateCounts,
                                 textAlignVertical: TextAlignVertical.top,
                                 decoration: InputDecoration(
                                   hintText:
@@ -3113,38 +3108,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               Positioned(
                                 left: 16,
                                 bottom: 16,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
-                                        blurRadius: 4,
+                                child: ValueListenableBuilder<int>(
+                                  valueListenable: wordCountNotifier,
+                                  builder: (context, wordCount, _) {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.1),
+                                            blurRadius: 4,
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.text_fields_rounded,
-                                        size: 14,
-                                        color: Colors.grey[600],
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.text_fields_rounded,
+                                            size: 14,
+                                            color: Colors.grey[600],
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '$wordCount words',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[700],
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '$wordCount words',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
                               ),
                             ],
@@ -3299,7 +3301,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
         );
       },
-    );
+    ).whenComplete(() => wordCountNotifier.dispose());
   }
 
   // Method to save a standalone journal entry

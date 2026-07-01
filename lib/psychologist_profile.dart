@@ -189,7 +189,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     }
   }
 
-  Future<void> _selectDate(BuildContext context) async {
+  Future<void> _selectDate(BuildContext context, StateSetter setSheetState) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime.now().add(const Duration(days: 1)),
@@ -210,7 +210,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     );
 
     if (picked != null && picked != _selectedDate) {
-      setState(() {
+      setSheetState(() {
         _selectedDate = picked;
         _dateController.text = DateFormat('MMM dd, yyyy').format(picked);
         _fieldErrors['date'] = '';
@@ -218,7 +218,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     }
   }
 
-  Future<void> _selectTime(BuildContext context) async {
+  Future<void> _selectTime(BuildContext context, StateSetter setSheetState) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime ?? TimeOfDay.now(),
@@ -237,7 +237,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     );
 
     if (picked != null && picked != _selectedTime) {
-      setState(() {
+      setSheetState(() {
         _selectedTime = picked;
         _timeController.text = picked.format(context);
         _fieldErrors['time'] = '';
@@ -245,8 +245,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     }
   }
 
-  void _resetForm() {
-    setState(() {
+  void _resetForm(StateSetter setSheetState) {
+    setSheetState(() {
       _dateController.text = '';
       _timeController.text = '';
       _reasonController.text = '';
@@ -258,10 +258,10 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     });
   }
 
-  bool _validateForm() {
+  bool _validateForm(StateSetter setSheetState) {
     bool isValid = true;
 
-    setState(() {
+    setSheetState(() {
       // Validate date
       if (_selectedDate == null) {
         _fieldErrors['date'] = 'Date is required';
@@ -290,8 +290,8 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     return isValid;
   }
 
-  Future<void> _submitAppointmentRequest() async {
-    if (!_validateForm()) {
+  Future<void> _submitAppointmentRequest(StateSetter setSheetState) async {
+    if (!_validateForm(setSheetState)) {
       return;
     }
 
@@ -334,7 +334,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       }
 
       // Reset form and reload data
-      _resetForm();
+      _resetForm(setSheetState);
       await _loadData();
       if (mounted) {
         Navigator.of(context).maybePop();
@@ -635,34 +635,39 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final bottom = MediaQuery.of(ctx).viewInsets.bottom;
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: bottom),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.black12,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                padding: EdgeInsets.only(bottom: bottom),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.black12,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildAppointmentForm(setSheetState, inSheet: true),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    _buildAppointmentForm(inSheet: true),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -908,7 +913,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
     );
   }
 
-  Widget _buildAppointmentForm({bool inSheet = true}) {
+  Widget _buildAppointmentForm(StateSetter setSheetState, {bool inSheet = true}) {
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide(color: Colors.grey.shade300),
@@ -955,7 +960,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       ? _fieldErrors['date']
                       : null,
                 ),
-                onTap: () => _selectDate(context),
+                onTap: () => _selectDate(context, setSheetState),
               ),
             ),
             const SizedBox(width: 12),
@@ -979,7 +984,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
                       ? _fieldErrors['time']
                       : null,
                 ),
-                onTap: () => _selectTime(context),
+                onTap: () => _selectTime(context, setSheetState),
               ),
             ),
           ],
@@ -1017,7 +1022,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             Expanded(
               child: OutlinedButton(
                 onPressed: () {
-                  _resetForm();
+                  _resetForm(setSheetState);
                   Navigator.of(context).pop();
                 },
                 style: OutlinedButton.styleFrom(
@@ -1033,7 +1038,7 @@ class _PsychologistProfilePageState extends State<PsychologistProfilePage> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton(
-                onPressed: _submitAppointmentRequest,
+                onPressed: () => _submitAppointmentRequest(setSheetState),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3AA772),
                   foregroundColor: Colors.white,

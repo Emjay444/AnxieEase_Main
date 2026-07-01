@@ -542,20 +542,37 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final severity = result['severity'] as String?;
       final notificationId = notification['id'];
 
-      // Mark notification as answered in the database
+      // Mark notification as answered in the database. This is fired without
+      // awaiting it (it's a SELECT + UPDATE round trip) so the caring/help
+      // modal below can appear immediately instead of the whole flow
+      // stalling on network latency.
       if (notificationId != null) {
-        try {
-          final supabaseService = SupabaseService();
-          await supabaseService.markNotificationAsAnswered(
-            notificationId,
-            response: confirmed ? 'yes' : 'no',
-            severity: severity,
-          );
-
-          // Refresh notifications to show updated status
-          _loadNotifications();
-        } catch (e) {
+        final responseValue = confirmed ? 'yes' : 'no';
+        SupabaseService()
+            .markNotificationAsAnswered(
+          notificationId,
+          response: responseValue,
+          severity: severity,
+        )
+            .catchError((e) {
           debugPrint('Error marking notification as answered: $e');
+        });
+
+        // Optimistically reflect the answered state on the notification
+        // object already held in _notifications/_allNotifications (same
+        // Map instance, so this updates every list it appears in). Avoids
+        // the previous full _loadNotifications() reload -- a network fetch
+        // plus re-sort/re-paginate of the whole screen -- which used to
+        // run in the background right as the next modal was animating in
+        // and made the whole confirm-response flow feel janky.
+        final currentMessage = notification['message']?.toString() ?? '';
+        if (!currentMessage.contains('[ANSWERED]')) {
+          var answerInfo = '[ANSWERED] Response: $responseValue';
+          if (severity != null) answerInfo += ' Severity: $severity';
+          setState(() {
+            notification['message'] = '$currentMessage $answerInfo';
+            notification['read'] = true;
+          });
         }
       }
 
