@@ -241,10 +241,13 @@ export const onNativeAlertCreate = functions
         );
       }
 
-      // Enhanced notification structure with proper sound support and complete data
-      // Send to SPECIFIC USER TOKEN as DATA-ONLY (app handles display)
+      // Send to SPECIFIC USER TOKEN with notification key so OS shows it when app is killed
       const message = {
-        token: fcmToken, // ✅ Target specific user!
+        token: fcmToken,
+        notification: {
+          title: title,
+          body: body,
+        },
         data: {
           type: "anxiety_alert",
           severity: severity,
@@ -262,11 +265,10 @@ export const onNativeAlertCreate = functions
           color: getSeverityColor(severity),
           requiresConfirmation: "false",
           alertType: "direct",
-          // Enhanced features - ALL must be strings
           vibrationPattern: getVibrationPattern(severity),
           importance: getNotificationImportance(severity),
           largeIcon: getSeverityIcon(severity),
-          badge: getBadgeCount(severity).toString(), // ✅ Convert number to string
+          badge: getBadgeCount(severity).toString(),
           category: "ANXIETY_ALERT",
           showTimestamp: "true",
           autoCancel: "false",
@@ -276,7 +278,10 @@ export const onNativeAlertCreate = functions
         },
         android: {
           priority: "high" as const,
-          // Removed notification config - data-only for app handling
+          notification: {
+            channelId: getChannelIdForSeverity(severity),
+            sound: getSoundForSeverity(severity),
+          },
         },
         apns: {
           headers: {
@@ -284,10 +289,9 @@ export const onNativeAlertCreate = functions
           },
           payload: {
             aps: {
-              "content-available": 1, // Silent push for data-only
               category: "ANXIETY_ALERT",
               badge: getBadgeCount(severity),
-              sound: getSoundForSeverity(severity).replace(".mp3", ""), // iOS doesn't need .mp3 extension
+              sound: getSoundForSeverity(severity).replace(".mp3", ""),
             },
           },
         },
@@ -1251,10 +1255,13 @@ export const sendWellnessReminders = functions.pubsub
         return null;
       }
 
-      // Send FCM notification (data-only so Android doesn't auto-display it —
-      // the app's background handler is the single source of truth for display,
-      // otherwise the OS auto-display plus the handler's local notification both fire)
+      // Notification key ensures OS shows reminder even when app is killed.
+      // Background handler skips local notification when message.notification is present.
       const fcmMessage = {
+        notification: {
+          title: message.title,
+          body: message.body,
+        },
         data: {
           type: "wellness_reminder",
           category: timeCategory,
@@ -1265,6 +1272,9 @@ export const sendWellnessReminders = functions.pubsub
         },
         android: {
           priority: "normal" as const,
+          notification: {
+            channelId: "wellness_reminders",
+          },
         },
         topic: "wellness_reminders",
       };
@@ -1299,6 +1309,10 @@ export const sendManualWellnessReminder = functions.https.onCall(
       }
 
       const fcmMessage = {
+        notification: {
+          title: message.title,
+          body: message.body,
+        },
         data: {
           type: "wellness_reminder",
           category: timeCategory,
@@ -1309,6 +1323,9 @@ export const sendManualWellnessReminder = functions.https.onCall(
         },
         android: {
           priority: "normal" as const,
+          notification: {
+            channelId: "wellness_reminders",
+          },
         },
         topic: "wellness_reminders",
       };

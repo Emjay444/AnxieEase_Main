@@ -246,16 +246,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // Derive a severity color from the notification title markers/keywords
   Color _severityColorFromTitle(String title) {
     final t = title.toLowerCase();
-    if (t.contains('�') || t.contains('�🔴') || t.contains('critical'))
-      return Colors.red; // Critical = Red
-    if (t.contains('🟠') || t.contains('severe'))
-      return Colors.orange; // Severe = Orange
-    if (t.contains('�') || t.contains('moderate'))
-      return Colors.yellow; // Moderate = Yellow
-    if (t.contains('🟢') || t.contains('mild'))
-      return Colors.green; // Mild = Green
-    return Colors
-        .green; // default for generic alerts (changed from red to green)
+    if (t.contains('🔴') || t.contains('critical')) return Colors.red;
+    if (t.contains('🟠') || t.contains('severe')) return Colors.deepOrange;
+    if (t.contains('🟡') || t.contains('moderate')) return Colors.amber.shade700;
+    if (t.contains('🟢') || t.contains('mild')) return Colors.green;
+    return Colors.green;
   }
 
   Future<void> _loadNotifications() async {
@@ -2441,29 +2436,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: (isAnswered || isDismissed)
-                ? Colors.grey.withOpacity(0.1)
-                : (isRead ? Colors.white : Colors.teal.withOpacity(0.04)),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: (isAnswered || isDismissed)
-                  ? Colors.grey.withOpacity(0.3)
-                  : (isRead
-                      ? Colors.grey.withOpacity(0.15)
-                      : accent.withOpacity(0.5)),
-              width: 1,
-            ),
+            border: Border.all(color: Colors.grey.shade200, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: (!isRead && !isAnswered && !isDismissed)
+                    ? accent.withOpacity(0.12)
+                    : Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: const Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
-          child: Row(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: IntrinsicHeight(
+              child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Left accent strip
+                Container(
+                  width: (!isRead && !isAnswered && !isDismissed) ? 4 : 0,
+                  color: (!isRead && !isAnswered && !isDismissed)
+                      ? accent
+                      : Colors.transparent,
+                ),
+                // Card content
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Leading icon with subtle background
@@ -2637,10 +2647,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
+          ),        // closes content Row
+        ),          // closes Padding
+      ),            // closes Expanded
+    ],              // closes outer Row children
+  ),                // closes outer Row
+),                  // closes IntrinsicHeight
+),                  // closes ClipRRect
+        ),          // closes AnimatedContainer
+      ),            // closes InkWell
+    );              // closes Dismissible
   }
 
   Widget _getNotificationIcon(String type, Color accent,

@@ -1832,18 +1832,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (titleLower.contains('critical') ||
           title.contains('🚨') ||
           title.contains('🔴')) {
-        return Colors.red; // Critical = Red
+        return Colors.red;
       }
       if (titleLower.contains('severe') || title.contains('🟠')) {
-        return Colors.orange; // Severe = Orange
+        return Colors.deepOrange;
       }
       if (titleLower.contains('moderate') || title.contains('🟡')) {
-        return Colors.yellow; // Moderate = Yellow
+        return Colors.amber.shade700;
       }
       if (titleLower.contains('mild') || title.contains('🟢')) {
-        return Colors.green; // Mild = Green
+        return Colors.green;
       }
-      return Colors.green; // Default to green for generic alerts
+      return Colors.green;
     }
 
     Color getTypeColor() {
@@ -1864,41 +1864,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               .grey; // Changed from red to grey for dismissed notifications
         default:
           return Colors.grey;
-      }
-    }
-
-    Color getBackgroundColor() {
-      switch (effectiveType) {
-        case 'alert':
-          // Use severity-based background colors
-          final titleLower = title.toLowerCase();
-          if (titleLower.contains('critical') ||
-              title.contains('🚨') ||
-              title.contains('🔴')) {
-            return const Color(0xFFFFEBEE); // Light red background for critical
-          }
-          if (titleLower.contains('severe') || title.contains('🟠')) {
-            return const Color(
-                0xFFFFF3E0); // Light orange background for severe
-          }
-          if (titleLower.contains('moderate') || title.contains('🟡')) {
-            return const Color(
-                0xFFFFFDE7); // Light yellow background for moderate
-          }
-          return const Color(0xFFE8F5E9); // Light green background for mild
-        case 'info':
-          return const Color(0xFFE3F2FD); // Light blue background
-        case 'warning':
-          return const Color(0xFFFFF8E1); // Light yellow background
-        case 'positive':
-          return const Color(0xFFE8F5E8); // Light green background
-        case 'wellness':
-          return const Color(
-              0xFFE0F2F1); // Very light teal - soft and nurturing
-        case 'dismissed':
-          return const Color(0xFFF5F5F5); // Light grey background for dismissed
-        default:
-          return const Color(0xFFF5F5F5); // Light grey background
       }
     }
 
@@ -1933,25 +1898,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Wrap in GestureDetector only if it's not a reminder
     Widget notificationCard = Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isAnswered
-            ? Colors.grey[100]
-            : (isHighPriority ? getBackgroundColor() : Colors.white),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: isHighPriority && !isAnswered
-            ? Border.all(color: getTypeColor().withOpacity(0.3), width: 1)
-            : null,
+        border: Border.all(color: Colors.grey.shade200, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(isAnswered ? 0.05 : 0.08),
+            color: (isHighPriority && !isAnswered)
+                ? getTypeColor().withOpacity(0.10)
+                : Colors.black.withOpacity(0.04),
+            blurRadius: 10,
             spreadRadius: 0,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 3),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
-      child: Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: IntrinsicHeight(
+          child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: (isHighPriority && !isAnswered) ? 4 : 0,
+              color: (isHighPriority && !isAnswered)
+                  ? getTypeColor()
+                  : Colors.transparent,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
@@ -2068,12 +2050,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+              ],     // Column children
+            ),       // Column
+          ),         // Expanded (text)
+        ],           // content Row children
+      ),             // content Row
+    ),               // Padding
+  ),                 // outer Expanded
+],                   // outer Row children
+        ),           // outer Row
+        ),           // IntrinsicHeight
+      ),             // ClipRRect
+    );               // Container
 
     // Handle different tap behaviors based on notification type
     if (effectiveType == 'dismissed' || isDismissedContent) {

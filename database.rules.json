@@ -93,6 +93,20 @@
         ".write": "auth != null",
         ".read": "auth != null"
       }
+    },
+    "rateLimits": {
+      "$userId": {
+        "$severity": {
+          ".write": true,
+          ".read": "auth != null && auth.token.admin == true"
+        }
+      }
+    },
+    "userResponses": {
+      "$userId": {
+        ".write": true,
+        ".read": "auth != null && auth.token.admin == true"
+      }
     }
   }
 }

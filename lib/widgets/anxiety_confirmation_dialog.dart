@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 
 /// Dialog shown when anxiety is detected and requires user confirmation
@@ -542,43 +543,34 @@ class _AnxietyConfirmationDialogState extends State<AnxietyConfirmationDialog>
     );
   }
 
-  /// Best-effort attempt to extend the backend's confirmation-aware
-  /// cooldown (functions/src/enhancedRateLimiting.ts's
-  /// handleUserConfirmationResponse). This call currently CANNOT succeed
-  /// from this app: that Cloud Function requires a Firebase Auth context
-  /// (`context.auth`), but this app authenticates exclusively via Supabase
-  /// Auth and has no Firebase Auth integration at all -- every invocation
-  /// throws "unauthenticated" and is swallowed below.
-  ///
-  /// Deliberately silent and side-effect-free on the UI: no SnackBar here
-  /// is gated on this call's result, so this dialog can never show the
-  /// user a cooldown/reduced-alert promise that didn't actually happen.
-  /// User-facing feedback for "no"/"yes" lives in _showThankYouMessage()
-  /// and _submitResponse() instead, and is honest regardless of whether
-  /// this call succeeds. If a Supabase-auth-compatible confirmation
-  /// endpoint is added later, this is the place to call it.
+  /// Writes the user's confirmation response directly to Firebase RTDB so
+  /// the Cloud Function's isRateLimitedWithConfirmation() picks it up and
+  /// applies the appropriate extended cooldown on the next detection cycle.
+  /// Bypasses handleUserConfirmationResponse (which requires Firebase Auth
+  /// this app doesn't have) by writing to /rateLimits/{userId}/{severity}
+  /// directly — allowed by the open write rule on that path.
   Future<void> _updateRateLimitingForConfirmation(
     String response,
     String severity,
     String? notificationId,
   ) async {
     try {
-      final functions = FirebaseFunctions.instance;
-      final callable =
-          functions.httpsCallable('handleUserConfirmationResponse');
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
 
-      final result = await callable.call({
-        'severity': severity,
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseDatabase.instance
+          .ref('rateLimits/$userId/$severity/lastUserResponse');
+
+      await ref.set({
+        'timestamp': now,
         'response': response,
-        'notificationId': notificationId,
+        'severity': severity,
       });
 
-      debugPrint('✅ Rate limiting updated: ${result.data}');
+      debugPrint('✅ Rate limit response recorded in RTDB: $response for $severity');
     } catch (e) {
-      debugPrint(
-          'ℹ️ Backend cooldown update unavailable (expected -- see method doc): $e');
-      // Don't show error to user - this is a background, best-effort
-      // operation with no user-visible promise attached to its outcome.
+      debugPrint('⚠️ Failed to update rate limit response: $e');
     }
   }
 }

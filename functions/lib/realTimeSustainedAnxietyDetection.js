@@ -527,7 +527,13 @@ async function sendUserAnxietyAlert(alertData) {
         const notificationId = crypto.randomUUID();
         const message = {
             token: fcmToken,
-            // DATA-ONLY PAYLOAD - No 'notification' key for 100% reliability
+            // Notification key ensures Android OS shows alert even when app is killed/terminated.
+            // Flutter foreground handler still shows a local notification (OS suppresses notification
+            // messages in foreground); background handler skips local notification to avoid duplicates.
+            notification: {
+                title: notificationContent.title,
+                body: notificationContent.body,
+            },
             data: {
                 type: "anxiety_alert",
                 userId: alertData.userId,
@@ -536,7 +542,6 @@ async function sendUserAnxietyAlert(alertData) {
                 heartRate: alertData.heartRate.toString(),
                 baseline: alertData.baseline.toString(),
                 duration: alertData.duration.toString(),
-                // Flutter will use these fields to create local notification
                 title: notificationContent.title,
                 message: notificationContent.body,
                 timestamp: Date.now().toString(),
@@ -546,12 +551,9 @@ async function sendUserAnxietyAlert(alertData) {
                 color: notificationContent.color,
                 channelId: getChannelIdForSeverity(alertData.severity),
                 sound: getSoundForSeverity(alertData.severity),
-                // New fields for confirmation system
                 requiresConfirmation: notificationContent.requiresConfirmation.toString(),
                 alertType: notificationContent.alertType,
-                // For critical alerts, automatically count as anxiety attack
                 autoConfirm: (alertData.severity === "critical").toString(),
-                // Enhanced features for better UX
                 vibrationPattern: getVibrationPattern(alertData.severity),
                 importance: getNotificationImportance(alertData.severity),
                 largeIcon: getSeverityIcon(alertData.severity),
@@ -565,18 +567,20 @@ async function sendUserAnxietyAlert(alertData) {
             },
             android: {
                 priority: "high",
-                // Remove notification config since we're data-only
+                notification: {
+                    channelId: getChannelIdForSeverity(alertData.severity),
+                    sound: getSoundForSeverity(alertData.severity),
+                },
             },
             apns: {
                 headers: {
-                    "apns-priority": "10", // High priority for iOS
+                    "apns-priority": "10",
                 },
                 payload: {
                     aps: {
-                        "content-available": 1,
                         category: "ANXIETY_ALERT",
                         badge: getBadgeCount(alertData.severity),
-                        sound: getSoundForSeverity(alertData.severity).replace(".mp3", ""), // iOS doesn't need .mp3
+                        sound: getSoundForSeverity(alertData.severity).replace(".mp3", ""),
                     },
                 },
             },

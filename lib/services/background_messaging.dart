@@ -28,7 +28,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     debugPrint('🔔 Background FCM received data-only message');
     debugPrint('📊 Background FCM data: ${message.data}');
 
-    // Process ALL anxiety alerts (now data-only) and any other notifications with severity data
+    // Process anxiety alerts and wellness reminders.
+    // When message.notification is present the OS already showed a system notification
+    // (notification+data message), so we skip creating a local duplicate.
+    // We still run the data-processing path (payload storage, routing, etc.).
     if (message.data['type'] == 'anxiety_alert' ||
         message.data['type'] == 'direct_test_device' ||
         message.data.containsKey('severity') ||
@@ -36,7 +39,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         message.data['type'] == 'wellness_reminder' ||
         message.data['type'] == 'reminder') {
       debugPrint(
-          '🚨 Processing data-only anxiety alert - creating local notification');
+          '🔔 Background FCM: type=${message.data['type']}, hasSystemNotif=${message.notification != null}');
+
+      // OS already showed the notification — skip local duplicate
+      if (message.notification != null) {
+        debugPrint('✅ System notification shown by OS, skipping local duplicate');
+        return;
+      }
+
+      debugPrint('🚨 Data-only message — creating local notification');
 
       // Check if this is a wellness reminder
       final isWellnessReminder = message.data['type'] == 'wellness_reminder' ||
@@ -352,6 +363,14 @@ Future<void> _ensureBackgroundNotificationChannelsInitialized() async {
     await AwesomeNotifications().initialize(
       'resource://drawable/ic_notification', // Default small icon
       [
+        NotificationChannel(
+          channelKey: 'wellness_reminders',
+          channelName: 'Wellness Reminders',
+          channelDescription: 'Daily wellness and breathing reminders',
+          importance: NotificationImportance.Default,
+          enableVibration: false,
+          playSound: true,
+        ),
         NotificationChannel(
           channelKey: 'anxiety_alerts',
           channelName: 'General Anxiety Alerts',

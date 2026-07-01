@@ -186,10 +186,13 @@ exports.onNativeAlertCreate = functions
             }
             console.log(`✅ onNativeAlertCreate: Rate limit passed for user ${assignedUserId}, sending notification`);
         }
-        // Enhanced notification structure with proper sound support and complete data
-        // Send to SPECIFIC USER TOKEN as DATA-ONLY (app handles display)
+        // Send to SPECIFIC USER TOKEN with notification key so OS shows it when app is killed
         const message = {
             token: fcmToken,
+            notification: {
+                title: title,
+                body: body,
+            },
             data: {
                 type: "anxiety_alert",
                 severity: severity,
@@ -207,7 +210,6 @@ exports.onNativeAlertCreate = functions
                 color: getSeverityColor(severity),
                 requiresConfirmation: "false",
                 alertType: "direct",
-                // Enhanced features - ALL must be strings
                 vibrationPattern: getVibrationPattern(severity),
                 importance: getNotificationImportance(severity),
                 largeIcon: getSeverityIcon(severity),
@@ -219,7 +221,10 @@ exports.onNativeAlertCreate = functions
             },
             android: {
                 priority: "high",
-                // Removed notification config - data-only for app handling
+                notification: {
+                    channelId: getChannelIdForSeverity(severity),
+                    sound: getSoundForSeverity(severity),
+                },
             },
             apns: {
                 headers: {
@@ -227,10 +232,9 @@ exports.onNativeAlertCreate = functions
                 },
                 payload: {
                     aps: {
-                        "content-available": 1,
                         category: "ANXIETY_ALERT",
                         badge: getBadgeCount(severity),
-                        sound: getSoundForSeverity(severity).replace(".mp3", ""), // iOS doesn't need .mp3 extension
+                        sound: getSoundForSeverity(severity).replace(".mp3", ""),
                     },
                 },
             },
@@ -1104,10 +1108,13 @@ exports.sendWellnessReminders = functions.pubsub
             console.log("No new messages available for", timeCategory);
             return null;
         }
-        // Send FCM notification (data-only so Android doesn't auto-display it —
-        // the app's background handler is the single source of truth for display,
-        // otherwise the OS auto-display plus the handler's local notification both fire)
+        // Notification key ensures OS shows reminder even when app is killed.
+        // Background handler skips local notification when message.notification is present.
         const fcmMessage = {
+            notification: {
+                title: message.title,
+                body: message.body,
+            },
             data: {
                 type: "wellness_reminder",
                 category: timeCategory,
@@ -1118,6 +1125,9 @@ exports.sendWellnessReminders = functions.pubsub
             },
             android: {
                 priority: "normal",
+                notification: {
+                    channelId: "wellness_reminders",
+                },
             },
             topic: "wellness_reminders",
         };
@@ -1142,6 +1152,10 @@ exports.sendManualWellnessReminder = functions.https.onCall(async (data, context
             return { success: false, message: "No new messages available" };
         }
         const fcmMessage = {
+            notification: {
+                title: message.title,
+                body: message.body,
+            },
             data: {
                 type: "wellness_reminder",
                 category: timeCategory,
@@ -1152,6 +1166,9 @@ exports.sendManualWellnessReminder = functions.https.onCall(async (data, context
             },
             android: {
                 priority: "normal",
+                notification: {
+                    channelId: "wellness_reminders",
+                },
             },
             topic: "wellness_reminders",
         };
