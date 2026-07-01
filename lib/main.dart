@@ -94,7 +94,6 @@ const List<String> _quietLogPatterns = [
   'Fresh FCM registration token',
   'FCM token refreshed',
   'Deleted old FCM token',
-  'Cleaned up old device-level FCM token',
   'User has no device assigned',
   'Normal app open:',
   'Post-FCM sync attempt',
@@ -2317,15 +2316,6 @@ Future<void> _storeTokenAtAssignmentLevel(String token) async {
       }
     }
 
-    // Clean up old device-level token (legacy location)
-    try {
-      await FirebaseDatabase.instance
-          .ref('/devices/$deviceId/fcmToken')
-          .remove();
-      debugPrint('🧹 Cleaned up old device-level FCM token');
-    } catch (e) {
-      debugPrint('⚠️ Could not remove old device-level token: $e');
-    }
   } catch (e) {
     debugPrint('❌ Failed to store FCM tokens: $e');
   }
