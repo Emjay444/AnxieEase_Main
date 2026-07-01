@@ -12,6 +12,14 @@ import 'utils/logger.dart';
 // Add travel mode enum near the top of the file
 enum TravelMode { driving, walking, bicycling, transit }
 
+// A facility is either a mental-health-specific place (clinic, psychiatrist,
+// counselor) or a general hospital (kept for emergencies). Every place we
+// fetch gets tagged with one of these so the map/list/filter all agree.
+enum PlaceCategory { mentalHealth, hospital }
+
+// Lets the user narrow the map/list to just one category, or see both.
+enum PlaceFilter { all, mentalHealth, hospital }
+
 /// A short-lived cache entry for a clinic search at a given location bucket.
 class _CachedClinicSearch {
   _CachedClinicSearch(this.places, this.fetchedAt);
@@ -33,12 +41,17 @@ class SearchScreenState extends State<SearchScreen>
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
   final BitmapDescriptor _mentalHealthMarkerIcon =
-      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose);
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);
+  final BitmapDescriptor _hospitalMarkerIcon =
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
   final BitmapDescriptor _selectedMarkerIcon =
       BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
 
   // Store nearby places data for the list view
   List<Map<String, dynamic>> _nearbyPlaces = [];
+
+  // Which category the map/list is currently narrowed to.
+  PlaceFilter _selectedFilter = PlaceFilter.all;
 
   Position? _currentPosition;
   bool _isLoading = true;
@@ -747,6 +760,47 @@ class SearchScreenState extends State<SearchScreen>
     return '$lat,$lng';
   }
 
+  // Fetches one page (plus a possible second page) of Places API
+  // nearby-search results for the given query config. Never throws - returns
+  // an empty list on failure so the caller can combine multiple category
+  // searches without one failing config aborting the others.
+  Future<List<Map<String, dynamic>>> _fetchPlacesForConfig(
+    String baseUrl,
+    Map<String, String> config,
+  ) async {
+    try {
+      final queryParams = {
+        'location':
+            '${_currentPosition!.latitude},${_currentPosition!.longitude}',
+        'rankby': 'prominence',
+        ...config,
+      };
+
+      Logger.info('Trying search with config: $config');
+      final response = await dio.get(baseUrl, queryParameters: queryParams);
+      if (response.statusCode != 200) return [];
+
+      final data = response.data;
+      if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+        Logger.info(
+            'Found ${(data['results'] as List).length} results with config: $config');
+        var results = List<Map<String, dynamic>>.from(data['results']);
+        results = await _fetchAdditionalPages(baseUrl, data, results);
+        return results;
+      }
+      if (data['status'] != 'ZERO_RESULTS') {
+        _lastPlacesApiError =
+            'Google Places ${data['status']}: ${data['error_message'] ?? 'No details'}';
+        Logger.warning(_lastPlacesApiError!);
+      }
+      return [];
+    } catch (e) {
+      _lastPlacesApiError = e.toString();
+      Logger.error('Error querying clinic search proxy', e);
+      return [];
+    }
+  }
+
   Future<void> _searchNearbyHospitals() async {
     if (_currentPosition == null) {
       Logger.error('Cannot search: current position is null');
@@ -773,97 +827,80 @@ class SearchScreenState extends State<SearchScreen>
 
       final baseUrl = '$_proxyBaseUrl/placesNearbySearch';
 
-      Response? response;
-      bool apiSuccess = false;
-      String? lastApiError;
+      // Mental-health facilities and general hospitals/ERs are fetched
+      // together - not one-or-the-other - so someone in a crisis can always
+      // see emergency hospitals alongside mental-health-specific options,
+      // with a filter to narrow down which they want to see.
+      final mentalHealthResults = await _fetchPlacesForConfig(baseUrl, {
+        'keyword': 'mental health clinic psychiatrist psychologist counseling',
+        'radius': '5000',
+      });
+      final hospitalResults = await _fetchPlacesForConfig(baseUrl, {
+        'type': 'hospital',
+        'keyword': 'hospital emergency room medical center',
+        'radius': '5000',
+      });
 
-      // Mental-health-specific facilities are tried first since this is an
-      // anxiety-support app; general hospitals/clinics are the fallback.
-      final searchConfigs = [
-        {
-          'keyword': 'mental health clinic psychiatrist psychologist',
-          'radius': '5000',
-        },
-        {
-          'type': 'hospital',
-          'keyword': 'hospital clinic medical center healthcare',
-          'radius': '5000',
-        },
-        {
-          'type': 'health',
-          'keyword': 'hospital clinic medical center healthcare',
-          'radius': '5000',
-        },
-        {
-          'type': 'doctor',
-          'keyword': 'hospital clinic medical center healthcare',
-          'radius': '5000',
-        },
-        {
-          'keyword': 'hospital clinic medical center healthcare',
-          'radius': '5000',
-        },
-      ];
+      final merged = <String, Map<String, dynamic>>{};
+      for (final place in mentalHealthResults) {
+        place['_category'] = 'mental_health';
+        merged[place['place_id']] = place;
+      }
+      for (final place in hospitalResults) {
+        // A place already tagged mental_health (e.g. a psychiatric hospital
+        // matched by both queries) keeps that tag rather than being
+        // overwritten as a plain hospital.
+        merged.putIfAbsent(place['place_id'], () {
+          place['_category'] = 'hospital';
+          return place;
+        });
+      }
 
-      List<Map<String, dynamic>> results = [];
+      if (merged.isEmpty) {
+        // Broader fallback sweep before giving up entirely.
+        final fallbackConfigs = [
+          {
+            'type': 'health',
+            'keyword': 'hospital clinic medical center healthcare',
+            'radius': '5000',
+          },
+          {
+            'type': 'doctor',
+            'keyword': 'hospital clinic medical center healthcare',
+            'radius': '5000',
+          },
+          {
+            'keyword': 'hospital clinic medical center healthcare',
+            'radius': '5000',
+          },
+        ];
 
-      for (final config in searchConfigs) {
-        Logger.info('Trying search with config: $config');
-
-        try {
-          final queryParams = {
-            'location':
-                '${_currentPosition!.latitude},${_currentPosition!.longitude}',
-            'rankby': 'prominence',
-            ...config,
-          };
-
-          response = await dio.get(baseUrl, queryParameters: queryParams);
-
-          if (response.statusCode == 200) {
-            final data = response.data;
-            if (data['status'] == 'OK' &&
-                (data['results'] as List).isNotEmpty) {
-              Logger.info(
-                  'Found ${(data['results'] as List).length} results with config: $config');
-              results = List<Map<String, dynamic>>.from(data['results']);
-              results = await _fetchAdditionalPages(baseUrl, data, results);
-              apiSuccess = true;
-              break;
-            } else if (data['status'] == 'ZERO_RESULTS') {
-              lastApiError = 'No nearby results for config: $config';
-              Logger.warning(
-                  'No results found with this config, trying next config');
-              continue;
-            } else {
-              lastApiError =
-                  'Google Places ${data['status']}: ${data['error_message'] ?? 'No details'}';
-              Logger.warning(lastApiError);
-              continue;
+        for (final config in fallbackConfigs) {
+          final results = await _fetchPlacesForConfig(baseUrl, config);
+          if (results.isNotEmpty) {
+            for (final place in results) {
+              place['_category'] = 'hospital';
+              merged[place['place_id']] = place;
             }
+            break;
           }
-        } catch (e) {
-          lastApiError = e.toString();
-          Logger.error('Error querying clinic search proxy', e);
-          continue;
         }
       }
 
-      if (!apiSuccess) {
-        _lastPlacesApiError = lastApiError;
-
+      if (merged.isEmpty) {
         final textSearchSucceeded = await _searchWithTextSearch(
           showErrorOnFailure: false,
         );
         if (textSearchSucceeded) return;
 
         _showSearchFailedState(
-          lastApiError ??
+          _lastPlacesApiError ??
               'Google Places did not return clinic results for this area.',
         );
         return;
       }
 
+      final results = merged.values.toList();
       _searchCache[cacheKey] = _CachedClinicSearch(results, DateTime.now());
       _applyClinicResults(results);
     } catch (e) {
@@ -901,6 +938,34 @@ class SearchScreenState extends State<SearchScreen>
     return results;
   }
 
+  // Determines whether a place is a mental-health-specific facility or a
+  // general hospital. Prefers the `_category` tag set when the place was
+  // fetched (see `_searchNearbyHospitals`); falls back to a name/type
+  // heuristic for places that predate tagging (e.g. cached or text-search
+  // results).
+  PlaceCategory _categoryOf(Map<String, dynamic> place) {
+    final tag = place['_category'];
+    if (tag == 'hospital') return PlaceCategory.hospital;
+    if (tag == 'mental_health') return PlaceCategory.mentalHealth;
+
+    final types = place['types'] as List? ?? [];
+    final name = (place['name'] as String? ?? '').toLowerCase();
+    final isHospital = types.contains('hospital') || name.contains('hospital');
+    return isHospital ? PlaceCategory.hospital : PlaceCategory.mentalHealth;
+  }
+
+  // `_nearbyPlaces` narrowed down to whatever category the user has
+  // selected in the filter chips. Both the map markers and the list view
+  // read from this so they always stay in sync.
+  List<Map<String, dynamic>> get _filteredPlaces {
+    if (_selectedFilter == PlaceFilter.all) return _nearbyPlaces;
+    final wantHospital = _selectedFilter == PlaceFilter.hospital;
+    return _nearbyPlaces
+        .where(
+            (p) => (_categoryOf(p) == PlaceCategory.hospital) == wantHospital)
+        .toList();
+  }
+
   // Applies a successful (or cached) clinic search result to map state.
   void _applyClinicResults(
     List<Map<String, dynamic>> results, {
@@ -923,40 +988,71 @@ class SearchScreenState extends State<SearchScreen>
     }).toList();
 
     setState(() {
-      _markers.clear();
       _nearbyPlaces = validResults;
       _lastPlacesApiError = null;
+      _isLoading = false;
+      _errorMessage = '';
+    });
+
+    _rebuildMarkers();
+  }
+
+  // Rebuilds the marker set from `_filteredPlaces` so the map always matches
+  // the active filter and the list below it. Hospitals and mental-health
+  // clinics get visually distinct colors, and whichever clinic is currently
+  // selected is highlighted so it's obvious which marker the bottom card
+  // refers to.
+  void _rebuildMarkers() {
+    if (!mounted || _currentPosition == null) return;
+
+    setState(() {
+      _markers.clear();
 
       _markers.add(Marker(
         markerId: const MarkerId('current_location'),
-        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        position:
+            LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
         infoWindow: const InfoWindow(title: 'Your Location'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         zIndex: 2,
       ));
 
-      for (var place in validResults) {
-        final latLng = _extractPlaceLatLng(place)!;
+      for (final place in _filteredPlaces) {
+        final latLng = _extractPlaceLatLng(place);
+        final placeId = place['place_id'] as String?;
+        if (latLng == null || placeId == null) continue;
+
         final name = place['name'] ?? 'Unknown Facility';
         final vicinity = place['vicinity'] ?? 'Address unavailable';
-
-        Logger.debug('Adding marker for: $name at ${latLng.latitude},${latLng.longitude}');
+        final isSelected = _selectedPlace?['place_id'] == placeId;
+        final category = _categoryOf(place);
 
         _markers.add(Marker(
-          markerId: MarkerId(place['place_id']),
+          markerId: MarkerId(placeId),
           position: latLng,
           infoWindow: InfoWindow(title: name, snippet: vicinity),
-          icon: _mentalHealthMarkerIcon,
+          icon: isSelected
+              ? _selectedMarkerIcon
+              : (category == PlaceCategory.hospital
+                  ? _hospitalMarkerIcon
+                  : _mentalHealthMarkerIcon),
+          zIndex: isSelected ? 3 : 1,
           onTap: () {
             Logger.debug('Marker tapped: $name');
-            _onMarkerTapped(place['place_id']);
+            _onMarkerTapped(placeId);
           },
         ));
       }
-
-      _isLoading = false;
-      _errorMessage = fromCache ? '' : '';
     });
+  }
+
+  // Switches the map/list filter and rebuilds markers to match.
+  void _setFilter(PlaceFilter filter) {
+    if (_selectedFilter == filter) return;
+    setState(() {
+      _selectedFilter = filter;
+    });
+    _rebuildMarkers();
   }
 
   // Honest failure state: no more inventing fake clinics. Shows a clear
@@ -1216,6 +1312,7 @@ class SearchScreenState extends State<SearchScreen>
           setState(() {
             _selectedPlace = place;
           });
+          _rebuildMarkers(); // Highlight the newly selected marker
 
           // Move camera to the selected place
           _moveCamera(placeLatLng, 15.0);
@@ -1246,6 +1343,7 @@ class SearchScreenState extends State<SearchScreen>
         setState(() {
           _selectedPlace = selectedPlace;
         });
+        _rebuildMarkers(); // Highlight the newly selected marker
 
         // Move camera to the selected place
         _moveCamera(marker.position, 15.0);
@@ -1879,6 +1977,54 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
+  // A single filter chip (All / Mental Health / Hospitals). Shows a live
+  // count so users can tell at a glance whether switching filters is even
+  // worth it before they tap.
+  Widget _buildFilterChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required int count,
+  }) {
+    final PlaceFilter filter = label == 'All'
+        ? PlaceFilter.all
+        : label == 'Mental Health'
+            ? PlaceFilter.mentalHealth
+            : PlaceFilter.hospital;
+
+    return GestureDetector(
+      onTap: () => _setFilter(filter),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: isSelected ? color : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? color : color.withOpacity(0.3),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: isSelected ? Colors.white : color),
+            const SizedBox(width: 6),
+            Text(
+              count > 0 ? '$label ($count)' : label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Build the clinic list view
   Widget _buildClinicListView() {
     // Don't show during navigation or when a clinic is selected
@@ -1887,28 +2033,15 @@ class SearchScreenState extends State<SearchScreen>
     // Don't show if map is not created yet or is still loading
     if (!_mapCreated || _isLoading) return const SizedBox.shrink();
 
-    // Don't show if we don't have any markers (except user location)
-    if (_markers.length <= 1) return const SizedBox.shrink();
-
-    // Get all places from markers
-    List<Map<String, dynamic>> places = [];
-    for (final marker in _markers) {
-      if (marker.markerId.value != 'current_location') {
-        // Find the place data for this marker
-        final place = _nearbyPlaces.firstWhere(
-          (place) => place['place_id'] == marker.markerId.value,
-          orElse: () => <String, dynamic>{},
-        );
-
-        if (place.isNotEmpty) {
-          places.add(place);
-        }
-      }
-    }
+    // Don't show if the search hasn't returned anything at all. (Note: this
+    // stays visible even if the *current filter* narrows results to zero, so
+    // the filter chips remain reachable and the user can switch back.)
+    if (_nearbyPlaces.isEmpty) return const SizedBox.shrink();
 
     // Defensive: ignore any place whose geometry can't be parsed, even
     // though _applyClinicResults already filters these out at the source.
-    places = places.where((p) => _extractPlaceLatLng(p) != null).toList();
+    List<Map<String, dynamic>> places =
+        _filteredPlaces.where((p) => _extractPlaceLatLng(p) != null).toList();
 
     // Sort places by distance if available
     if (_currentPosition != null) {
@@ -1933,6 +2066,19 @@ class SearchScreenState extends State<SearchScreen>
         return distA.compareTo(distB);
       });
     }
+
+    // Empty state copy differs depending on whether nothing was found at
+    // all, or the current filter just happens to hide everything.
+    final bool hasAnyResults = _nearbyPlaces.isNotEmpty;
+    final bool filterHidAllResults = hasAnyResults && places.isEmpty;
+    final String emptyTitle = !hasAnyResults
+        ? 'No clinics or hospitals found nearby'
+        : _selectedFilter == PlaceFilter.hospital
+            ? 'No hospitals found nearby'
+            : 'No mental health clinics found nearby';
+    final String emptySubtitle = filterHidAllResults
+        ? 'Switch filters to see other nearby options'
+        : 'Try adjusting your location or search radius';
 
     return DraggableScrollableSheet(
       initialChildSize: 0.3, // Initial height (30% of screen)
@@ -2056,6 +2202,50 @@ class SearchScreenState extends State<SearchScreen>
                 ),
               ),
 
+              // Filter chips - lets the user narrow the map/list to just
+              // mental-health clinics, just hospitals (for emergencies), or
+              // both together.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildFilterChip(
+                        label: 'All',
+                        icon: Icons.apps_rounded,
+                        color: Colors.teal.shade700,
+                        isSelected: _selectedFilter == PlaceFilter.all,
+                        count: _nearbyPlaces.length,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        label: 'Mental Health',
+                        icon: Icons.psychology,
+                        color: Colors.teal.shade700,
+                        isSelected:
+                            _selectedFilter == PlaceFilter.mentalHealth,
+                        count: _nearbyPlaces
+                            .where((p) =>
+                                _categoryOf(p) == PlaceCategory.mentalHealth)
+                            .length,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildFilterChip(
+                        label: 'Hospitals (ER)',
+                        icon: Icons.local_hospital,
+                        color: Colors.red.shade700,
+                        isSelected: _selectedFilter == PlaceFilter.hospital,
+                        count: _nearbyPlaces
+                            .where((p) =>
+                                _categoryOf(p) == PlaceCategory.hospital)
+                            .length,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
               // Divider
               Divider(color: Colors.grey[200], height: 1),
 
@@ -2080,7 +2270,7 @@ class SearchScreenState extends State<SearchScreen>
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No clinics or hospitals found nearby',
+                              emptyTitle,
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
@@ -2089,26 +2279,52 @@ class SearchScreenState extends State<SearchScreen>
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Try adjusting your location or search radius',
+                              emptySubtitle,
                               style: TextStyle(
                                 fontSize: 13,
                                 color: Colors.grey[500],
                               ),
                             ),
                             const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _searchNearbyHospitals,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Refresh'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.teal[600],
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (filterHidAllResults) ...[
+                                  OutlinedButton.icon(
+                                    onPressed: () => _setFilter(
+                                        PlaceFilter.all),
+                                    icon: const Icon(Icons.apps_rounded,
+                                        size: 18),
+                                    label: const Text('Show All'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.teal[700],
+                                      side:
+                                          BorderSide(color: Colors.teal[700]!),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 20, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(30),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+                                ElevatedButton.icon(
+                                  onPressed: _searchNearbyHospitals,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Refresh'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal[600],
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ],
                         ),
@@ -2125,15 +2341,15 @@ class SearchScreenState extends State<SearchScreen>
                           final vicinity =
                               place['vicinity'] ?? 'Address unavailable';
                           final rating = place['rating'] ?? 0.0;
-                          final types = place['types'] as List? ?? [];
-                          final isHospital = types.contains('hospital') ||
-                              name.toLowerCase().contains('hospital');
+                          final isHospital =
+                              _categoryOf(place) == PlaceCategory.hospital;
                           final typeColor =
                               isHospital ? Colors.red : Colors.teal;
                           final typeIcon = isHospital
                               ? Icons.local_hospital
                               : Icons.psychology;
-                          final typeLabel = isHospital ? 'Hospital' : 'Clinic';
+                          final typeLabel =
+                              isHospital ? 'Hospital / ER' : 'Mental Health';
 
                           // Real open/closed status from Places API, when
                           // Google provides it. Null means "unknown" - we no
@@ -2453,13 +2669,10 @@ class SearchScreenState extends State<SearchScreen>
 
     // Get the clinic name
     final clinicName = _selectedPlace!['name'] ?? 'Selected Clinic';
-    // Determine if it's a clinic or hospital based on types or name
-    final types = _selectedPlace!['types'] as List? ?? [];
-    final name = _selectedPlace!['name'] as String? ?? '';
-    final clinicType =
-        types.contains('hospital') || name.toLowerCase().contains('hospital')
-            ? 'Hospital'
-            : 'Clinic';
+    final isHospital = _categoryOf(_selectedPlace!) == PlaceCategory.hospital;
+    final clinicType = isHospital ? 'Hospital / ER' : 'Mental Health';
+    final clinicTypeColor = isHospital ? Colors.red : Colors.teal;
+    final clinicIcon = isHospital ? Icons.local_hospital : Icons.psychology;
     final rating = _selectedPlace!['rating'] ?? 4.5;
 
     return Positioned(
@@ -2570,6 +2783,7 @@ class SearchScreenState extends State<SearchScreen>
                             _routeDuration = null;
                             _routeDistance = null;
                           });
+                          _rebuildMarkers(); // Remove the selection highlight
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: Padding(
@@ -2662,12 +2876,12 @@ class SearchScreenState extends State<SearchScreen>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.teal.shade50,
+                      color: clinicTypeColor.shade50,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      Icons.psychology,
-                      color: Colors.teal.shade700,
+                      clinicIcon,
+                      color: clinicTypeColor.shade700,
                       size: 24,
                     ),
                   ),
@@ -2693,7 +2907,7 @@ class SearchScreenState extends State<SearchScreen>
                           clinicType,
                           style: TextStyle(
                             fontSize: 13,
-                            color: Colors.teal.shade700,
+                            color: clinicTypeColor.shade700,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
